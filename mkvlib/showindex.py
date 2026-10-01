@@ -76,6 +76,12 @@ def recap_poster(recap):
     return {key: uri} if key and uri.startswith("data:image/") else {}
 
 
+def recap_tmdb_id(recap):
+    """Identifiant TMDB qu'une fiche existante a retenu, ou None."""
+    ident = _metas(read_head(recap)).get("tmdb-id", "")
+    return ident if ident.isdigit() else None
+
+
 @dataclass
 class Entry:
     """Une série du sommaire, telle que sa fiche la décrit."""
