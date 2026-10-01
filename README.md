@@ -11,6 +11,8 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes ; fiche récap de la médiathèque |
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, plus une fiche récap HTML |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
+| [scripts/TV_Shows/Recap_All.py](scripts/TV_Shows/Recap_All.py) | Régénère la fiche récap de toutes les séries d'une médiathèque, sans toucher aux épisodes |
+| [scripts/TV_Shows/Index.py](scripts/TV_Shows/Index.py) | Sommaire `index.html` de toutes les séries, chacune menant à sa fiche récap ; fait pour une tâche planifiée sur le NAS |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` en `{numéro} - {titre MusicBrainz}.flac`, paroles `.lrc` comprises |
@@ -112,6 +114,57 @@ La série est identifiée par une recherche TMDB sur le nom du dossier (celui du
 `--recap` produit un `recap.html` unique (onglets par saison, vignettes encodées dans la page : rien à conserver à côté). Les épisodes dont TMDB n'a pas de vignette reprennent l'affiche de leur saison (à défaut, celle de la série), encodée une seule fois pour toute la page. Les épisodes absents du disque y sont grisés et étiquetés, avec un compteur par saison — l'inventaire se lit dans les noms de fichiers, tous formats vidéo confondus, donc il reste juste même avec `--no-tag`. Un dernier onglet **Casting** rassemble les acteurs vus dans plusieurs saisons, puis, saison par saison, ceux qui n'appartiennent qu'à elle — ce qui rend lisible une série longue dont la distribution change (`--cast-limit` plafonne chaque section, 20 par défaut ; une saison en crédite facilement une centaine). `--artwork` écrit les `folder.jpg` (affiche anglaise) de la série et de chaque saison. `--no-tag` génère ces annexes sans toucher aux épisodes, pour une série qui n'est pas en `.mkv`.
 
 Un dossier `Specials` (ou `Hors-serie`) est traité comme la saison 0 de TMDB, où vivent les épisodes spéciaux.
+
+Quand la fiche évolue, [Recap_All.py](scripts/TV_Shows/Recap_All.py) remet toute la médiathèque à niveau d'une seule commande : il lance `Metadata.py --no-tag --recap` sur chaque série — les épisodes ne sont **jamais** modifiés. L'identifiant TMDB inscrit dans la fiche existante est repris (sauf s'il est épinglé dans le nom du dossier), si bien qu'une série identifiée autrefois avec `--tmdb-id` ne retombe pas sur un homonyme. Les images déjà dans une fiche sont reprises, une série en échec n'arrête pas les suivantes et figure au bilan, et un sommaire `index.html` présent est réécrit à la fin. `--only` restreint aux séries dont le nom contient un texte ; toute autre option (`--no-cache`, `--cast-limit`, `--artwork`…) est transmise à `Metadata.py`.
+
+```powershell
+python scripts\TV_Shows\Recap_All.py --dir "D:\Series"            # simulation
+python scripts\TV_Shows\Recap_All.py --dir "D:\Series" --apply    # régénère toutes les fiches
+```
+
+Pour passer d'une fiche à l'autre, [Index.py](scripts/TV_Shows/Index.py) écrit un `index.html` à la racine de la médiathèque : un mur d'affiches, une par série, chacune menant à son `recap.html`. Tout est lu dans l'en-tête des fiches, qui portent titre, année, saisons (`2/5 saisons` quand il en manque), affiche et résumé — trois lignes sous l'affiche, le texte entier au survol : ni TMDB, ni clé, ni réseau, ni outil externe — seulement Python 3 et `mkvlib/`. Il est donc fait pour tourner **en tâche planifiée sur le NAS** : les fiches s'écrivent sur un disque local puis sont transférées, et seul le NAS voit toutes les séries. Le sommaire n'est réécrit que si son contenu change, un `index.html` qu'il n'a pas écrit n'est jamais remplacé, et les dossiers cachés (`.recycle`…) sont ignorés. Une fiche antérieure à cette version figure sans affiche jusqu'à sa régénération. Classement alphabétique sans article (*The Expanse* à E), filtre de recherche en tête, liens relatifs : la médiathèque peut être déplacée sans rien casser. Chaque fiche porte une icône d'onglet à ses initiales, sur une couleur propre à la série (*BB* pour *Breaking Bad*), et le sommaire un petit téléviseur : des SVG écrits dans la page, sans fichier à côté — Safari, qui gère mal les icônes SVG, affiche la sienne par défaut.
+
+```powershell
+python scripts\TV_Shows\Index.py --dir "D:\Series" --apply
+```
+
+#### Mettre le sommaire à jour sur TrueNAS SCALE
+
+Dans ce qui suit, `<pool>` est le pool de stockage, `<outils>` le dataset où ranger le script, `<series>` celui de la médiathèque, `<utilisateur>` le compte propriétaire du partage et `<nas>` / `<partage>` le nom réseau du NAS et du partage SMB. Les chemins réels se lisent dans *Datasets* (champ *Mountpoint*) et dans *Shares*.
+
+1. **Copier les fichiers** sur un dataset, depuis l'Explorateur Windows par le partage SMB par exemple — jamais sur le pool système (`boot-pool`), qui est effacé aux mises à jour. Le dépôt entier convient ; à défaut, ces deux éléments suffisent, à condition de garder l'arborescence :
+
+   ```text
+   /mnt/<pool>/<outils>/mkv_editors/
+   ├── mkvlib/                      (le dossier entier)
+   └── scripts/TV_Shows/Index.py
+   ```
+
+2. **Vérifier Python**, dans *System → Shell* : `python3 --version` doit répondre (Python est fourni avec le système, rien à installer).
+
+3. **Essayer en simulation**, toujours dans le shell — rien n'est écrit, la liste des séries trouvées s'affiche :
+
+   ```sh
+   python3 /mnt/<pool>/<outils>/mkv_editors/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series>
+   ```
+
+   `Aucune fiche` signifie que `--dir` ne pointe pas sur le dossier qui contient un sous-dossier par série, ou qu'aucune série n'a encore de `recap.html`.
+
+4. **Créer la tâche**, dans *System → Advanced Settings → Cron Jobs → Add* :
+
+   | Champ | Valeur |
+   | --- | --- |
+   | Description | `Sommaire des séries` |
+   | Command | `python3 /mnt/<pool>/<outils>/mkv_editors/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply` |
+   | Run As User | `<utilisateur>` — pas `root` : un `index.html` créé par `root` pourrait ne plus être modifiable ni supprimable depuis le partage |
+   | Schedule | *Hourly* (toutes les heures) |
+   | Hide Standard Output | coché — sans quoi chaque passage enverrait un courriel |
+   | Hide Standard Error | décoché — une erreur, elle, mérite d'être signalée |
+   | Enabled | coché |
+
+5. **Lancer la tâche une première fois** depuis la liste des Cron Jobs (*Run Now*), puis ouvrir `\<nas>\<partage>\index.html` depuis Windows.
+
+Ensuite, plus rien à faire : une série traitée sur le disque local puis copiée sur le NAS apparaît dans le sommaire au passage suivant, au plus tard une heure après. Le fichier n'est réécrit que si la liste a changé. `Permission denied` dans le courriel d'erreur veut dire que `<utilisateur>` ne peut pas écrire à la racine de `<series>` ; une série sans affiche, que sa fiche date d'avant cette version — la régénérer avec `--recap` suffit.
 
 ### Musique
 

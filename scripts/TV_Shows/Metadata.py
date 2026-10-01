@@ -73,10 +73,11 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cast, cli, embed, lookup, mkv, naming  # noqa: E402
+from mkvlib import artwork, cache, cast, cli, embed, favicon, lookup, mkv, naming, showindex  # noqa: E402
 from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
+POSTER_SIZE = "w185"    # affiche que la fiche porte pour le sommaire des séries
 
 
 # ----------------------------------------------------------------------------
@@ -325,14 +326,16 @@ def build_cast_panel(casting, runs, images, size):
     return "".join(blocks)
 
 
-def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE):
+def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None):
     """Rend la page HTML (pur rendu : ni réseau ni disque).
 
     'images' = {clé: data-URI}, vignettes d'épisode et portraits du casting mêlés ; un épisode sans vignette propre retombe sur l'affiche de sa saison (voir episode_image), et n'a un emplacement vide que si celle-ci manque aussi. Une affiche de repli revient sur beaucoup d'épisodes : elle est écrite une seule fois, dans une règle CSS, et non recopiée dans chaque balise.
 
     Les épisodes absents du disque sont grises et étiquetés, avec un compteur par saison. Une saison dont on ne connaît aucun fichier n'est pas marquée du tout : mieux vaut ne rien dire que tout déclarer manquant.
 
-    Le casting, s'il y en a un, prend le dernier onglet."""
+    Le casting, s'il y en a un, prend le dernier onglet.
+
+    L'en-tête porte de quoi présenter la série dans le sommaire de la médiathèque (voir showindex) : année, saisons, et l'affiche 'poster' = (clé, data-URI) encodée - le sommaire se construit sans rien demander à TMDB."""
     tabs, panels, partagees = [], [], {}
     for i, run in enumerate(runs):
         label = run.data.get("name") or f"Saison {run.number}"
@@ -376,7 +379,8 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        f"<meta name='tmdb-id' content='{esc(tmdb_id)}'>"
+        + favicon.monogram_link(series_name)
+        + showindex.recap_metas(show, tmdb_id, sum(1 for run in runs if run.number > 0), poster) +
         f"<meta name='still-size' content='{esc(size)}'>"
         f"<meta name='profile-size' content='{esc(profile_size)}'>"
         f"<title>{esc(series_name)}</title>"
@@ -457,13 +461,15 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
 
     if args.recap:
         out = Path(root_dir) / "recap.html"
-        known = embed.read_embedded(out)     # la fiche précédente sert de cache d'images
+        known = {**embed.read_embedded(out), **showindex.recap_poster(out)}   # la fiche précédente sert de cache d'images
         # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
         stills = (embed.fetch(collect_stills(processed, show, args.still_size), known, args.still_size, tmdb, label="vignette") if apply else {})
         casting = cast.split(collect_cast(processed, args, tmdb), limit=args.cast_limit) if apply else cast.Casting()
         profiles = (embed.fetch(collect_profiles(casting, args.profile_size), known, args.profile_size, tmdb, label="portrait") if apply else {})
         images = {**stills, **profiles}
-        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size)
+        poster_key = embed.image_key(show.get("poster_path"), POSTER_SIZE)
+        poster_uri = (embed.fetch({poster_key: show["poster_path"]}, known, POSTER_SIZE, tmdb, label="affiche").get(poster_key) if apply and poster_key else None)
+        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None)
         tally = ", ".join(t for t in (f"{len(stills)} vignette(s)" if stills else "",
                                       f"{len(profiles)} portrait(s)" if profiles else "") if t)
         print(f"  [serie] {_write_text(out, html, apply)}"
