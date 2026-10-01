@@ -73,7 +73,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cast, cli, embed, lookup, mkv, naming, showindex  # noqa: E402
+from mkvlib import artwork, cache, cast, cli, embed, favicon, lookup, mkv, naming, showindex  # noqa: E402
 from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
@@ -379,6 +379,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        + favicon.monogram_link(series_name)
         + showindex.recap_metas(show, tmdb_id, sum(1 for run in runs if run.number > 0), poster) +
         f"<meta name='still-size' content='{esc(size)}'>"
         f"<meta name='profile-size' content='{esc(profile_size)}'>"

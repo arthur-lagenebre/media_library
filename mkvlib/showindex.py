@@ -13,6 +13,8 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
+from . import favicon
+
 INDEX_NAME = "index.html"
 RECAP_NAME = "recap.html"
 
@@ -162,7 +164,7 @@ def build_html(library_name, entries):
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        f"{GENERATOR_META}"
+        f"{GENERATOR_META}{favicon.index_link()}"
         f"<title>{esc(library_name)}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
