@@ -96,7 +96,7 @@ python scripts\Movies\Rename_Movies.py --dir "D:\Films" --apply --pin-id   # ren
 
 Un préfixe d'ordre de saga est conservé (`1 - Iron Man` → `1 - Iron Man (2008)`), les sous-titres suivent leur film en mode « `.mkv` à plat », et un identifiant déjà épinglé n'est jamais retiré.
 
-`--recap` écrit un `recap.html` à la racine de `--dir` : un mur d'affiches groupé par saga, avec **les films qui manquent à chaque saga** — TMDB connaît la composition des collections, donc une trilogie possédée aux deux tiers se voit. Comme pour les séries, la page est un fichier unique (affiches encodées dedans) et la précédente sert de cache. `--no-tag` produit les annexes sans rien modifier dans les `.mkv`.
+`--recap` écrit un `recap.html` à la racine de `--dir` — ou ailleurs avec `--recap-out` (un dossier, ou un chemin `.html`) : un mur d'affiches groupé par saga, avec **les films qui manquent à chaque saga** — TMDB connaît la composition des collections, donc une trilogie possédée aux deux tiers se voit. Seuls les films déjà sortis peuvent manquer : une suite annoncée (*Avatar 4*, 2029) ou sans date n'apparaît qu'une fois sa date passée. Comme pour les séries, la page est un fichier unique (affiches encodées dedans) et la précédente sert de cache. `--no-tag` produit les annexes sans rien modifier dans les `.mkv`.
 
 ### Séries
 

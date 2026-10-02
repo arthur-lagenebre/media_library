@@ -60,7 +60,7 @@ Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --n
 
 À chaque passage, un JOURNAL est écrit à la racine de --dir : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
 
---recap genere une fiche HTML de la médiathèque à la racine de --dir : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition).
+--recap genere une fiche HTML de la médiathèque à la racine de --dir (ou là où --recap-out le dit, dossier ou fichier .html) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
 Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
 """
 
@@ -69,7 +69,7 @@ import contextlib
 import io
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -489,17 +489,25 @@ def fetch_collections(movies, tmdb):
     return sagas
 
 
-def library_sections(movies, sagas):
+def released(part, today):
+    """Le film est-il déjà sorti ? Sans date, il n'est qu'annoncé."""
+    return bool(part.get("release_date")) and part["release_date"] <= today
+
+
+def library_sections(movies, sagas, today=None):
     """[(titre de section, [Card, ...]), ...] : une section par saga, puis le reste.
 
-    Une saga apparait avec TOUS ses films - ceux qu'on possède et les autres - dans l'ordre de sortie : c'est ce qui rend visible ce qui manque à la collection.
+    Une saga apparait avec TOUS ses films sortis - ceux qu'on possède et les autres - dans l'ordre de sortie : c'est ce qui rend visible ce qui manque à la collection. Un film pas encore sorti, ou seulement annoncé sans date, ne manque à personne : il n'apparaît pas, sauf si on l'a déjà.
     """
+    today = today or date.today().isoformat()
     owned = {m.get("id"): m for m in movies}
     sections, classes = [], set()
     for ident, saga in sorted(sagas.items(), key=lambda kv: kv[1].get("name", "")):
         cards = []
         for part in sorted(saga.get("parts", []), key=lambda p: p.get("release_date") or "9999"):
             mine = owned.get(part.get("id"))
+            if not mine and not released(part, today):
+                continue
             cards.append(_card(mine, True) if mine else _card(part, False))
             if mine:
                 classes.add(part.get("id"))
@@ -527,7 +535,8 @@ def build_recap_html(library_name, sections, posters, size):
 
     Les films manquants d'une saga sont grises et étiquetés, comme les épisodes absents dans la fiche d'une série."""
     def esc(s):
-        return escape(str(s or ""))
+        # L'apostrophe aussi : les attributs sont entre apostrophes, et un synopsis qui dit "s'entre-tuent" fermerait l'infobulle en plein milieu.
+        return escape(str(s or ""), {"'": "&#39;"})
 
     blocs = []
     total = manquants = 0
@@ -588,20 +597,33 @@ def build_recap_html(library_name, sections, posters, size):
     )
 
 
+def recap_path(root_dir, recap_out=None):
+    """Où écrire la fiche : à la racine de --dir, sinon là où --recap-out le dit (un dossier, ou le chemin du fichier)."""
+    if not recap_out:
+        return Path(root_dir) / "recap.html"
+    out = Path(recap_out)
+    return out if out.suffix.lower() in (".html", ".htm") else out / "recap.html"
+
+
 def write_recap(root_dir, movies, args, tmdb):
-    """Écrit récap.html à la racine de --dir. Ne télécharge rien en simulation."""
+    """Écrit la fiche (récap.html à la racine de --dir, ou --recap-out). Ne télécharge rien en simulation.
+
+    La fiche précédente, au même endroit, sert de cache d'affiches."""
     apply = args.apply and not args.verify
-    out = Path(root_dir) / "recap.html"
+    out = recap_path(root_dir, getattr(args, "recap_out", None))
+    if not out.parent.is_dir():
+        print(f"  [mediatheque] dossier introuvable pour la fiche : {out.parent} -> fiche non ecrite")
+        return
     print("--- annexes ---")
     sections = library_sections(movies, fetch_collections(movies, tmdb))
     needed = collect_posters(sections, args.poster_size)
     posters = (embed.fetch(needed, embed.read_embedded(out), args.poster_size, tmdb, label="affiche") if apply else {})
     html = build_recap_html(Path(root_dir).resolve().name, sections, posters, args.poster_size)
     if not apply:
-        print(f"  [mediatheque] ecrirait {out.name}")
+        print(f"  [mediatheque] ecrirait {out}")
         return
     out.write_text(html, encoding="utf-8")
-    print(f"  [mediatheque] {out.name} ecrit  "
+    print(f"  [mediatheque] {out} ecrit  "
           f"({len(html) / 1_048_576:.1f} Mo, {len(posters)} affiche(s) integree(s))")
 
 
@@ -629,6 +651,7 @@ def parse_args():
     ap.add_argument("--artwork", action="store_true", help="Ecrit folder.jpg (affiche EN) par film")
     ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la mediatheque (sagas et manquants)")
     ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (defaut : w185)")
+    ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : recap.html a la racine de --dir)")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     return ap.parse_args()
 

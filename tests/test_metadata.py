@@ -504,6 +504,23 @@ class TestRecapFilms(unittest.TestCase):
         self.assertEqual(titre, "Iron Man - Saga")
         self.assertEqual([(c.title, c.owned) for c in cards], [("Iron Man", True), ("Iron Man 2", False), ("Iron Man 3", False)])
 
+    def test_films_pas_encore_sortis_absents(self):
+        saga = {"id": 9, "name": "Dune - Saga", "parts": [
+            {"id": 1, "title": "Dune", "release_date": "2021-09-15"},
+            {"id": 2, "title": "Dune : Deuxième partie", "release_date": "2024-02-27"},
+            {"id": 3, "title": "Dune : Troisième partie", "release_date": "2026-12-16"},
+            {"id": 4, "title": "Dune : Annoncé", "release_date": ""}]}
+        cards = films.library_sections([film(1, "Dune", saga)], {9: saga}, today="2026-10-02")[0][1]
+        self.assertEqual([c.title for c in cards], ["Dune", "Dune : Deuxième partie"])
+        # Le jour de sa sortie, il manque déjà.
+        cards = films.library_sections([film(1, "Dune", saga)], {9: saga}, today="2026-12-16")[0][1]
+        self.assertIn("Dune : Troisième partie", [c.title for c in cards])
+
+    def test_film_possede_garde_meme_avant_sa_sortie(self):
+        saga = {"id": 9, "name": "S", "parts": [{"id": 5, "title": "Avant-premiere", "release_date": "2027-01-01"}]}
+        cards = films.library_sections([film(5, "Avant-premiere", saga)], {9: saga}, today="2026-10-02")[0][1]
+        self.assertEqual([(c.title, c.owned) for c in cards], [("Avant-premiere", True)])
+
     def test_films_hors_saga_a_la_fin(self):
         sections = films.library_sections([film(11, "Iron Man", IRON), film(99, "Heat"), film(98, "Alien")], {1: IRON})
         self.assertEqual([t for t, _ in sections], ["Iron Man - Saga", "Hors saga"])
@@ -521,6 +538,15 @@ class TestRecapFilms(unittest.TestCase):
         self.assertIsNone(cards[1].runtime)
 
 
+class TestEmplacementDuRecap(unittest.TestCase):
+    def test_par_defaut_a_la_racine(self):
+        self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/recap.html"))
+
+    def test_dossier_ou_fichier(self):
+        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__"), Path("D:/Films/__Data__/recap.html"))
+        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__/films.html"), Path("D:/Films/__Data__/films.html"))
+
+
 class TestRenduRecapFilms(unittest.TestCase):
     def rendre(self, sections, posters=None):
         return films.build_recap_html("Films", sections, posters or {}, "w185")
@@ -536,6 +562,11 @@ class TestRenduRecapFilms(unittest.TestCase):
         self.assertIn("class='film absent'", html)
         self.assertIn(">manquant</div>", html)
         self.assertIn("2010", html)
+
+    def test_apostrophe_du_synopsis_ne_casse_pas_l_infobulle(self):
+        # Régression : "s'entre-tuent" fermait l'attribut title, et la fin du synopsis devenait des attributs.
+        html = self.rendre([("Hors saga", [films.Card("Skizm", overview="des criminels s'entre-tuent.")])])
+        self.assertIn("title='des criminels s&#39;entre-tuent.'", html)
 
     def test_resume_de_la_mediatheque(self):
         sections = [("Saga", [films.Card("A"), films.Card("B", owned=False)]), ("Hors saga", [films.Card("C")])]

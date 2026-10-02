@@ -238,8 +238,8 @@ def process_season(mkv_dir, season, args, opts, tmdb):
 # 3. Fiche récap HTML : vignettes encodées dans la page
 # ----------------------------------------------------------------------------
 def esc(value):
-    """Texte prêt à poser dans la page : TMDB écrit des titres avec des & et des <."""
-    return escape(str(value or ""))
+    """Texte prêt à poser dans la page : TMDB écrit des titres avec des & et des <, et des apostrophes qui fermeraient un attribut."""
+    return escape(str(value or ""), {"'": "&#39;"})
 
 
 def episode_image(ep, run, show):
