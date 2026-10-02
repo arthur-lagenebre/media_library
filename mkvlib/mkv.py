@@ -69,6 +69,11 @@ def check_tools(needs_mkvtoolnix=True):
     return True
 
 
+def can_read():
+    """Vrai si MKVToolNix est là pour LIRE les .mkv, même quand on ne doit rien y écrire."""
+    return all(shutil.which(t) for t in ("mkvmerge", "mkvextract"))
+
+
 def identify(path):
     """(JSON de 'mkvmerge -J', remarque). L'info est None si le fichier est illisible.
 

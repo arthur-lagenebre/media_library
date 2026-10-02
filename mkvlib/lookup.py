@@ -195,10 +195,10 @@ def choice_list(results, best, doubts, limit=VARIANTE_MAX):
     return ordonnes[:limit]
 
 
-def find_movie(tmdb, rawname, contexts=()):
+def find_movie(tmdb, rawname, contexts=(), tag_id=None):
     """(fiche TMDB, ordre de saga) pour un nom de dossier ou de fichier.
 
-    Même priorité que pour les séries : identifiant épinglé dans le nom d'abord, recherche sur le titre et l'année ensuite. Affiche ce qui a été retenu et les doutes. Rend (None, ordre) si rien ne correspond.
+    Même priorité que l'étiquetage : identifiant épinglé dans le nom d'abord, puis celui qu'un passage de Metadata.py a inscrit dans le fichier (`tag_id`), recherche sur le titre et l'année en dernier. Sans le second, un film déjà identifié se refait rechercher, et sur un titre que plusieurs films portent ("Dracula", "Mortal Kombat"), la recherche peut en choisir un autre. Affiche ce qui a été retenu et les doutes. Rend (None, ordre) si rien ne correspond.
 
     C'est un résultat de RECHERCHE, sans les crédits ni les genres : de quoi nommer un dossier. Qui veut les détails fait ensuite tmdb.movie(id).
     """
@@ -212,6 +212,14 @@ def find_movie(tmdb, rawname, contexts=()):
             return None, order
         print(f"  id epingle dans le nom : {describe(film)}")
         return film, order
+    if tag_id:
+        try:
+            film = tmdb.movie(tag_id)
+        except TmdbError as e:
+            print(f"  id {tag_id} lu dans le fichier inutilisable : {e} -> recherche")
+        else:
+            print(f"  id lu dans le fichier : {describe(film)}")
+            return film, order
 
     try:
         results, query = search_with_context(tmdb, title, year, contexts)

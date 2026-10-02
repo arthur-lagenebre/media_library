@@ -9,6 +9,7 @@ from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mkvlib import favicon, showindex
+from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 
 HREF_RE = re.compile(r"<link rel='icon' type='image/svg\+xml' href='data:image/svg\+xml,([^']+)'>")
@@ -43,6 +44,11 @@ class TestPages(unittest.TestCase):
         svg = svg_of(html)
         self.assertEqual(svg.find("{http://www.w3.org/2000/svg}text").text, "TJ")
         # Dans l'en-tête, avant le <style> : là où le sommaire s'arrête de lire.
+        self.assertLess(html.index("rel='icon'"), html.index("<style>"))
+
+    def test_la_fiche_des_films_porte_le_clap(self):
+        html = films.build_recap_html("Films", [], {}, "w185")
+        svg_of(html)
         self.assertLess(html.index("rel='icon'"), html.index("<style>"))
 
     def test_le_sommaire_porte_le_televiseur(self):

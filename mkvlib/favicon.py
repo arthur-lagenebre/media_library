@@ -27,6 +27,15 @@ INDEX_SVG = (
     "<path d='M28 29v15l13-7.5z' fill='#1c1e26'/>"
     "</svg>")
 
+# La fiche des films : un clap, dans les mêmes couleurs. Le haut du clap est incliné, comme ouvert, pour se lire comme tel même à 16 pixels.
+FILMS_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    "<rect width='64' height='64' rx='14' fill='#1c1e26'/>"
+    "<rect x='9' y='28' width='46' height='27' rx='4' fill='#7cc4ff'/>"
+    "<path d='M9 22l43-11 2.6 9.5L11.6 31.5z' fill='#7cc4ff'/>"
+    "<path d='M19 19.4l6 9.3M31 16.3l6 9.3M43 13.2l6 9.3' stroke='#1c1e26' stroke-width='4'/>"
+    "</svg>")
+
 
 def initials(title):
     """'BB' pour Breaking Bad, 'D' pour Dark, '24' pour 24 ; '?' pour un titre vide.
@@ -77,3 +86,7 @@ def monogram_link(title):
 
 def index_link():
     return link(INDEX_SVG)
+
+
+def films_link():
+    return link(FILMS_SVG)

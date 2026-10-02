@@ -7,6 +7,7 @@ import types
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mkvlib import naming
@@ -46,12 +47,14 @@ class RenameMoviesTestCase(unittest.TestCase):
         for nom in noms:
             (self.racine / nom).write_text("x", encoding="utf-8")
 
-    def lancer(self, apply=True, pin_id=False, tmdb=None):
+    def lancer(self, apply=True, pin_id=False, tmdb=None, ids=None):
+        """`ids` = {nom de fichier: identifiant inscrit dedans}, à la place de la lecture par MKVToolNix."""
         tmdb = tmdb or FauxTmdb()
         args = types.SimpleNamespace(apply=apply, pin_id=pin_id)
         movies = naming.find_movies(self.racine)
+        lus = {f: (ids or {}).get(f.name) for e in movies for f in e.files}
         sortie = io.StringIO()
-        with redirect_stdout(sortie):
+        with redirect_stdout(sortie), mock.patch.object(renommeur, "file_ids", lambda movies: lus):
             tally = renommeur.rename_library(movies, args, tmdb)
         self.sortie = sortie.getvalue()
         return tally, sorted(p.name for p in self.racine.iterdir()), tmdb
@@ -130,6 +133,18 @@ class TestRenommage(RenameMoviesTestCase):
         tally, contenu, _ = self.lancer()
         self.assertEqual(contenu, ["Dune (2021).fr.srt", "Dune (2021).mkv", "notes.txt"])
         self.assertEqual((tally.named, tally.subtitles), (1, 1))
+
+    def test_id_inscrit_dans_le_fichier_sans_recherche(self):
+        # Un film déjà identifié par Metadata.py ne se refait pas rechercher : sur un titre partagé, la recherche pourrait en choisir un autre.
+        self.creer_fichiers("Mortal Kombat.mkv")
+        _, noms, tmdb = self.lancer(ids={"Mortal Kombat.mkv": "9312"})
+        self.assertEqual((tmdb.recherches, tmdb.par_id), ([], ["9312"]))
+        self.assertIn("id lu dans le fichier", self.sortie)
+
+    def test_l_id_du_nom_passe_devant_celui_du_fichier(self):
+        self.creer_fichiers("Destruction finale [tmdbid-9823].mkv")
+        _, _, tmdb = self.lancer(ids={"Destruction finale [tmdbid-9823].mkv": "581387"})
+        self.assertEqual(tmdb.par_id, ["9823"])
 
     def test_film_introuvable_laisse_en_place(self):
         class Vide(FauxTmdb):
