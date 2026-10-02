@@ -1,6 +1,6 @@
 """Sommaire des séries d'une médiathèque, construit à partir de leurs fiches.
 
-Chaque fiche recap.html porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
+Chaque fiche de série (index.html, autrefois recap.html) porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
 
 Un index.html qui n'a pas été écrit par ce module n'est jamais remplacé.
 """
@@ -16,7 +16,10 @@ from xml.sax.saxutils import escape
 from . import favicon, textfile
 
 INDEX_NAME = "index.html"
-RECAP_NAME = "recap.html"
+# La fiche de chaque série porte le même nom que le sommaire : un navigateur ou un serveur ouvre index.html de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
+PAGE_NAME = "index.html"
+LEGACY_NAME = "recap.html"
+DEFAULT_TITLE = "Séries"
 
 # Signe qu'un index.html est bien le nôtre, et peut être réécrit sans demander.
 GENERATOR = "mkv_editors-index"
@@ -92,11 +95,12 @@ class Entry:
     seasons_total: int = 0
     poster: str = ""
     overview: str = ""
+    page: str = PAGE_NAME
 
     @property
     def href(self):
         """Lien relatif vers la fiche, encodé : les noms de séries ont des espaces, des accents, des #."""
-        return quote(f"{self.folder}/{RECAP_NAME}")
+        return quote(f"{self.folder}/{self.page}")
 
     @property
     def seasons_label(self):
@@ -122,7 +126,16 @@ def read_entry(recap):
         return None
     metas = _metas(head)
     poster = metas.get("poster", "")
-    return Entry(folder=Path(recap).parent.name, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip())
+    return Entry(folder=Path(recap).parent.name, page=Path(recap).name, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip())
+
+
+def series_page(folder):
+    """La fiche d'un dossier de série - index.html, à défaut l'ancien recap.html -, ou None s'il n'en a pas."""
+    for name in (PAGE_NAME, LEGACY_NAME):
+        page = Path(folder) / name
+        if page.is_file():
+            return page
+    return None
 
 
 def find_entries(root):
@@ -133,8 +146,8 @@ def find_entries(root):
     except OSError:
         return []
     for sub in subs:
-        recap = sub / RECAP_NAME
-        if recap.is_file():
+        recap = series_page(sub)
+        if recap:
             entry = read_entry(recap)
             if entry:
                 entries.append(entry)
@@ -214,14 +227,16 @@ def is_ours(path):
     return GENERATOR_META in read_head(path)
 
 
-def write(root, apply):
+def write(root, apply, title=None):
     """Réécrit le sommaire de `root` d'après les fiches présentes. Retourne le compte rendu à afficher.
 
     Une page identique n'est pas réécrite : lancé toutes les heures sur un NAS, le sommaire ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
+
+    Le titre est `title`, sinon celui du sommaire existant, sinon "Séries" - pas le nom du dossier, qui manque à la racine d'un partage réseau : la page n'avait alors aucun titre, et l'onglet affichait "index.html".
     """
     out = Path(root) / INDEX_NAME
     entries = find_entries(root)
-    html = build_html(Path(root).resolve().name, entries)
+    html = build_html(title or textfile.title_of(out) or DEFAULT_TITLE, entries)
     if textfile.same(out, html):
         return f"{out.name} inchange ({len(entries)} serie(s))"
     if not apply:

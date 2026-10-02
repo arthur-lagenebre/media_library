@@ -75,7 +75,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cast, cli, embed, favicon, lookup, mkv, naming, showindex  # noqa: E402
+from mkvlib import artwork, cache, cast, cli, embed, favicon, lookup, mkv, naming, showindex, textfile  # noqa: E402
 from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
@@ -462,8 +462,10 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         print(f"  [serie] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
 
     if args.recap:
-        out = Path(root_dir) / "recap.html"
-        known = {**embed.read_embedded(out), **showindex.recap_poster(out)}   # la fiche précédente sert de cache d'images
+        out = Path(root_dir) / showindex.PAGE_NAME
+        # La fiche précédente sert de cache d'images ; encore nommée recap.html, elle est renommée plutôt que doublée.
+        previous = textfile.adopt(Path(root_dir) / showindex.LEGACY_NAME, out, apply)
+        known = {**embed.read_embedded(previous), **showindex.recap_poster(previous)}
         # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
         stills = (embed.fetch(collect_stills(processed, show, args.still_size), known, args.still_size, tmdb, label="vignette") if apply else {})
         casting = cast.split(collect_cast(processed, args, tmdb), limit=args.cast_limit) if apply else cast.Casting()

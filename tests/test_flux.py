@@ -111,22 +111,36 @@ class TestAnnexesDesFilms(FluxTestCase):
 
     def test_recap_ecrit_sous_no_tag(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "recap.html").exists())
+        self.assertTrue((self.racine / "index.html").exists())
 
     def test_recap_identique_pas_reecrit(self):
         # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
         self.lancer_films("--no-tag", "--recap", "--apply")
         _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("recap.html inchange", sortie)
+        self.assertIn("index.html inchange", sortie)
         self.assertIn("metadata.log inchange", sortie)
 
     def test_journal_a_cote_de_la_fiche_rangee_ailleurs(self):
         annexes = self.racine / "__Data__"
         annexes.mkdir()
         self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes), "--apply")
-        self.assertTrue((annexes / "recap.html").exists())
+        self.assertTrue((annexes / "index.html").exists())
         self.assertTrue((annexes / "metadata.log").exists())
         self.assertFalse((self.racine / "metadata.log").exists())
+
+    def test_ancienne_fiche_renommee_et_reprise(self):
+        # recap.html devient index.html : renommée plutôt que doublée, elle garde son titre et ses affiches en cache.
+        (self.racine / "recap.html").write_text("<html><head><title>Ma videotheque</title></head></html>", encoding="utf-8")
+        self.lancer_films("--no-tag", "--recap", "--apply")
+        self.assertFalse((self.racine / "recap.html").exists())
+        self.assertIn("<title>Ma videotheque</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+
+    def test_titre_par_defaut_puis_choisi(self):
+        self.lancer_films("--no-tag", "--recap", "--apply")
+        self.assertIn("<title>Films</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+        self.lancer_films("--no-tag", "--recap", "--title", "Cinematheque", "--apply")
+        self.lancer_films("--no-tag", "--recap", "--apply")       # la tache de nuit, sans --title
+        self.assertIn("<title>Cinematheque</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
 
     def test_no_tag_relit_l_id_inscrit_dans_le_film(self):
         # Régression : sous --no-tag, rien n'était lu - "Mortal Kombat" (1995), pourtant identifié dans son fichier, redevenait par recherche celui de 2021.
@@ -153,17 +167,23 @@ class TestAnnexesDesSeries(FluxTestCase):
 
     def test_le_recap_porte_l_onglet_casting(self):
         tmdb, _ = self.lancer_serie("--recap", "--apply")
-        html = (self.racine / "recap.html").read_text(encoding="utf-8")
+        html = (self.racine / "index.html").read_text(encoding="utf-8")
         self.assertEqual(tmdb.castings, [1])            # une saison, un appel
         self.assertIn("data-s='cast'", html)
         self.assertIn("A. Acteur", html)
         self.assertIn("<img data-img='w185/a.jpg'", html)
 
+    def test_ancienne_fiche_renommee(self):
+        (self.racine / "recap.html").write_text("<html><head><title>Ma Serie</title></head></html>", encoding="utf-8")
+        self.lancer_serie("--recap", "--apply")
+        self.assertFalse((self.racine / "recap.html").exists())
+        self.assertTrue((self.racine / "index.html").exists())
+
     def test_la_simulation_n_interroge_pas_le_casting(self):
         tmdb, sortie = self.lancer_serie("--recap")
         self.assertEqual(tmdb.castings, [])
-        self.assertFalse((self.racine / "recap.html").exists())
-        self.assertIn("ecrirait recap.html", sortie)
+        self.assertFalse((self.racine / "index.html").exists())
+        self.assertIn("ecrirait index.html", sortie)
 
 
 class TestDoublons(FluxTestCase):

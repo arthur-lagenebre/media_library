@@ -24,7 +24,7 @@ def fiche(dossier, show=SHOW, poster=POSTER, saisons=(1, 2)):
     runs = [series.SeasonRun(dossier / f"Saison {n}", n, {"episodes": []}) for n in saisons]
     dossier.mkdir(parents=True, exist_ok=True)
     html = series.build_recap_html(show["name"], show, runs, "70523", {}, "w300", poster=poster)
-    (dossier / "recap.html").write_text(html, encoding="utf-8")
+    (dossier / "index.html").write_text(html, encoding="utf-8")
 
 
 class TestLectureDesFiches(unittest.TestCase):
@@ -51,7 +51,7 @@ class TestLectureDesFiches(unittest.TestCase):
     def test_lien_relatif_encode(self):
         fiche(self.racine / "Dark & Co #1", show={**SHOW, "name": "Dark & Co"})
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
-        self.assertIn("href='Dark%20%26%20Co%20%231/recap.html'", html)
+        self.assertIn("href='Dark%20%26%20Co%20%231/index.html'", html)
         self.assertIn("Dark &amp; Co", html)
 
     def test_ancienne_fiche_sans_meta(self):
@@ -62,13 +62,28 @@ class TestLectureDesFiches(unittest.TestCase):
         [entry] = showindex.find_entries(self.racine)
         self.assertEqual((entry.title, entry.poster), ("Lost", ""))
 
+    def test_ancienne_fiche_encore_lue(self):
+        # Une fiche pas encore régénérée garde son ancien nom : le sommaire la trouve, et pointe vers elle.
+        fiche(self.racine / "Dark")
+        (self.racine / "Dark" / "index.html").rename(self.racine / "Dark" / "recap.html")
+        [entry] = showindex.find_entries(self.racine)
+        self.assertEqual(entry.href, "Dark/recap.html")
+
+    def test_titre_par_defaut_puis_conserve(self):
+        fiche(self.racine / "Dark")
+        showindex.write(self.racine, True)
+        self.assertIn("<title>Séries</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+        showindex.write(self.racine, True, title="Mes series")
+        showindex.write(self.racine, True)
+        self.assertIn("<title>Mes series</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+
     def test_dossier_sans_fiche_ignore(self):
         (self.racine / "Saison 1").mkdir()
         self.assertEqual(showindex.find_entries(self.racine), [])
 
     def test_affiche_reprise_comme_cache(self):
         fiche(self.racine / "Dark")
-        self.assertEqual(showindex.recap_poster(self.racine / "Dark" / "recap.html"), dict([POSTER]))
+        self.assertEqual(showindex.recap_poster(self.racine / "Dark" / "index.html"), dict([POSTER]))
 
     def test_classement_sans_article(self):
         self.assertLess(showindex.sort_key("The Expanse"), showindex.sort_key("Fargo"))
@@ -95,8 +110,8 @@ class TestIndexPy(unittest.TestCase):
         fiche(self.bib / "Ma Serie", show={**SHOW, "name": "Ma Serie"})
         self.assertIn("index.html ecrit (2 serie(s))", self.indexer("--apply"))
         html = self.index.read_text(encoding="utf-8")
-        self.assertIn("href='Ma%20Serie/recap.html'", html)
-        self.assertIn("href='Dark/recap.html'", html)
+        self.assertIn("href='Ma%20Serie/index.html'", html)
+        self.assertIn("href='Dark/index.html'", html)
 
     def test_sommaire_identique_pas_reecrit(self):
         self.indexer("--apply")

@@ -578,10 +578,10 @@ class TestDoutesSurLAssociation(unittest.TestCase):
 
 class TestEmplacementDuRecap(unittest.TestCase):
     def test_par_defaut_a_la_racine(self):
-        self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/recap.html"))
+        self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/index.html"))
 
     def test_dossier_ou_fichier(self):
-        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__"), Path("D:/Films/__Data__/recap.html"))
+        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__"), Path("D:/Films/__Data__/index.html"))
         self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__/films.html"), Path("D:/Films/__Data__/films.html"))
 
 

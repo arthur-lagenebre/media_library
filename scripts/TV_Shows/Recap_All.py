@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 r"""
-Recap_All.py — Régénère la fiche recap.html de toutes les séries d'une médiathèque.
+Recap_All.py — Régénère la fiche (index.html) de toutes les séries d'une médiathèque.
 
 Pour chaque série de --dir, lance Metadata.py --no-tag --recap : les épisodes ne sont JAMAIS modifiés, seule la fiche est réécrite. Utile quand la fiche évolue (affiche et année pour le sommaire, icône d'onglet...) : une seule commande remet toute la médiathèque à niveau.
 
-Est une série tout sous-dossier de --dir qui contient des dossiers "Saison N" (ou "Specials"), ou déjà un recap.html.
+Est une série tout sous-dossier de --dir qui contient des dossiers "Saison N" (ou "Specials"), ou déjà une fiche (index.html, ou l'ancien recap.html, renommé au passage).
 
 L'identifiant TMDB inscrit dans la fiche existante est repris : une série identifiée autrefois avec --tmdb-id reste la même, sans nouvelle recherche qui pourrait tomber sur un homonyme. Un identifiant épinglé dans le nom du dossier ("Ma Série [tmdbid-1396]") passe devant.
 
@@ -34,14 +34,15 @@ METADATA = Path(__file__).resolve().with_name("Metadata.py")
 def find_series(root):
     """Dossiers de série de `root`, dans l'ordre du disque."""
     return [sub for sub in naming.subdirs(Path(root))
-            if naming.find_seasons(sub) or (sub / showindex.RECAP_NAME).is_file()]
+            if naming.find_seasons(sub) or showindex.series_page(sub)]
 
 
 def series_command(folder, apply, extra):
     """Ligne de commande de Metadata.py pour régénérer la fiche d'une série."""
     cmd = [sys.executable, str(METADATA), "--dir", str(folder), "--no-tag", "--recap"]
     if not lookup.pinned_show_id(folder):
-        ident = showindex.recap_tmdb_id(folder / showindex.RECAP_NAME)
+        page = showindex.series_page(folder)
+        ident = showindex.recap_tmdb_id(page) if page else None
         if ident:
             cmd += ["--tmdb-id", ident]
     if apply:
@@ -50,7 +51,7 @@ def series_command(folder, apply, extra):
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="Regenere la fiche recap.html de toutes les series d'une mediatheque (episodes non modifies).",
+    ap = argparse.ArgumentParser(description="Regenere la fiche index.html de toutes les series d'une mediatheque (episodes non modifies).",
                                  epilog="Toute autre option est transmise a Metadata.py.")
     ap.add_argument("--dir", required=True, help="Racine de la mediatheque : un sous-dossier par serie")
     ap.add_argument("--apply", action="store_true", help="Ecrit reellement les fiches (defaut : simulation)")

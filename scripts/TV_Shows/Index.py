@@ -2,7 +2,7 @@
 r"""
 Index.py — Sommaire HTML de toutes les séries d'une médiathèque.
 
-Écrit un index.html à la racine de --dir : un mur d'affiches, une par série, chacune menant à la fiche recap.html de son dossier. Tout est lu dans les fiches elles-mêmes (titre, année, saisons, affiche) : ni clé TMDB ni réseau.
+Écrit un index.html à la racine de --dir : un mur d'affiches, une par série, chacune menant à la fiche index.html de son dossier (ou à l'ancien recap.html, tant que la fiche n'a pas été régénérée). Tout est lu dans les fiches elles-mêmes (titre, année, saisons, affiche) : ni clé TMDB ni réseau.
 
 Fait pour tourner en TÂCHE PLANIFIÉE sur le NAS qui héberge la médiathèque : les fiches sont écrites sur un disque local puis transférées, et seul le NAS voit toutes les séries. Le script n'a besoin que de Python 3 et de mkvlib/ - aucun outil, aucune clé, aucun réseau - et ne réécrit index.html que si son contenu change.
 
@@ -32,6 +32,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Sommaire HTML de toutes les series d'une mediatheque, avec un lien vers la fiche de chacune.")
     ap.add_argument("--dir", required=True, help="Racine de la mediatheque : un sous-dossier par serie")
     ap.add_argument("--apply", action="store_true", help="Ecrit reellement index.html (defaut : simulation)")
+    ap.add_argument("--title", help="Titre du sommaire (defaut : celui du sommaire existant, sinon 'Series')")
     return ap.parse_args()
 
 
@@ -50,7 +51,7 @@ def main():
     for entry in sorted(entries, key=lambda e: showindex.sort_key(e.title)):
         print(f"  {entry.title}" + (f" ({entry.year})" if entry.year else "")
               + ("" if entry.poster else "  [sans affiche : fiche a regenerer]"))
-    print(f"\n{showindex.write(root, args.apply)}")
+    print(f"\n{showindex.write(root, args.apply, args.title)}")
     return 0
 
 

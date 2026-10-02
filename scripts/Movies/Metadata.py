@@ -651,28 +651,42 @@ def build_recap_html(library_name, sections, posters, size):
     )
 
 
+RECAP_NAME = "index.html"       # le nom qu'un navigateur ou un serveur ouvre de lui-même dans un dossier
+LEGACY_NAME = "recap.html"      # l'ancien nom, repris au premier passage
+DEFAULT_TITLE = "Films"
+
+
 def recap_path(root_dir, recap_out=None):
     """Où écrire la fiche : à la racine de --dir, sinon là où --recap-out le dit (un dossier, ou le chemin du fichier)."""
     if not recap_out:
-        return Path(root_dir) / "recap.html"
+        return Path(root_dir) / RECAP_NAME
     out = Path(recap_out)
-    return out if out.suffix.lower() in (".html", ".htm") else out / "recap.html"
+    return out if out.suffix.lower() in (".html", ".htm") else out / RECAP_NAME
+
+
+def recap_title(args, previous):
+    """--title, sinon le titre de la fiche précédente, sinon "Films".
+
+    Pas le nom du dossier : à la racine d'un partage réseau, il n'y en a pas, la page n'avait aucun titre et l'onglet affichait le nom du fichier.
+    """
+    return getattr(args, "title", None) or textfile.title_of(previous) or DEFAULT_TITLE
 
 
 def write_recap(root_dir, movies, args, tmdb):
-    """Écrit la fiche (récap.html à la racine de --dir, ou --recap-out). Ne télécharge rien en simulation.
+    """Écrit la fiche (index.html à la racine de --dir, ou --recap-out). Ne télécharge rien en simulation.
 
-    La fiche précédente, au même endroit, sert de cache d'affiches."""
+    La fiche précédente, au même endroit, sert de cache d'affiches ; une fiche encore nommée recap.html est renommée plutôt que doublée."""
     apply = args.apply and not args.verify
     out = recap_path(root_dir, getattr(args, "recap_out", None))
     if not out.parent.is_dir():
         print(f"  [mediatheque] dossier introuvable pour la fiche : {out.parent} -> fiche non ecrite")
         return
     print("--- annexes ---")
+    previous = textfile.adopt(out.with_name(LEGACY_NAME), out, apply) if out.name == RECAP_NAME else out
     sections = library_sections(movies, fetch_collections(movies, tmdb))
     needed = collect_posters(sections, args.poster_size)
-    posters = (embed.fetch(needed, embed.read_embedded(out), args.poster_size, tmdb, label="affiche") if apply else {})
-    html = build_recap_html(Path(root_dir).resolve().name, sections, posters, args.poster_size)
+    posters = (embed.fetch(needed, embed.read_embedded(previous), args.poster_size, tmdb, label="affiche") if apply else {})
+    html = build_recap_html(recap_title(args, previous), sections, posters, args.poster_size)
     if not apply:
         print(f"  [mediatheque] ecrirait {out}")
         return
@@ -709,7 +723,8 @@ def parse_args():
     ap.add_argument("--artwork", action="store_true", help="Ecrit folder.jpg (affiche EN) par film")
     ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la mediatheque (sagas et manquants)")
     ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (defaut : w185)")
-    ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : recap.html a la racine de --dir)")
+    ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : index.html a la racine de --dir)")
+    ap.add_argument("--title", help="Titre de la fiche recap (defaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     return ap.parse_args()
 
