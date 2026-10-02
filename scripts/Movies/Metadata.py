@@ -199,6 +199,7 @@ class Library:
     seen: dict              # {id TMDB: film déjà vu} - détection des doublons
     lectures: dict          # {chemin: Reading}
     journal: list = field(default_factory=list)   # (nom affiche, id TMDB, statut)
+    doubts: list = field(default_factory=list)    # (nom affiche, fiche TMDB, [raisons]) - associations suspectes
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
@@ -230,6 +231,40 @@ def write_log(root_dir, library, args, report):
     print(f"[log] {out.name} ecrit ({len(trouves)} lien(s), {len(vides)} sans lien)")
 
 
+# Une durée qui sort de cette fourchette ne s'explique ni par une version longue (Kingdom of Heaven : 144 -> 189 min, x1.31) ni par l'accélération PAL (-4 %) : c'est un autre film. Les cinq erreurs relevées sur une vraie médiathèque en sortaient toutes - Microcosmos pris pour un court métrage de 3 min, Catwoman pour un DC Showcase de 15 min, Destruction finale (95 min) pour un film coréen de 128.
+DUREE_MIN, DUREE_MAX = 0.75, 1.35
+DUREE_ECART = 10            # en dessous, un écart de minutes ne dit rien (courts métrages, génériques)
+VOTES_MIN = 10              # une fiche que presque personne n'a notée : rarement le film qu'on possède
+
+
+def file_minutes(entry, lectures):
+    """Durée totale du film sur le disque, toutes parties (CD1, CD2...) comprises ; None si l'une manque."""
+    total = 0.0
+    for path in entry.files:
+        m = mkv.minutes(lectures.get(path))
+        if not m:
+            return None
+        total += m
+    return total
+
+
+def identity_doubts(entry, movie, lectures):
+    """Raisons de douter que `movie` soit bien le film du fichier : [texte, ...].
+
+    Un identifiant épinglé dans le nom est une décision de l'utilisateur, et n'est pas remis en cause : une version longue qu'on a épinglée ne doit pas revenir à chaque passage.
+    """
+    if naming.extract_tmdb_id(entry.rawname)[0]:
+        return []
+    doutes = []
+    duree, runtime = file_minutes(entry, lectures), movie.get("runtime")
+    if duree and runtime and abs(duree - runtime) >= DUREE_ECART and not (DUREE_MIN <= duree / runtime <= DUREE_MAX):
+        doutes.append(f"duree {duree:.0f} min, la fiche TMDB en annonce {runtime}")
+    votes = movie.get("vote_count")
+    if votes is not None and votes < VOTES_MIN:
+        doutes.append(f"fiche TMDB presque inconnue ({votes} vote(s))")
+    return doutes
+
+
 def handle_movie(entry, movie, library, args, opts, tmdb):
     """Traite un film dont l'association est arrêtée. Retourne son Report."""
     jumeau = library.seen.setdefault(movie.get("id"), entry.display)
@@ -237,6 +272,10 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
         print(f"  [DOUBLON] meme film que '{jumeau}' -> les deux seront traites")
     library.resolved.append(movie)
+    doutes = identity_doubts(entry, movie, library.lectures)
+    if doutes:
+        print(f"  /!\\ {' ; '.join(doutes)} -> verifie l'association, ou epingle l'id dans le nom")
+        library.doubts.append((entry.display, movie, doutes))
     if args.no_tag:
         print("      film non modifie (--no-tag)")
         report = mkv.Report(matched=1, total=1)
@@ -244,7 +283,8 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         report = process_movie(entry, movie, library.lectures, args, opts, tmdb)
     if args.artwork and entry.owns_folder:
         write_artwork(entry, movie, args, tmdb)
-    library.note(entry.display, movie.get("id"), "[NON TRAITE]" if report.skipped else "")
+    statut = "[NON TRAITE]" if report.skipped else ("[A VERIFIER] " + " ; ".join(doutes) if doutes else "")
+    library.note(entry.display, movie.get("id"), statut)
     return report
 
 
@@ -716,6 +756,11 @@ def main():
 
     resolved = library.resolved
     print(f"TOTAL : {report.matched}/{report.total} film(s) associe(s).")
+    if library.doubts:
+        print(f"\nA VERIFIER : {len(library.doubts)} association(s) suspecte(s)")
+        for nom, movie, doutes in library.doubts:
+            print(f"  {nom} -> {lookup.describe(movie)} : {' ; '.join(doutes)}")
+        print()
     if args.recap and resolved:
         write_recap(args.dir, resolved, args, tmdb)
     write_log(args.dir, library, args, report)

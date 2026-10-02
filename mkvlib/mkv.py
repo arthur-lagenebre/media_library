@@ -69,6 +69,19 @@ def check_tools(needs_mkvtoolnix=True):
     return True
 
 
+def minutes(reading):
+    """Durée d'un fichier en minutes, ou None.
+
+    mkvmerge -J la donne en nanosecondes, sans outil de plus : elle est là dès que le fichier a été lu, même sans ffprobe. ffprobe sert de repli.
+    """
+    if reading is None:
+        return None
+    ns = ((reading.info or {}).get("container", {}).get("properties", {}) or {}).get("duration")
+    if isinstance(ns, (int, float)) and ns > 0:
+        return ns / 60e9
+    return reading.probe.duration_min if reading.probe else None
+
+
 def can_read():
     """Vrai si MKVToolNix est là pour LIRE les .mkv, même quand on ne doit rien y écrire."""
     return all(shutil.which(t) for t in ("mkvmerge", "mkvextract"))

@@ -538,6 +538,44 @@ class TestRecapFilms(unittest.TestCase):
         self.assertIsNone(cards[1].runtime)
 
 
+class TestDoutesSurLAssociation(unittest.TestCase):
+    """Une association dont la durée ou la notoriété ne colle pas est signalée."""
+
+    def doutes(self, minutes, runtime, votes=500, nom="Microcosmos", parts=1):
+        fichiers = [Path(f"{nom}.cd{i}.mkv") for i in range(parts)]
+        entry = types.SimpleNamespace(rawname=nom, files=fichiers)
+        lu = mkv.Reading(info={"container": {"properties": {"duration": int(minutes / parts * 60e9)}}})
+        return films.identity_doubts(entry, {"runtime": runtime, "vote_count": votes}, {f: lu for f in fichiers})
+
+    def test_court_metrage_pris_pour_le_film(self):
+        # Microcosmos (75 min) associé à un court métrage de 3 min qui porte le même nom.
+        self.assertIn("duree 75 min, la fiche TMDB en annonce 3", self.doutes(75, 3)[0])
+
+    def test_film_trop_court_pour_la_fiche(self):
+        # Destruction finale (95 min) pris pour le film coréen du même nom (128 min).
+        self.assertTrue(self.doutes(95, 128))
+
+    def test_version_longue_toleree(self):
+        # Kingdom of Heaven, version longue : 189 min pour 144 annoncées.
+        self.assertEqual(self.doutes(189, 144), [])
+
+    def test_acceleration_pal_toleree(self):
+        self.assertEqual(self.doutes(96, 100), [])
+
+    def test_parties_additionnees(self):
+        self.assertEqual(self.doutes(150, 150, parts=2), [])
+
+    def test_fiche_presque_inconnue(self):
+        self.assertIn("fiche TMDB presque inconnue (0 vote(s))", self.doutes(75, 75, votes=0))
+
+    def test_identifiant_epingle_jamais_remis_en_cause(self):
+        self.assertEqual(self.doutes(189, 3, votes=0, nom="Kingdom of Heaven [tmdbid-1495]"), [])
+
+    def test_sans_duree_lue_pas_de_doute(self):
+        entry = types.SimpleNamespace(rawname="X", files=[Path("X.mkv")])
+        self.assertEqual(films.identity_doubts(entry, {"runtime": 3, "vote_count": 500}, {}), [])
+
+
 class TestEmplacementDuRecap(unittest.TestCase):
     def test_par_defaut_a_la_racine(self):
         self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/recap.html"))

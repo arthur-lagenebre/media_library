@@ -87,6 +87,8 @@ python scripts\Movies\Metadata.py --dir "D:\Films" --no-tag --recap --apply   # 
 
 L'identifiant TMDB retenu est **inscrit dans le film** (tag Matroska `TMDB`, au format `movie/1234`) : au passage suivant il est relu, plus rien n'est cherché, et l'association survit au renommage. La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags — une médiathèque jamais étiquetée ne paie rien. Priorité : `--tmdb-id`, puis l'identifiant épinglé dans le **nom**, puis celui lu dans le **fichier**, puis la recherche.
 
+Chaque association est aussi **contrôlée** : un film dont la durée sur le disque sort de 75 % à 135 % de celle que TMDB annonce (à 10 min près), ou dont la fiche n'a presque aucun vote, est signalé sous `/!\`, repris en fin de passage sous `A VERIFIER` et marqué dans `metadata.log`. Les versions longues et l'accélération PAL passent ; un court métrage homonyme pris pour le film, ou un fichier tronqué, ne passent pas. Un identifiant épinglé dans le nom n'est jamais remis en cause.
+
 Comme toute la reconnaissance repose sur les noms, [Rename_Movies.py](scripts/Movies/Rename_Movies.py) le remet d'aplomb depuis TMDB — et `--pin-id` y écrit l'identifiant, après quoi plus rien n'est cherché ni ne peut se tromper :
 
 ```powershell
