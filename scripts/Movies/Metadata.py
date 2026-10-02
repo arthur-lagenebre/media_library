@@ -74,7 +74,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cli, embed, lookup, mkv, naming  # noqa: E402
+from mkvlib import artwork, cache, cli, embed, favicon, lookup, mkv, naming  # noqa: E402
 from mkvlib import saga as saga_module  # noqa: E402
 from mkvlib.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
@@ -569,6 +569,7 @@ def build_recap_html(library_name, sections, posters, size):
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        + favicon.films_link() +
         f"<meta name='poster-size' content='{esc(size)}'>"
         f"<title>{esc(library_name)}</title>"
         "<style>"
