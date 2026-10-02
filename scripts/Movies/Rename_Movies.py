@@ -71,12 +71,10 @@ def plan_entry(entry, film, order, pin_id):
 def file_ids(movies):
     """{chemin: identifiant TMDB} inscrits dans les .mkv par Metadata.py.
 
-    Seulement si MKVToolNix est là pour les lire : sans lui, le renommage marche comme avant, par recherche. Les tags seuls sont lus, sans analyse des pistes.
+    Lus en Python pur, sans MKVToolNix : le renommage n'a besoin d'aucun outil, et ça reste vrai.
     """
-    if not mkv.can_read():
-        return {}
-    fichiers = [f for e in movies for f in e.files if f.suffix.lower() == ".mkv"]
-    return {p: mkv.tmdb_id(lu.tags) for p, lu in mkv.inspect_all(fichiers, with_probe=False).items()}
+    paths = [f for e in movies for f in e.files]
+    return {path: mkv.tmdb_id(reading.tags) for path, reading in mkv.read_light_all(paths).items()}
 
 
 def plan_library(movies, args, tmdb, ids=None):

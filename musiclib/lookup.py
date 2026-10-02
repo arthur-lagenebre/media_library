@@ -5,6 +5,8 @@
 Contrairement à album.py, ce module parle au réseau et à l'utilisateur : il affiche ce qu'il retient.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from mkvlib import cli

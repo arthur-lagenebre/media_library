@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
-from . import favicon
+from . import favicon, textfile
 
 INDEX_NAME = "index.html"
 RECAP_NAME = "recap.html"
@@ -161,12 +161,12 @@ def build_html(library_name, entries):
         img = (f"<img src='{entry.poster}' alt='' decoding='async' loading='lazy'>"
                if entry.poster else "<div class='noimg'></div>")
         meta = " · ".join(t for t in (entry.year, entry.seasons_label) if t)
-        resume = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
-        survol = f" title='{esc(entry.overview)}'" if entry.overview else ""
-        cards.append(f"<a class='serie' href='{esc(entry.href)}'{survol}>"
+        overview = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
+        hover = f" title='{esc(entry.overview)}'" if entry.overview else ""
+        cards.append(f"<a class='serie' href='{esc(entry.href)}'{hover}>"
                      f"<div class='aff'>{img}</div>"
                      f"<div class='t'>{esc(entry.title)}</div>"
-                     f"<div class='y'>{esc(meta)}</div>{resume}</a>")
+                     f"<div class='y'>{esc(meta)}</div>{overview}</a>")
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
@@ -222,15 +222,11 @@ def write(root, apply):
     out = Path(root) / INDEX_NAME
     entries = find_entries(root)
     html = build_html(Path(root).resolve().name, entries)
-    try:
-        unchanged = out.read_text(encoding="utf-8") == html
-    except (OSError, UnicodeDecodeError):
-        unchanged = False
-    if unchanged:
+    if textfile.same(out, html):
         return f"{out.name} inchange ({len(entries)} serie(s))"
     if not apply:
         return f"ecrirait {out.name} ({len(entries)} serie(s))"
-    out.write_text(html, encoding="utf-8")
-    sans = sum(1 for e in entries if not e.poster)
+    textfile.write(out, html)
+    missing = sum(1 for e in entries if not e.poster)
     return (f"{out.name} ecrit ({len(entries)} serie(s)"
-            + (f", dont {sans} sans affiche : fiche a regenerer" if sans else "") + ")")
+            + (f", dont {missing} sans affiche : fiche a regenerer" if missing else "") + ")")

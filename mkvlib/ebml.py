@@ -8,6 +8,7 @@ Deux profondeurs, parce que la lecture au hasard coûte cher sur un partage rés
 """
 
 import os
+import struct
 from dataclasses import dataclass
 
 # Enfants directs du Segment. Un autre identifiant à ce niveau signe un fichier abîmé : la chaîne est retombée au milieu de données.
@@ -318,3 +319,139 @@ def verifier(chemin, complet=False):
             return _rapide(f, debut, fin, taille_fichier)
     except OSError as exc:
         return Defaut(f"lecture interrompue : {exc.strerror or exc}")
+
+
+# --------------------------------------------------------------------------
+# Lecture des métadonnées : tags et durée, sans MKVToolNix
+# --------------------------------------------------------------------------
+# Un NAS (Synology, TrueNAS) n'a pas MKVToolNix, et n'en a pas besoin pour ce qu'une fiche demande : l'identifiant TMDB inscrit dans les tags, et la durée. Les deux vivent dans de petits éléments que l'index SeekHead situe - Info en tête, Tags souvent en queue, où mkvpropedit les réécrit. Une dizaine de lectures par fichier, quelle que soit sa taille.
+INFO = 0x1549A966
+TAGS = 0x1254C367
+TIMESTAMP_SCALE = 0x2AD7B1
+DURATION = 0x4489
+TAG = 0x7373
+TARGETS = 0x63C0
+TARGET_TYPE_VALUE = 0x68CA
+TAG_TRACK_UID = 0x63C5
+SIMPLE_TAG = 0x67C8
+TAG_NAME = 0x45A3
+TAG_STRING = 0x4487
+DEFAULT_SCALE = 1_000_000       # ns par unité de temps, quand Info ne le précise pas
+MAX_METADATA = 1 << 24          # au-delà, une taille annoncée pour Info ou Tags est aberrante
+
+
+def _float(block, start, size):
+    """Flottant Matroska (4 ou 8 octets, gros-boutiste), ou None."""
+    if size not in (4, 8):
+        return None
+    return struct.unpack(">f" if size == 4 else ">d", block[start:start + size])[0]
+
+
+def _text(block, start, size):
+    return block[start:start + size].decode("utf-8", "replace").rstrip("\x00")
+
+
+def parse_info(block):
+    """Durée du Segment en minutes, d'après le contenu d'un élément Info ; None si absente."""
+    scale, duration = DEFAULT_SCALE, None
+    for ident, start, size in _elements(block):
+        if ident == TIMESTAMP_SCALE:
+            scale = _entier(block, start, size) or DEFAULT_SCALE
+        elif ident == DURATION:
+            duration = _float(block, start, size)
+    if not duration or duration <= 0:
+        return None
+    return duration * scale / 60e9
+
+
+def parse_tags(block):
+    """{(niveau de cible, nom, valeur)} d'après le contenu d'un élément Tags.
+
+    Même forme que mkv.parse_tags, qui lit la sortie XML de mkvextract : les tags de PISTE sont écartés (statistiques de mkvpropedit), un bloc sans TargetTypeValue vaut 50, et seuls les SimpleTag de premier niveau comptent.
+    """
+    tags = set()
+    for ident, start, size in _elements(block):
+        if ident != TAG:
+            continue
+        level, of_track, simples = 50, False, []
+        for sub, at, length in _elements(block, start, start + size):
+            if sub == TARGETS:
+                for leaf, pos, n in _elements(block, at, at + length):
+                    if leaf == TARGET_TYPE_VALUE:
+                        level = _entier(block, pos, n) or 50
+                    elif leaf == TAG_TRACK_UID:
+                        of_track = True
+            elif sub == SIMPLE_TAG:
+                name = value = ""
+                for leaf, pos, n in _elements(block, at, at + length):
+                    if leaf == TAG_NAME:
+                        name = _text(block, pos, n)
+                    elif leaf == TAG_STRING:
+                        value = _text(block, pos, n)
+                simples.append((name, value))
+        if not of_track:
+            tags.update((level, name, value) for name, value in simples)
+    return tags
+
+
+def _locate(f, start, end):
+    """{identifiant: position absolue} des éléments Info et Tags du Segment.
+
+    Les premiers éléments du Segment sont regardés directement - Info y est presque toujours -, puis l'index SeekHead, et un second index si le premier y renvoie (mkvmerge en pose parfois un en queue). On s'arrête au premier Cluster : au-delà, il faudrait sauter de cluster en cluster, des milliers de lectures sur un partage réseau.
+    """
+    found, heads, position = {}, [], start
+    for _ in range(8):
+        ident, size, header, _ = lire_entete(f, position)
+        if ident is None or ident == CLUSTER or size is None or size < 0:
+            break
+        if ident in (INFO, TAGS):
+            found.setdefault(ident, position)
+        elif ident == SEEK_HEAD:
+            heads.append(position)
+        position += header + size
+        if position >= end:
+            break
+    seen = set()
+    while heads:
+        position = heads.pop(0)
+        if position in seen:
+            continue
+        seen.add(position)
+        ident, size, header, _ = lire_entete(f, position)
+        if ident != SEEK_HEAD or not 0 < size < MAX_INDEX:
+            continue
+        f.seek(position + header)
+        for target, at in reperes_seekhead(lire_exact(f, size), start):
+            if target in (INFO, TAGS):
+                found.setdefault(target, at)
+            elif target == SEEK_HEAD:
+                heads.append(at)
+    return found
+
+
+def _content(f, position, expected):
+    """Contenu de l'élément attendu à cette position, ou None."""
+    ident, size, header, _ = lire_entete(f, position)
+    if ident != expected or size is None or not 0 <= size < MAX_METADATA:
+        return None
+    f.seek(position + header)
+    return lire_exact(f, size)
+
+
+def read_metadata(path):
+    """(tags, durée en minutes) d'un .mkv, sans MKVToolNix ; (None, None) s'il est illisible.
+
+    `tags` a la forme de mkv.parse_tags - un ensemble vide si le fichier n'en porte pas.
+    """
+    try:
+        file_size = os.path.getsize(path)
+        with open(path, "rb", buffering=0) as f:
+            start, end, fault = _segment(f, file_size)
+            if fault and not start:
+                return None, None
+            where = _locate(f, start, end)
+            info = _content(f, where[INFO], INFO) if INFO in where else None
+            tags = _content(f, where[TAGS], TAGS) if TAGS in where else None
+    except OSError:
+        return None, None
+    return (parse_tags(tags) if tags else set()), (parse_info(info) if info else None)

@@ -64,6 +64,8 @@ Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --n
 Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
 """
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import io
@@ -74,7 +76,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cli, embed, favicon, lookup, mkv, naming  # noqa: E402
+from mkvlib import artwork, cache, cli, embed, favicon, lookup, mkv, naming, textfile  # noqa: E402
 from mkvlib import saga as saga_module  # noqa: E402
 from mkvlib.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
@@ -206,12 +208,19 @@ class Library:
         self.journal.append((display, movie_id, statut))
 
 
+def log_path(root_dir, args):
+    """Où écrire le journal : à côté de la fiche quand --recap-out la range ailleurs (les annexes vivent ensemble), sinon à la racine de --dir."""
+    if getattr(args, "recap", False) and getattr(args, "recap_out", None):
+        return recap_path(root_dir, args.recap_out).parent / "metadata.log"
+    return Path(root_dir) / "metadata.log"
+
+
 def write_log(root_dir, library, args, report):
     """Écrit le journal du passage : un lien TMDB par film, les vides à la fin.
 
-    Le terminal defile et se perd ; ce fichier reste. Les films sans lien sont groupés en fin de fichier : ce sont eux qui demandent quelque chose.
+    Le terminal defile et se perd ; ce fichier reste. Les films sans lien sont groupés en fin de fichier : ce sont eux qui demandent quelque chose. Comme la fiche, il n'est pas réécrit quand seul son horodatage changerait.
     """
-    out = Path(root_dir) / "metadata.log"
+    out = log_path(root_dir, args)
     trouves = [(nom, mid, st) for nom, mid, st in library.journal if mid]
     vides = [(nom, st) for nom, mid, st in library.journal if not mid]
     largeur = min(max((len(nom) for nom, _, _ in library.journal), default=0), 70)
@@ -223,8 +232,12 @@ def write_log(root_dir, library, args, report):
         lignes += ["", f"# --- sans lien ({len(vides)}) ---"]
         lignes += [f"{nom:<{largeur}}  {statut}" for nom, statut in vides]
 
+    text = "\n".join(lignes) + "\n"
+    if textfile.same(out, text, skip_lines=2):
+        print(f"[log] {out.name} inchange")
+        return
     try:
-        out.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+        textfile.write(out, text)
     except OSError as e:
         print(f"[log] {out.name} non ecrit : {e}")
         return
@@ -232,9 +245,9 @@ def write_log(root_dir, library, args, report):
 
 
 # Une durée qui sort de cette fourchette ne s'explique ni par une version longue (Kingdom of Heaven : 144 -> 189 min, x1.31) ni par l'accélération PAL (-4 %) : c'est un autre film. Les cinq erreurs relevées sur une vraie médiathèque en sortaient toutes - Microcosmos pris pour un court métrage de 3 min, Catwoman pour un DC Showcase de 15 min, Destruction finale (95 min) pour un film coréen de 128.
-DUREE_MIN, DUREE_MAX = 0.75, 1.35
-DUREE_ECART = 10            # en dessous, un écart de minutes ne dit rien (courts métrages, génériques)
-VOTES_MIN = 10              # une fiche que presque personne n'a notée : rarement le film qu'on possède
+LENGTH_MIN, LENGTH_MAX = 0.75, 1.35
+LENGTH_GAP = 10            # en dessous, un écart de minutes ne dit rien (courts métrages, génériques)
+MIN_VOTES = 10              # une fiche que presque personne n'a notée : rarement le film qu'on possède
 
 
 def file_minutes(entry, lectures):
@@ -255,14 +268,14 @@ def identity_doubts(entry, movie, lectures):
     """
     if naming.extract_tmdb_id(entry.rawname)[0]:
         return []
-    doutes = []
-    duree, runtime = file_minutes(entry, lectures), movie.get("runtime")
-    if duree and runtime and abs(duree - runtime) >= DUREE_ECART and not (DUREE_MIN <= duree / runtime <= DUREE_MAX):
-        doutes.append(f"duree {duree:.0f} min, la fiche TMDB en annonce {runtime}")
+    doubts = []
+    length, runtime = file_minutes(entry, lectures), movie.get("runtime")
+    if length and runtime and abs(length - runtime) >= LENGTH_GAP and not (LENGTH_MIN <= length / runtime <= LENGTH_MAX):
+        doubts.append(f"duree {length:.0f} min, la fiche TMDB en annonce {runtime}")
     votes = movie.get("vote_count")
-    if votes is not None and votes < VOTES_MIN:
-        doutes.append(f"fiche TMDB presque inconnue ({votes} vote(s))")
-    return doutes
+    if votes is not None and votes < MIN_VOTES:
+        doubts.append(f"fiche TMDB presque inconnue ({votes} vote(s))")
+    return doubts
 
 
 def handle_movie(entry, movie, library, args, opts, tmdb):
@@ -272,10 +285,10 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
         print(f"  [DOUBLON] meme film que '{jumeau}' -> les deux seront traites")
     library.resolved.append(movie)
-    doutes = identity_doubts(entry, movie, library.lectures)
-    if doutes:
-        print(f"  /!\\ {' ; '.join(doutes)} -> verifie l'association, ou epingle l'id dans le nom")
-        library.doubts.append((entry.display, movie, doutes))
+    doubts = identity_doubts(entry, movie, library.lectures)
+    if doubts:
+        print(f"  /!\\ {' ; '.join(doubts)} -> verifie l'association, ou epingle l'id dans le nom")
+        library.doubts.append((entry.display, movie, doubts))
     if args.no_tag:
         print("      film non modifie (--no-tag)")
         report = mkv.Report(matched=1, total=1)
@@ -283,8 +296,8 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         report = process_movie(entry, movie, library.lectures, args, opts, tmdb)
     if args.artwork and entry.owns_folder:
         write_artwork(entry, movie, args, tmdb)
-    statut = "[NON TRAITE]" if report.skipped else ("[A VERIFIER] " + " ; ".join(doutes) if doutes else "")
-    library.note(entry.display, movie.get("id"), statut)
+    status = "[NON TRAITE]" if report.skipped else ("[A VERIFIER] " + " ; ".join(doubts) if doubts else "")
+    library.note(entry.display, movie.get("id"), status)
     return report
 
 
@@ -663,7 +676,11 @@ def write_recap(root_dir, movies, args, tmdb):
     if not apply:
         print(f"  [mediatheque] ecrirait {out}")
         return
-    out.write_text(html, encoding="utf-8")
+    # Lancée chaque nuit sur un NAS, la fiche ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
+    if textfile.same(out, html):
+        print(f"  [mediatheque] {out} inchange")
+        return
+    textfile.write(out, html)
     print(f"  [mediatheque] {out} ecrit  "
           f"({len(html) / 1_048_576:.1f} Mo, {len(posters)} affiche(s) integree(s))")
 
@@ -725,9 +742,9 @@ def main():
     fichiers = [f for entry in movies for f in entry.files]
     if not args.no_tag:
         lectures = mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done)
-    elif mkv.can_read():
-        # Sans étiquetage, on ne lit des fichiers que leurs tags - pour l'identifiant TMDB qu'un passage précédent y a inscrit. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Ni analyse des pistes ni ffprobe : rien d'autre ne sert.
-        lectures = mkv.inspect_all([f for f in fichiers if f.suffix.lower() == ".mkv"], with_probe=False)
+    else:
+        # Sans étiquetage, on ne lit des fichiers que leurs tags et leur durée - pour l'identifiant TMDB qu'un passage précédent y a inscrit, et le contrôle de l'association. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Lu en Python pur : ni MKVToolNix ni ffprobe, de quoi tourner sur un NAS.
+        lectures = mkv.read_light_all(fichiers)
 
     corrections = {} if args.no_saga else saga_corrections(movies, lectures, args, tmdb)
     if corrections:
@@ -758,8 +775,8 @@ def main():
     print(f"TOTAL : {report.matched}/{report.total} film(s) associe(s).")
     if library.doubts:
         print(f"\nA VERIFIER : {len(library.doubts)} association(s) suspecte(s)")
-        for nom, movie, doutes in library.doubts:
-            print(f"  {nom} -> {lookup.describe(movie)} : {' ; '.join(doutes)}")
+        for name, movie, doubts in library.doubts:
+            print(f"  {name} -> {lookup.describe(movie)} : {' ; '.join(doubts)}")
         print()
     if args.recap and resolved:
         write_recap(args.dir, resolved, args, tmdb)

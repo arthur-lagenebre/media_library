@@ -84,14 +84,14 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def lancer_films(self, *options):
-        """Lance le script films, sans MKVToolNix (sauf si le test pose self.lecture) : l'écriture dans le .mkv est simulée et notée, ce qu'on regarde ici est ce que le script decide d'écrire."""
+        """Lance le script films, sans MKVToolNix ni lecture des fichiers (sauf si le test pose self.lecture) : l'écriture dans le .mkv est simulée et notée, ce qu'on regarde ici est ce que le script decide d'écrire."""
         self.ecritures = []
 
         def faux_write(path, info, target, opts, tmdb):
             self.ecritures.append(Path(path).name)
             return 0, ""
 
-        with mock.patch.object(films.mkv, "check_tools", lambda **k: False), mock.patch.object(films.mkv, "write", faux_write), mock.patch.object(films.mkv, "can_read", getattr(self, "lecture", lambda: False)):
+        with mock.patch.object(films.mkv, "check_tools", lambda **k: False), mock.patch.object(films.mkv, "write", faux_write), mock.patch.object(films.mkv, "read_light_all", getattr(self, "lecture", lambda paths: {})):
             return self.lancer(films, ["--dir", str(self.racine), *options])
 
     def test_affiche_ecrite_meme_sans_etiquetage(self):
@@ -113,18 +113,28 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.lancer_films("--no-tag", "--recap", "--apply")
         self.assertTrue((self.racine / "recap.html").exists())
 
+    def test_recap_identique_pas_reecrit(self):
+        # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
+        self.lancer_films("--no-tag", "--recap", "--apply")
+        _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
+        self.assertIn("recap.html inchange", sortie)
+        self.assertIn("metadata.log inchange", sortie)
+
+    def test_journal_a_cote_de_la_fiche_rangee_ailleurs(self):
+        annexes = self.racine / "__Data__"
+        annexes.mkdir()
+        self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes), "--apply")
+        self.assertTrue((annexes / "recap.html").exists())
+        self.assertTrue((annexes / "metadata.log").exists())
+        self.assertFalse((self.racine / "metadata.log").exists())
+
     def test_no_tag_relit_l_id_inscrit_dans_le_film(self):
         # Régression : sous --no-tag, rien n'était lu - "Mortal Kombat" (1995), pourtant identifié dans son fichier, redevenait par recherche celui de 2021.
-        lu = films.mkv.Reading(info={}, tags={(50, "TMDB", "movie/438631")})
-        self.lecture = lambda: True
-        with mock.patch.object(films.mkv, "inspect_all", lambda paths, **k: {p: lu for p in paths}):
+        read = films.mkv.Reading(info={}, tags={(50, "TMDB", "movie/438631")})
+        self.lecture = lambda paths: {p: read for p in paths}
+        with mock.patch.object(films.mkv, "inspect_all", side_effect=AssertionError("MKVToolNix sollicite")):
             _, sortie = self.lancer_films("--no-tag", "--recap")
         self.assertIn("id lu dans le fichier", sortie)
-
-    def test_no_tag_sans_mkvtoolnix_ne_lit_rien(self):
-        with mock.patch.object(films.mkv, "inspect_all", side_effect=AssertionError("lu")):
-            _, sortie = self.lancer_films("--no-tag", "--recap")
-        self.assertIn("recherche", sortie)
 
 
 class TestAnnexesDesSeries(FluxTestCase):

@@ -200,3 +200,75 @@ class TestFichierInaccessible(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Lecture des tags et de la durée, sans MKVToolNix
+# ---------------------------------------------------------------------------
+def simple_tag(name, value):
+    return element(ebml.SIMPLE_TAG, element(ebml.TAG_NAME, name.encode()) + element(ebml.TAG_STRING, value.encode()))
+
+
+def with_metadata(tags_indexed=True, minutes=95.5):
+    """Un .mkv dont les Tags vivent en QUEUE, après les clusters, comme mkvpropedit les écrit : seul l'index permet de les trouver."""
+    import struct
+    header = element(ebml.ENTETE_EBML, element(0x4282, b"matroska"))
+    info = element(ebml.INFO, element(ebml.TIMESTAMP_SCALE, (1000000).to_bytes(4, "big"))
+                   + element(ebml.DURATION, struct.pack(">d", minutes * 60_000)))
+    clusters = b"".join(element(ebml.CLUSTER, element(0xE7, bytes([n + 1]))) for n in range(3))
+    tags = element(ebml.TAGS,
+                   element(ebml.TAG, element(ebml.TARGETS, element(ebml.TARGET_TYPE_VALUE, b"\x32"))
+                           + simple_tag("TMDB", "movie/9312") + simple_tag("TITLE", "Mortal Kombat"))
+                   + element(ebml.TAG, element(ebml.TARGETS, element(ebml.TARGET_TYPE_VALUE, b"\x46"))
+                           + simple_tag("TITLE", "Mortal Kombat - Saga"))
+                   + element(ebml.TAG, element(ebml.TARGETS, element(ebml.TAG_TRACK_UID, b"\x01"))
+                           + simple_tag("BPS", "640000")))
+    # Les positions sont sur 8 octets fixes : la longueur de l'index ne dépend que du nombre d'entrées.
+    targets = [ebml.INFO, ebml.TAGS] if tags_indexed else [ebml.INFO]
+    seek_length = len(index([(t, 0) for t in targets]))
+    places = {ebml.INFO: seek_length, ebml.TAGS: seek_length + len(info) + len(clusters)}
+    body = index([(t, places[t]) for t in targets]) + info + clusters + tags
+    return header + element(ebml.SEGMENT, body)
+
+
+class TestLectureDesMetadonnees(unittest.TestCase):
+    def lire(self, data):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "film.mkv"
+            path.write_bytes(data)
+            return ebml.read_metadata(path)
+
+    def test_tags_en_queue_trouves_par_l_index(self):
+        tags, _ = self.lire(with_metadata())
+        self.assertEqual(tags, {(50, "TMDB", "movie/9312"), (50, "TITLE", "Mortal Kombat"), (70, "TITLE", "Mortal Kombat - Saga")})
+
+    def test_tags_de_piste_ecartes(self):
+        # Les statistiques de mkvpropedit visent une piste : elles ne viennent pas de TMDB.
+        tags, _ = self.lire(with_metadata())
+        self.assertNotIn("BPS", {name for _, name, _ in tags})
+
+    def test_duree_en_minutes(self):
+        _, minutes = self.lire(with_metadata(minutes=95.5))
+        self.assertAlmostEqual(minutes, 95.5, places=3)
+
+    def test_tags_hors_index_ignores(self):
+        # Au-delà du premier cluster, sans index, il faudrait sauter de cluster en cluster : on ne cherche pas.
+        tags, minutes = self.lire(with_metadata(tags_indexed=False))
+        self.assertEqual(tags, set())
+        self.assertIsNotNone(minutes)
+
+    def test_fichier_qui_n_est_pas_un_mkv(self):
+        self.assertEqual(self.lire(b"RIFF" + b"\x00" * 64), (None, None))
+
+    def test_meme_forme_que_mkvextract(self):
+        # Le XML de mkvextract et la lecture directe doivent rendre le même ensemble : c'est ce que compare mkv.tmdb_id.
+        from mkvlib import mkv
+        xml = ("<Tags><Tag><Targets><TargetTypeValue>50</TargetTypeValue></Targets>"
+               "<Simple><Name>TMDB</Name><String>movie/9312</String></Simple>"
+               "<Simple><Name>TITLE</Name><String>Mortal Kombat</String></Simple></Tag>"
+               "<Tag><Targets><TargetTypeValue>70</TargetTypeValue></Targets>"
+               "<Simple><Name>TITLE</Name><String>Mortal Kombat - Saga</String></Simple></Tag>"
+               "<Tag><Targets><TrackUID>1</TrackUID></Targets>"
+               "<Simple><Name>BPS</Name><String>640000</String></Simple></Tag></Tags>")
+        tags, _ = self.lire(with_metadata())
+        self.assertEqual(tags, mkv.parse_tags(xml))

@@ -18,7 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        python: ["3.10", "3.13"]      # le minimum annonce, et une version recente
+        # Le minimum annonce - celui que DSM (Synology) fournit, pour la fiche des films en tache planifiee -, et une version recente.
+        python: ["3.8", "3.13"]
 
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     steps:

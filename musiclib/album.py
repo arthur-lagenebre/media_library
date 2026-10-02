@@ -7,6 +7,8 @@ Et un album a une forme que le disque permet de vérifier : un nombre de pistes.
 Tout est pur, sauf find_albums qui parcourt le disque.
 """
 
+from __future__ import annotations
+
 import re
 from collections import Counter
 from dataclasses import dataclass, field

@@ -266,6 +266,11 @@ class TestDetectionDesFilms(unittest.TestCase):
         movies = self.detecter({"Dune (2021)/film.mkv": 500, "Dune (2021)/Extras/featurette.mkv": 400})
         self.assertEqual(self.noms(movies), ["Dune (2021)"])
 
+    def test_corbeille_et_dossiers_techniques_du_nas_ecartes(self):
+        # Un film supprimé d'un partage Synology dort dans #recycle : il ne doit pas revenir dans la fiche.
+        movies = self.detecter({"Dune (2021)/film.mkv": 500, "#recycle/Alien (1979)/film.mkv": 500, "#snapshot/GMT+01_2026/Heat.mkv": 500, "@eaDir/Heat.mkv": 500})
+        self.assertEqual(self.noms(movies), ["Dune (2021)"])
+
     def test_bonus_seul_dans_son_dossier_reste_un_film(self):
         # Un titre à le droit de contenir 'Bonus' : écarter le seul .mkv du dossier le ferait disparaître en silence.
         movies = self.detecter({"Bonus (2019)/Bonus.mkv": 100})

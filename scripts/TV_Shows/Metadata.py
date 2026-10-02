@@ -66,6 +66,8 @@ Options principales :
   --cast-limit N   acteurs gardés par section de l'onglet Casting (défaut : 20)
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from dataclasses import dataclass, field

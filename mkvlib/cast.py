@@ -9,6 +9,8 @@ Une série d'une seule saison n'a rien à comparer : tout son casting forme l'en
 Tout est pur : aucun accès réseau, l'appelant fournit les castings déjà lus.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 LIMIT = 20          # acteurs gardés par section

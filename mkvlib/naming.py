@@ -45,8 +45,8 @@ def find_seasons(root):
 # --------------------------------------------------------------------------
 # Un bonus se reconnaît à son NOM, jamais à son poids : dans une vraie médiathèque, un film d'animation de 1 Go voisine avec un remux de 28 Go, et tout seuil relatif finit par jeter des films (c'est ce qui a fait disparaître 'Catwoman' d'un dossier ou traînait 'Constantine' en remux).
 
-# Dossiers qui n'ont jamais de film à étiqueter : bonus des éditions, dossiers techniques des NAS. Descendre dedans reviendrait à étiqueter des featurettes.
-SKIP_DIR_RE = re.compile(r"^(?:extras?|bonus|suppl[eé]ments?|featurettes?|behind[\s._-]*the[\s._-]*scenes|making[\s._-]*of|trailers?|bandes?[\s._-]*annonces?|samples?|@eadir)$", re.IGNORECASE)
+# Dossiers qui n'ont jamais de film à étiqueter : bonus des éditions, dossiers techniques des NAS. Descendre dedans reviendrait à étiqueter des featurettes - ou, pour la corbeille d'un partage Synology (#recycle) et ses instantanés (#snapshot), à faire revenir dans la fiche les films qu'on a supprimés.
+SKIP_DIR_RE = re.compile(r"^(?:extras?|bonus|suppl[eé]ments?|featurettes?|behind[\s._-]*the[\s._-]*scenes|making[\s._-]*of|trailers?|bandes?[\s._-]*annonces?|samples?|@eadir|#recycle|#snapshot)$", re.IGNORECASE)
 # Noms de bonus posés à côté du film, dans le même dossier.
 EXTRA_NAME_RE = re.compile(r"\b(?:bande[\s._-]*annonce|trailer|teaser|making[\s._-]*of|featurette|sample|bonus|interview|sc[eè]nes?[\s._-]*coup[eé]es?|deleted[\s._-]*scenes)\b", re.IGNORECASE)
 # Marqueur de part d'un film coupe en plusieurs fichiers : CD1, Disc 2, Partie 3.
