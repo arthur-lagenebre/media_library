@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cache, cli, lookup, naming, rename             # noqa: E402
+from mkvlib import cache, cli, lookup, mkv, naming, rename        # noqa: E402
 from mkvlib.tmdb import Tmdb, TmdbAuthError                       # noqa: E402
 
 
@@ -68,12 +68,25 @@ def plan_entry(entry, film, order, pin_id):
     return renames
 
 
-def plan_library(movies, args, tmdb):
-    """(planned, tally) pour toute la médiathèque, affichage compris."""
+def file_ids(movies):
+    """{chemin: identifiant TMDB} inscrits dans les .mkv par Metadata.py.
+
+    Seulement si MKVToolNix est là pour les lire : sans lui, le renommage marche comme avant, par recherche. Les tags seuls sont lus, sans analyse des pistes.
+    """
+    if not mkv.can_read():
+        return {}
+    fichiers = [f for e in movies for f in e.files if f.suffix.lower() == ".mkv"]
+    return {p: mkv.tmdb_id(lu.tags) for p, lu in mkv.inspect_all(fichiers, with_probe=False).items()}
+
+
+def plan_library(movies, args, tmdb, ids=None):
+    """(planned, tally) pour toute la médiathèque, affichage compris. `ids` = file_ids()."""
     planned, claimed, tally = [], {}, rename.Tally(total=len(movies))
+    ids = ids or {}
     for entry in movies:
         print(f"--- {entry.display} ---")
-        film, order = lookup.find_movie(tmdb, entry.rawname, entry.contexts)
+        tag_id = next((ids[f] for f in entry.files if ids.get(f)), None)
+        film, order = lookup.find_movie(tmdb, entry.rawname, entry.contexts, tag_id)
         if film is None:
             print()
             continue
@@ -99,7 +112,7 @@ def plan_library(movies, args, tmdb):
 
 def rename_library(movies, args, tmdb):
     """Affiche le plan et l'applique si --apply. Retourne le Tally."""
-    planned, tally = plan_library(movies, args, tmdb)
+    planned, tally = plan_library(movies, args, tmdb, file_ids(movies))
     if args.apply:
         renommes = rename.apply_renames(planned)
         # Le dossier (ou la vidéo) compte comme le film ; le reste, ce sont les sous-titres qui l'ont suivi.

@@ -658,9 +658,12 @@ def main():
 
     # Toutes les lectures d'un coup, en parallèle : chaque fichier coûte deux à trois sous-processus qu'on ne fait qu'attendre, et rien la-dedans ne dépend de TMDB. L'affichage, lui, garde son ordre.
     lectures = {}
+    fichiers = [f for entry in movies for f in entry.files]
     if not args.no_tag:
-        fichiers = [f for entry in movies for f in entry.files]
         lectures = mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done)
+    elif mkv.can_read():
+        # Sans étiquetage, on ne lit des fichiers que leurs tags - pour l'identifiant TMDB qu'un passage précédent y a inscrit. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Ni analyse des pistes ni ffprobe : rien d'autre ne sert.
+        lectures = mkv.inspect_all([f for f in fichiers if f.suffix.lower() == ".mkv"], with_probe=False)
 
     corrections = {} if args.no_saga else saga_corrections(movies, lectures, args, tmdb)
     if corrections:
