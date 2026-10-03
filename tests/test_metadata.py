@@ -501,7 +501,7 @@ class TestRecapFilms(unittest.TestCase):
     def test_saga_incomplete_montre_les_manquants(self):
         sections = films.library_sections([film(11, "Iron Man", IRON)], {1: IRON})
         titre, cards = sections[0]
-        self.assertEqual(titre, "Iron Man - Saga")
+        self.assertEqual(titre, "Iron Man")
         self.assertEqual([(c.title, c.owned) for c in cards], [("Iron Man", True), ("Iron Man 2", False), ("Iron Man 3", False)])
 
     def test_films_pas_encore_sortis_absents(self):
@@ -521,9 +521,16 @@ class TestRecapFilms(unittest.TestCase):
         cards = films.library_sections([film(5, "Avant-premiere", saga)], {9: saga}, today="2026-10-02")[0][1]
         self.assertEqual([(c.title, c.owned) for c in cards], [("Avant-premiere", True)])
 
+    def test_sagas_classees_sur_le_nom_court(self):
+        # "Saga Alien" doit se ranger à A, pas à S.
+        sagas = {1: {"id": 1, "name": "Saga Alien", "parts": [{"id": 5, "title": "Alien", "release_date": "1979-05-25"}]},
+                 2: {"id": 2, "name": "Batman - Saga", "parts": [{"id": 6, "title": "Batman", "release_date": "1989-06-23"}]}}
+        sections = films.library_sections([film(5, "Alien", sagas[1]), film(6, "Batman", sagas[2])], sagas)
+        self.assertEqual([t for t, _ in sections], ["Alien", "Batman"])
+
     def test_films_hors_saga_a_la_fin(self):
         sections = films.library_sections([film(11, "Iron Man", IRON), film(99, "Heat"), film(98, "Alien")], {1: IRON})
-        self.assertEqual([t for t, _ in sections], ["Iron Man - Saga", "Hors saga"])
+        self.assertEqual([t for t, _ in sections], ["Iron Man", "Hors saga"])
         self.assertEqual([c.title for c in sections[-1][1]], ["Alien", "Heat"])
 
     def test_saga_non_chargee_bascule_hors_saga(self):
@@ -574,6 +581,22 @@ class TestDoutesSurLAssociation(unittest.TestCase):
     def test_sans_duree_lue_pas_de_doute(self):
         entry = types.SimpleNamespace(rawname="X", files=[Path("X.mkv")])
         self.assertEqual(films.identity_doubts(entry, {"runtime": 3, "vote_count": 500}, {}), [])
+
+
+class TestNomDeSaga(unittest.TestCase):
+    def test_habillage_retire(self):
+        for brut, court in [("Iron Man - Saga", "Iron Man"), ("Saga Iron Man", "Iron Man"), ("Iron Man Collection", "Iron Man"), ("Iron Man - Collection", "Iron Man"), ("Mortal Kombat : Saga", "Mortal Kombat"), ("Harry Potter – Saga", "Harry Potter"), ("Saga - Alien", "Alien")]:
+            with self.subTest(brut):
+                self.assertEqual(films.saga_title(brut), court)
+
+    def test_nom_entier_laisse_tel_quel(self):
+        # Le mot fait partie du nom, ou retiré il laisserait une phrase coupée.
+        for nom in ["The Twilight Saga", "Star Wars : la collection", "Collection of Hope", "Saga", "Collection"]:
+            with self.subTest(nom):
+                self.assertEqual(films.saga_title(nom), nom)
+
+    def test_sans_nom(self):
+        self.assertEqual(films.saga_title(None), "")
 
 
 class TestFilmsValides(unittest.TestCase):
@@ -641,6 +664,20 @@ class TestRenduRecapFilms(unittest.TestCase):
         html = self.rendre([("Hors saga", [films.Card("Heat")])])
         self.assertIn("<input class='filter' type='search'", html)
         self.assertIn("Aucun film ne correspond.", html)
+
+    def test_bouton_de_largeur(self):
+        html = self.rendre([("Hors saga", [films.Card("Heat")])])
+        self.assertIn("<button class='mode'", html)
+        self.assertIn("Pleine largeur", html)
+        # Sept par ligne par défaut, le remplissage automatique seulement en pleine largeur.
+        self.assertIn(".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}", html)
+        self.assertIn(".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}", html)
+        self.assertIn(".wide .wrap{max-width:none}", html)
+
+    def test_largeur_choisie_appliquee_avant_l_affichage(self):
+        # Posée dans le <head> : sinon la page s'afficherait en 7 par ligne avant de basculer.
+        html = self.rendre([("Hors saga", [films.Card("Heat")])])
+        self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
 
     def test_vignette_menant_a_sa_fiche(self):
         card = films.Card("Heat", movie_id=949)

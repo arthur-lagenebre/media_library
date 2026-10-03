@@ -583,6 +583,27 @@ def released(part, today):
     return bool(part.get("release_date")) and part["release_date"] <= today
 
 
+# Ce que TMDB ajoute au nom d'une saga : "Iron Man - Saga", "Saga Iron Man", "Iron Man Collection". Le titre de section n'a besoin que du nom ; "Saga" y est redit par la section elle-même, et par "Hors saga" en dessous.
+SAGA_SUFFIX_RE = re.compile(r"\s*(?:[-–—:]\s*(?:saga|collection)|collection)\s*$", re.IGNORECASE)
+SAGA_PREFIX_RE = re.compile(r"^(?:saga|collection)\s+(?:[-–—:]\s*)?", re.IGNORECASE)
+
+
+# Un nom qui commencerait ou finirait sur l'un d'eux une fois "collection" retiré ("Star Wars : la collection" -> "Star Wars : la", "Collection of Hope" -> "of Hope") n'était pas habillé : le mot faisait partie de sa phrase.
+DANGLING = {"la", "le", "les", "l'", "de", "du", "des", "d'", "un", "une", "the", "a", "an", "of"}
+
+
+def saga_title(name):
+    """'Iron Man - Saga' -> 'Iron Man'. Un nom qui n'est que "Saga" ou "Collection" reste tel quel.
+
+    Seul un mot séparé par un tiret ou deux-points, ou prêt à lancer le nom, est retiré : "The Twilight Saga" est un nom entier, pas un habillage.
+    """
+    name = (name or "").strip()
+    short = SAGA_PREFIX_RE.sub("", SAGA_SUFFIX_RE.sub("", name)).strip()
+    if not short or {short.split()[0].casefold(), short.split()[-1].casefold()} & DANGLING:
+        return name
+    return short
+
+
 def library_sections(movies, sagas, today=None):
     """[(titre de section, [Card, ...]), ...] : une section par saga, puis le reste.
 
@@ -591,7 +612,8 @@ def library_sections(movies, sagas, today=None):
     today = today or date.today().isoformat()
     owned = {m.get("id"): m for m in movies}
     sections, classes = [], set()
-    for ident, saga in sorted(sagas.items(), key=lambda kv: kv[1].get("name", "")):
+    # Classées sur le nom court : "Saga Alien" ne doit pas finir à S.
+    for ident, saga in sorted(sagas.items(), key=lambda kv: saga_title(kv[1].get("name")).casefold()):
         cards = []
         for part in sorted(saga.get("parts", []), key=lambda p: p.get("release_date") or "9999"):
             mine = owned.get(part.get("id"))
@@ -601,7 +623,7 @@ def library_sections(movies, sagas, today=None):
             if mine:
                 classes.add(part.get("id"))
         if cards:
-            sections.append((saga.get("name", "Saga"), cards))
+            sections.append((saga_title(saga.get("name")) or "Saga", cards))
     seuls = [m for m in movies if m.get("id") not in classes]
     if seuls:
         sections.append(("Hors saga", [_card(m) for m in sorted(seuls, key=lambda m: m.get("title", ""))]))
@@ -667,13 +689,18 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         + favicon.films_link() +
+        "<script>try{if(localStorage.getItem('wide')==='1')document.documentElement.classList.add('wide')}catch(e){}</script>"
         f"<meta name='poster-size' content='{esc(size)}'>"
         f"<title>{esc(library_name)}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
         "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:12px}"
-        ".filter{width:100%;max-width:320px;margin:10px 0 16px;padding:8px 14px;font:inherit;"
+        ".bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 16px}"
+        ".mode{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
+        "padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
+        ".mode:hover{background:#252833}"
+        ".filter{width:100%;max-width:320px;margin:0;padding:8px 14px;font:inherit;"
         "font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;"
         "border-radius:999px;outline:none;box-sizing:border-box}"
         ".filter:focus{border-color:#7cc4ff}"
@@ -683,7 +710,11 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "border-bottom:1px solid #21232b}"
         ".cnt{margin-left:9px;font-size:13px;font-weight:400;color:#9aa0aa;"
         "font-variant-numeric:tabular-nums}"
-        ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
+        # Sept par ligne, pas "autant que la largeur en tient" : c'est ce qu'on regarde, et à 1180 px l'ancien calcul en donnait six. Sous 900 px sept affiches deviennent des timbres-poste : retour au remplissage automatique. En pleine largeur, le remplissage automatique seul décide.
+        ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
+        "@media(max-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}"
+        ".wide .wrap{max-width:none}"
+        ".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
         ".film{display:block;color:inherit;text-decoration:none}"
         ".film .aff{position:relative;aspect-ratio:2/3;border-radius:8px;overflow:hidden;"
         "background:#21232b;transition:transform .15s,box-shadow .15s}"
@@ -700,7 +731,9 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "</style></head><body><div class='wrap'>"
         f"<h1>{esc(library_name)}</h1>"
         f"<div class='sub'>{esc(resume)}</div>"
+        "<div class='bar'>"
         "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
+        "<button class='mode' type='button' aria-pressed='false'>Pleine largeur</button></div>"
         f"{''.join(blocs)}"
         "<p class='none' hidden>Aucun film ne correspond.</p>"
         "<script>"
@@ -712,6 +745,13 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "var ok=!q||n(c.querySelector('.t').textContent).indexOf(q)>=0;c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!q};"
+        # Le choix de présentation est gardé dans le navigateur. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, en 7 par ligne.
+        "var m=document.querySelector('.mode'),root=document.documentElement;"
+        "function wide(on){root.classList.toggle('wide',on);"
+        "m.textContent=on?'7 par ligne':'Pleine largeur';m.setAttribute('aria-pressed',on)}"
+        "wide(root.classList.contains('wide'));"
+        "m.onclick=function(){var on=!root.classList.contains('wide');wide(on);"
+        "try{localStorage.setItem('wide',on?'1':'0')}catch(e){}};"
         "</script></div></body></html>"
     )
 
