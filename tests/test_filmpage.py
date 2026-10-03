@@ -57,7 +57,18 @@ class TestContenu(unittest.TestCase):
         self.assertIn("Pas de résumé.", render({"title": "X"}))
 
     def test_lien_de_retour(self):
-        self.assertIn("<a class='back' href='../index.html'>← Films</a>", render())
+        self.assertIn("<a class='back' href='../index.html#f27205'>← Films</a>", render())
+
+    def test_retour_sans_identifiant_vers_l_index_seul(self):
+        self.assertIn("<a class='back' href='../index.html'>", render({"title": "X"}))
+
+    def test_ancre_de_retour_est_celle_de_la_vignette(self):
+        self.assertEqual(filmpage.anchor(27205), "f27205")
+
+    def test_retour_en_arriere_depuis_l_index(self):
+        # Le script ne détourne le lien que si on vient bien de l'index : ouverte directement, la fiche suit l'ancre.
+        self.assertIn("history.back()", render())
+        self.assertIn("document.referrer", render())
 
     def test_texte_echappe(self):
         html = render({"title": "Tom & Jerry <3", "overview": "<script>x</script>"})
@@ -75,6 +86,13 @@ class TestImages(unittest.TestCase):
     def test_image_manquante_remplacee(self):
         # Aucune image téléchargée : un emplacement vide pour l'affiche, un par acteur.
         self.assertEqual(render().count("<div class='noimg'></div>"), 4)
+
+    def test_silhouette_pour_un_acteur_sans_portrait(self):
+        html = render()
+        self.assertIn(".actor .noimg{background:#21232b url('data:image/svg+xml,", html)
+        # Une seule règle pour tous les acteurs, et pas pour l'affiche manquante : une silhouette n'a rien à faire sur une affiche.
+        self.assertEqual(html.count("data:image/svg+xml"), 2)       # l'icône de l'onglet, et la silhouette
+        self.assertNotIn(".head .noimg{background", html)
 
     def test_images_a_telecharger(self):
         self.assertEqual(filmpage.poster_images(INCEPTION), {"w342/inc.jpg": "/inc.jpg"})

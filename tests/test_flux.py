@@ -145,7 +145,7 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.lancer_films("--no-tag", "--recap", "--apply")
         fiche = (self.racine / "Fiches" / "1.html").read_text(encoding="utf-8")
         self.assertIn("<title>Dune (2021)</title>", fiche)
-        self.assertIn("href='../index.html'", fiche)
+        self.assertIn("href='../index.html#f1'", fiche)
         self.assertIn("href='Fiches/1.html'", (self.racine / "index.html").read_text(encoding="utf-8"))
 
     def test_simulation_n_ecrit_aucune_fiche(self):
@@ -157,7 +157,7 @@ class TestAnnexesDesFilms(FluxTestCase):
         annexes = self.racine / "__Data__"
         annexes.mkdir()
         self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes / "films.html"), "--apply")
-        self.assertIn("href='../films.html'", (annexes / "Fiches" / "1.html").read_text(encoding="utf-8"))
+        self.assertIn("href='../films.html#f1'", (annexes / "Fiches" / "1.html").read_text(encoding="utf-8"))
         self.assertFalse((self.racine / "Fiches").exists())
 
     def test_fiches_identiques_pas_reecrites(self):

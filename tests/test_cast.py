@@ -132,5 +132,16 @@ class TestLibelles(unittest.TestCase):
         self.assertEqual(cast.coverage(actor), "S1-2, S4 · 30 ép.")
 
 
+class TestSilhouette(unittest.TestCase):
+    def test_regle_css_portant_la_silhouette(self):
+        regle = cast.noface_rule()
+        self.assertTrue(regle.startswith(".actor .noimg{"))
+        self.assertIn("url('data:image/svg+xml,%3Csvg", regle)
+        self.assertNotIn("<", regle)            # le SVG est encodé : il tient dans l'attribut sans fermer la balise
+
+    def test_selecteur_au_choix(self):
+        self.assertTrue(cast.noface_rule(".face").startswith(".face{"))
+
+
 if __name__ == "__main__":
     unittest.main()

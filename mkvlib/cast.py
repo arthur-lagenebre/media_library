@@ -12,11 +12,20 @@ Tout est pur : aucun accès réseau, l'appelant fournit les castings déjà lus.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 LIMIT = 20          # acteurs gardés par section
 MIN_SEASONS = 2     # vu dans au moins tant de saisons -> récurrent
 MAX_ROLES = 2       # personnages cités pour un même acteur
 LAST = 10 ** 6      # rang de générique inconnu : derrière tous les autres
+
+# Le portrait d'un acteur dont TMDB n'a pas de photo : une silhouette, plutôt qu'un carré vide qui ressemble à une image qui n'a pas chargé. Un SVG, dans les couleurs des fiches : rien à télécharger, et un seul exemplaire par page - c'est le CSS qui le porte, pas chaque emplacement.
+NOFACE_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 180'>"
+    "<rect width='120' height='180' fill='#21232b'/>"
+    "<circle cx='60' cy='70' r='26' fill='#3a3d4a'/>"
+    "<path d='M14 180C14 134 36 114 60 114s46 20 46 66z' fill='#3a3d4a'/>"
+    "</svg>")
 
 
 @dataclass
@@ -127,3 +136,9 @@ def coverage(actor):
     """Ce qu'un acteur a tourné, en une ligne. Les saisons ne sont citées que s'il y en a plusieurs : dans une section de saison, les répéter ne dirait rien."""
     seasons = f"{season_label(actor.seasons)} · " if len(actor.seasons) > 1 else ""
     return f"{seasons}{actor.episodes} ép."
+
+
+def noface_rule(selector=".actor .noimg"):
+    """Règle CSS qui montre la silhouette dans les emplacements de portrait vides."""
+    return (f"{selector}{{background:#21232b url('data:image/svg+xml,{quote(NOFACE_SVG, safe='')}') "
+            "center/cover no-repeat}")

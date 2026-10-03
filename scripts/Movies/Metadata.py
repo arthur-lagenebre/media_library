@@ -647,8 +647,10 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             manque = "<div class='miss'>manquant</div>" if not card.owned else ""
             lien = (f" href='{esc(filmpage.href(card.movie_id))}'" if card.owned and card.movie_id in pages else "")
             balise = "a" if lien else "div"
+            # L'ancre : le retour depuis la fiche du film ramène à sa vignette.
+            ancre = f" id='{filmpage.anchor(card.movie_id)}'" if lien else ""
             vignettes.append(
-                f"<{balise} class='film{'' if card.owned else ' absent'}'{lien} "
+                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien} "
                 f"title='{esc(card.overview)}'>"
                 f"<div class='aff'>{img}{manque}</div>"
                 f"<div class='t'>{esc(card.title)}</div>"

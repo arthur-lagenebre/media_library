@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from . import embed, favicon
+from . import cast, embed, favicon
 
 # Le dossier des fiches, rangé À CÔTÉ de l'index : avec --recap-out __Data__ (voir le README), il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
 DIR = "Fiches"
@@ -33,6 +33,11 @@ def name(movie_id):
 def href(movie_id):
     """Lien, relatif à l'index, vers la fiche d'un film."""
     return f"{DIR}/{name(movie_id)}"
+
+
+def anchor(movie_id):
+    """Ancre de la vignette d'un film dans l'index : le retour depuis sa fiche y ramène."""
+    return f"f{movie_id}"
 
 
 def directors(movie):
@@ -93,6 +98,9 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
 
     by = directors(movie)
     tagline = movie.get("tagline")
+    # Le retour ramène à la vignette du film, pas en haut de l'index. L'ancre est le repli sûr (elle marche partout, en file:// comme sur un NAS) ; quand on vient bien de l'index, un vrai retour en arrière vaut mieux - le navigateur y rend aussi la recherche en cours, que l'ancre ne retrouve pas (la vignette serait masquée).
+    if movie.get("id"):
+        back_href = f"{back_href}#{anchor(movie['id'])}"
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         f"{favicon.monogram_link(movie.get('title'))}"
@@ -118,6 +126,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         ".actor .ph{aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:#21232b}"
         ".actor .n{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
         ".actor .c{color:#c7ccd4;font-size:13px;line-height:1.35}"
+        + cast.noface_rule() +
         "</style></head><body><div class='wrap'>"
         f"<a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
         f"<div class='head'><div class='aff'>{poster}</div><div class='info'>"
@@ -128,5 +137,11 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         + f"<div class='o'>{esc(movie.get('overview') or 'Pas de résumé.')}</div>"
         "</div></div>"
         + (f"<h2>Casting</h2><div class='grid'>{''.join(faces)}</div>" if faces else "")
-        + "</div></body></html>"
+        + "<script>"
+        "var b=document.querySelector('.back');"
+        "b.onclick=function(e){"
+        "var from=document.referrer.split(/[?#]/)[0],"
+        "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
+        "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
+        "</script></div></body></html>"
     )

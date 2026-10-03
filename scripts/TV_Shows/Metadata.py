@@ -424,6 +424,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".actor .n{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
         ".actor .c{color:#c7ccd4;font-size:13px;line-height:1.35}"
         ".actor .e{color:#9aa0aa;font-size:12px;font-variant-numeric:tabular-nums}"
+        + cast.noface_rule() +
         "</style></head><body><div class='wrap'>"
         f"<h1>{esc(series_name)}</h1>"
         f"<div class='sub'>{esc(show.get('overview', ''))}</div>"

@@ -645,7 +645,7 @@ class TestRenduRecapFilms(unittest.TestCase):
     def test_vignette_menant_a_sa_fiche(self):
         card = films.Card("Heat", movie_id=949)
         html = films.build_recap_html("Films", [("Hors saga", [card])], {}, "w185", pages={949})
-        self.assertIn("<a class='film' href='Fiches/949.html'", html)
+        self.assertIn("<a class='film' id='f949' href='Fiches/949.html'", html)
 
     def test_vignette_sans_fiche_reste_inerte(self):
         # Une fiche non écrite (ou pas demandée) ne doit pas laisser un lien cassé.
