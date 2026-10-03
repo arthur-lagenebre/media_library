@@ -576,6 +576,28 @@ class TestDoutesSurLAssociation(unittest.TestCase):
         self.assertEqual(films.identity_doubts(entry, {"runtime": 3, "vote_count": 500}, {}), [])
 
 
+class TestFilmsValides(unittest.TestCase):
+    def lire(self, texte):
+        with tempfile.TemporaryDirectory() as d:
+            fichier = Path(d) / "metadata.ok"
+            fichier.write_text(texte, encoding="utf-8")
+            return films.read_approved(fichier)
+
+    def test_identifiant_seul_ou_lien(self):
+        self.assertEqual(self.lire("1437733\nhttps://www.themoviedb.org/movie/949\n"), {1437733, 949})
+
+    def test_ligne_recopiee_du_journal(self):
+        # Le nom peut porter un nombre ("2012") : c'est le lien qui compte.
+        ligne = "2012 Une fin du monde   https://www.themoviedb.org/movie/14161  [A VERIFIER] fiche TMDB presque inconnue (6 vote(s))"
+        self.assertEqual(self.lire(ligne), {14161})
+
+    def test_commentaires_et_lignes_vides(self):
+        self.assertEqual(self.lire("# valides\n\n1437733  # Bref. De bons amis, ok\n  # 99\ntexte sans identifiant\n"), {1437733})
+
+    def test_fichier_absent_ne_valide_rien(self):
+        self.assertEqual(films.read_approved(Path("introuvable") / "metadata.ok"), set())
+
+
 class TestEmplacementDuRecap(unittest.TestCase):
     def test_par_defaut_a_la_racine(self):
         self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/index.html"))
@@ -614,6 +636,31 @@ class TestRenduRecapFilms(unittest.TestCase):
     def test_affiche_absente_remplacee(self):
         html = self.rendre([("Hors saga", [films.Card("Sans affiche")])])
         self.assertIn("<div class='noimg'></div>", html)
+
+    def test_zone_de_recherche(self):
+        html = self.rendre([("Hors saga", [films.Card("Heat")])])
+        self.assertIn("<input class='filter' type='search'", html)
+        self.assertIn("Aucun film ne correspond.", html)
+
+    def test_vignette_menant_a_sa_fiche(self):
+        card = films.Card("Heat", movie_id=949)
+        html = films.build_recap_html("Films", [("Hors saga", [card])], {}, "w185", pages={949})
+        self.assertIn("<a class='film' href='Fiches/949.html'", html)
+
+    def test_vignette_sans_fiche_reste_inerte(self):
+        # Une fiche non écrite (ou pas demandée) ne doit pas laisser un lien cassé.
+        card = films.Card("Heat", movie_id=949)
+        self.assertNotIn("<a class='film'", self.rendre([("Hors saga", [card])]))
+        self.assertNotIn("<a class='film'", films.build_recap_html("Films", [("Hors saga", [card])], {}, "w185", pages={1}))
+
+    def test_film_manquant_jamais_lie(self):
+        # TMDB le décrit, mais on ne le possède pas : pas de fiche, même si son identifiant en a une par ailleurs.
+        card = films.Card("Iron Man 2", owned=False, movie_id=10138)
+        html = films.build_recap_html("Films", [("Saga", [card])], {}, "w185", pages={10138})
+        self.assertNotIn("Fiches", html)
+
+    def test_carte_garde_l_identifiant_tmdb(self):
+        self.assertEqual(films._card({"id": 949, "title": "Heat"}).movie_id, 949)
 
     def test_affiche_integree(self):
         card = films.Card("Iron Man", "2008-04-30", poster="/a.jpg")

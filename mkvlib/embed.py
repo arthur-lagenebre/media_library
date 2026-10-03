@@ -59,19 +59,22 @@ def shared_slot(key, css_class):
     return f"<div class='{css_class}' data-img='{key}'></div>"
 
 
-def fetch(needed, cached, size, tmdb, label="image"):
+def fetch(needed, cached, size, tmdb, label="image", quiet=False):
     """Résout {clé: chemin TMDB} en {clé: data-URI}.
 
     Reprend ce que la fiche existante contenait déjà et télécharge le reste en parallèle (une médiathèque = des centaines d'images : en séquentiel, chacune paie son propre aller-retour TLS).
+
+    `quiet` tait le décompte : l'appelant qui boucle sur des centaines de fiches en fait un seul. Les images ignorées restent signalées.
     """
     images = {k: cached[k] for k in needed if k in cached}
     todo = sorted((k, p) for k, p in needed.items() if k not in images)
     if not todo:
-        if images:
+        if images and not quiet:
             print(f"  [recap] {len(images)} {label}(s) reprise(s) de la fiche existante")
         return images
 
-    print(f"  [recap] {len(todo)} {label}(s) a telecharger" + (f", {len(images)} reprise(s) de la fiche existante" if images else ""))
+    if not quiet:
+        print(f"  [recap] {len(todo)} {label}(s) a telecharger" + (f", {len(images)} reprise(s) de la fiche existante" if images else ""))
 
     def grab(item):
         key, path = item

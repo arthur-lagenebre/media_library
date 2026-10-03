@@ -44,6 +44,7 @@ Un homonyme qui existe dans 900 000 films n'existe pas dans une saga de 26 : "Le
 La numérotation du dossier doit tenir dans la collection, faute de quoi un dossier de rangement (le MCU numéroté 35 films) se ferait passer pour une saga.  [--no-saga]
 L'identifiant TMDB retenu est INSCRIT DANS LE FILM : au passage suivant, il est relu et plus rien n'est cherché - l'association survit donc au renommage, et ne peut plus se tromper deux fois de la même façon.
 La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags : une médiathèque jamais étiquetée ne paie rien.
+Une association suspecte (durée incohérente, fiche presque inconnue) est signalée à chaque passage. Pour la faire taire SANS épingler l'identifiant dans le nom du fichier, ajoute-le à "metadata.ok", à côté du journal : une ligne par film, l'identifiant seul ou son lien TMDB tel que le journal le donne, '#' pour un commentaire. Les doutes de ces films ne sont plus signalés ; rien d'autre ne change.
 Ordre de priorité : --tmdb-id, puis l'identifiant épinglé dans le NOM, puis celui lu dans le FICHIER, puis la recherche.
 Si un passage à inscrit le mauvais identifiant, corrige-le en épinglant le bon dans le nom - "Dune (2021) [tmdbid-438631]" ou "Dune {tmdb-438631}" - le passage suivant le réécrira dans le fichier.
 
@@ -62,6 +63,7 @@ Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --n
 
 --recap genere une fiche HTML de la médiathèque à la racine de --dir (ou là où --recap-out le dit, dossier ou fichier .html) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
 Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
+Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de l'index (donc dans __Data__ avec --recap-out). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --cast-limit et --profile-size règlent le casting.
 """
 
 from __future__ import annotations
@@ -69,6 +71,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -76,7 +79,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cli, embed, favicon, lookup, mkv, naming, textfile  # noqa: E402
+from mkvlib import artwork, cache, cli, embed, favicon, filmpage, lookup, mkv, naming, textfile  # noqa: E402
 from mkvlib import saga as saga_module  # noqa: E402
 from mkvlib.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
@@ -202,6 +205,7 @@ class Library:
     lectures: dict          # {chemin: Reading}
     journal: list = field(default_factory=list)   # (nom affiche, id TMDB, statut)
     doubts: list = field(default_factory=list)    # (nom affiche, fiche TMDB, [raisons]) - associations suspectes
+    approved: set = field(default_factory=set)    # identifiants TMDB validés dans metadata.ok
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
@@ -213,6 +217,36 @@ def log_path(root_dir, args):
     if getattr(args, "recap", False) and getattr(args, "recap_out", None):
         return recap_path(root_dir, args.recap_out).parent / "metadata.log"
     return Path(root_dir) / "metadata.log"
+
+
+APPROVED_NAME = "metadata.ok"
+MOVIE_ID_RE = re.compile(r"/movie/(\d+)")
+LEADING_ID_RE = re.compile(r"\s*(\d+)\b")
+
+
+def approved_path(root_dir, args):
+    """Le fichier des films validés, rangé avec le journal."""
+    return log_path(root_dir, args).with_name(APPROVED_NAME)
+
+
+def read_approved(path):
+    """Identifiants TMDB des films dont tu as vérifié l'association : {id, ...}.
+
+    Une ligne par film, '#' commence un commentaire. L'identifiant s'écrit seul ("1437733") ou en lien TMDB, tel que le journal le donne : on peut y recopier la ligne d'un film, ou son seul lien. Un fichier absent ou illisible ne valide rien.
+
+    C'est ce qui permet de faire taire un doute sans épingler l'identifiant dans le NOM du fichier : le nom reste propre, et le fichier survit aux renommages.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    approved = set()
+    for line in text.splitlines():
+        line = line.split("#", 1)[0]
+        found = MOVIE_ID_RE.search(line) or LEADING_ID_RE.match(line)
+        if found:
+            approved.add(int(found.group(1)))
+    return approved
 
 
 def write_log(root_dir, library, args, report):
@@ -285,7 +319,8 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
         print(f"  [DOUBLON] meme film que '{jumeau}' -> les deux seront traites")
     library.resolved.append(movie)
-    doubts = identity_doubts(entry, movie, library.lectures)
+    # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
+    doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
         print(f"  /!\\ {' ; '.join(doubts)} -> verifie l'association, ou epingle l'id dans le nom")
         library.doubts.append((entry.display, movie, doubts))
@@ -517,6 +552,7 @@ class Card:
     owned: bool = True
     runtime: int | None = None
     overview: str = ""
+    movie_id: int | None = None     # identifiant TMDB, de quoi retrouver sa fiche (voir filmpage)
 
     @property
     def year(self):
@@ -524,7 +560,7 @@ class Card:
 
 
 def _card(movie, owned=True):
-    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), overview=movie.get("overview") or "")
+    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), overview=movie.get("overview") or "", movie_id=movie.get("id"))
 
 
 def fetch_collections(movies, tmdb):
@@ -583,10 +619,14 @@ def collect_posters(sections, size):
     return needed
 
 
-def build_recap_html(library_name, sections, posters, size):
+def build_recap_html(library_name, sections, posters, size, pages=()):
     """Rend la fiche HTML (pur rendu : ni réseau ni disque).
 
-    Les films manquants d'une saga sont grises et étiquetés, comme les épisodes absents dans la fiche d'une série."""
+    Les films manquants d'une saga sont grises et étiquetés, comme les épisodes absents dans la fiche d'une série.
+
+    `pages` = identifiants des films dont la fiche existe (voir filmpage) : leur vignette mène à elle. Un film sans fiche - ou manquant, que TMDB décrit mais qu'on ne possède pas - reste une vignette inerte plutôt qu'un lien cassé.
+
+    La recherche filtre les vignettes sur leur titre, sans accents ni casse, et masque les sagas qui n'ont plus rien à montrer."""
     def esc(s):
         # L'apostrophe aussi : les attributs sont entre apostrophes, et un synopsis qui dit "s'entre-tuent" fermerait l'infobulle en plein milieu.
         return escape(str(s or ""), {"'": "&#39;"})
@@ -605,13 +645,15 @@ def build_recap_html(library_name, sections, posters, size):
             img = embed.tag(key, uri) if uri else "<div class='noimg'></div>"
             duree = f" · {card.runtime} min" if card.runtime else ""
             manque = "<div class='miss'>manquant</div>" if not card.owned else ""
+            lien = (f" href='{esc(filmpage.href(card.movie_id))}'" if card.owned and card.movie_id in pages else "")
+            balise = "a" if lien else "div"
             vignettes.append(
-                f"<div class='film{'' if card.owned else ' absent'}' "
+                f"<{balise} class='film{'' if card.owned else ' absent'}'{lien} "
                 f"title='{esc(card.overview)}'>"
                 f"<div class='aff'>{img}{manque}</div>"
                 f"<div class='t'>{esc(card.title)}</div>"
                 f"<div class='y'>{esc(card.year)}{duree}</div>"
-                "</div>")
+                f"</{balise}>")
         blocs.append(f"<section><h2>{esc(titre)}{compteur}</h2>"
                      f"<div class='grid'>{''.join(vignettes)}</div></section>")
 
@@ -628,14 +670,24 @@ def build_recap_html(library_name, sections, posters, size):
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
-        "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:28px}"
+        "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:12px}"
+        ".filter{width:100%;max-width:320px;margin:10px 0 16px;padding:8px 14px;font:inherit;"
+        "font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;"
+        "border-radius:999px;outline:none;box-sizing:border-box}"
+        ".filter:focus{border-color:#7cc4ff}"
+        ".none{color:#9aa0aa;margin-top:30px}"
+        "[hidden]{display:none!important}"
         "h2{font-size:17px;margin:30px 0 14px;padding-bottom:8px;"
         "border-bottom:1px solid #21232b}"
         ".cnt{margin-left:9px;font-size:13px;font-weight:400;color:#9aa0aa;"
         "font-variant-numeric:tabular-nums}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
+        ".film{display:block;color:inherit;text-decoration:none}"
         ".film .aff{position:relative;aspect-ratio:2/3;border-radius:8px;overflow:hidden;"
-        "background:#21232b}"
+        "background:#21232b;transition:transform .15s,box-shadow .15s}"
+        "a.film:hover .aff,a.film:focus-visible .aff{transform:translateY(-3px);"
+        "box-shadow:0 0 0 2px #7cc4ff}"
+        "a.film:hover .t{color:#7cc4ff}"
         ".film img,.film .noimg{width:100%;height:100%;object-fit:cover;display:block}"
         ".film .t{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
         ".film .y{color:#9aa0aa;font-size:13px}"
@@ -646,8 +698,19 @@ def build_recap_html(library_name, sections, posters, size):
         "</style></head><body><div class='wrap'>"
         f"<h1>{esc(library_name)}</h1>"
         f"<div class='sub'>{esc(resume)}</div>"
+        "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
         f"{''.join(blocs)}"
-        "</div></body></html>"
+        "<p class='none' hidden>Aucun film ne correspond.</p>"
+        "<script>"
+        "var f=document.querySelector('.filter');"
+        "function n(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase()}"
+        "f.oninput=function(){var q=n(f.value.trim()),any=false;"
+        "document.querySelectorAll('section').forEach(function(s){var seen=0;"
+        "s.querySelectorAll('.film').forEach(function(c){"
+        "var ok=!q||n(c.querySelector('.t').textContent).indexOf(q)>=0;c.hidden=!ok;if(ok)seen++});"
+        "s.hidden=!seen;if(seen)any=true});"
+        "document.querySelector('.none').hidden=any||!q};"
+        "</script></div></body></html>"
     )
 
 
@@ -672,8 +735,43 @@ def recap_title(args, previous):
     return getattr(args, "title", None) or textfile.title_of(previous) or DEFAULT_TITLE
 
 
+def write_film_pages(out, library_name, movies, args, tmdb):
+    """Écrit la fiche de chaque film (voir filmpage) à côté de l'index `out`. Retourne les identifiants des films qui en ont une.
+
+    Une fiche déjà à jour n'est pas réécrite, et ses images sont reprises d'elle : chaque nuit, seul un film nouveau coûte des téléchargements. Une fiche qu'on n'a pas pu écrire n'est pas rendue, pour que l'index ne mène pas à rien. Les fiches de films sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
+    """
+    folder = out.parent / filmpage.DIR
+    try:
+        folder.mkdir(exist_ok=True)
+    except OSError as e:
+        print(f"  [fiches] dossier {folder} non cree : {e} -> pas de fiche par film")
+        return set()
+    limit = getattr(args, "cast_limit", filmpage.CAST_LIMIT)
+    profile_size = getattr(args, "profile_size", filmpage.PROFILE_SIZE)
+    back = f"../{out.name}"
+    # Deux dossiers pour un même film n'ont qu'une fiche : elle porte l'identifiant, pas le dossier.
+    unique = {m["id"]: m for m in movies if m.get("id")}
+    pages, written = set(), 0
+    for movie_id, movie in unique.items():
+        page = folder / filmpage.name(movie_id)
+        known = embed.read_embedded(page)
+        images = {**embed.fetch(filmpage.poster_images(movie), known, filmpage.POSTER_SIZE, tmdb, label="affiche", quiet=True),
+                  **embed.fetch(filmpage.profile_images(movie, limit, profile_size), known, profile_size, tmdb, label="portrait", quiet=True)}
+        html = filmpage.build_html(movie, images, back, library_name, limit, profile_size)
+        try:
+            if not textfile.same(page, html):
+                textfile.write(page, html)
+                written += 1
+        except OSError as e:
+            print(f"  [fiches] {page.name} non ecrite : {e}")
+            continue
+        pages.add(movie_id)
+    print(f"  [fiches] {len(pages)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(pages) - written} inchangee(s))")
+    return pages
+
+
 def write_recap(root_dir, movies, args, tmdb):
-    """Écrit la fiche (index.html à la racine de --dir, ou --recap-out). Ne télécharge rien en simulation.
+    """Écrit la fiche (index.html à la racine de --dir, ou --recap-out) et celle de chaque film. Ne télécharge ni n'écrit rien en simulation.
 
     La fiche précédente, au même endroit, sert de cache d'affiches ; une fiche encore nommée recap.html est renommée plutôt que doublée."""
     apply = args.apply and not args.verify
@@ -686,9 +784,11 @@ def write_recap(root_dir, movies, args, tmdb):
     sections = library_sections(movies, fetch_collections(movies, tmdb))
     needed = collect_posters(sections, args.poster_size)
     posters = (embed.fetch(needed, embed.read_embedded(previous), args.poster_size, tmdb, label="affiche") if apply else {})
-    html = build_recap_html(recap_title(args, previous), sections, posters, args.poster_size)
+    title = recap_title(args, previous)
+    pages = write_film_pages(out, title, movies, args, tmdb) if apply else set()
+    html = build_recap_html(title, sections, posters, args.poster_size, pages)
     if not apply:
-        print(f"  [mediatheque] ecrirait {out}")
+        print(f"  [mediatheque] ecrirait {out} et une fiche par film dans {filmpage.DIR}/")
         return
     # Lancée chaque nuit sur un NAS, la fiche ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
     if textfile.same(out, html):
@@ -723,6 +823,8 @@ def parse_args():
     ap.add_argument("--artwork", action="store_true", help="Ecrit folder.jpg (affiche EN) par film")
     ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la mediatheque (sagas et manquants)")
     ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (defaut : w185)")
+    ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (defaut : {filmpage.PROFILE_SIZE})")
+    ap.add_argument("--cast-limit", type=int, default=filmpage.CAST_LIMIT, help=f"Acteurs montres dans la fiche de chaque film (defaut : {filmpage.CAST_LIMIT})")
     ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : index.html a la racine de --dir)")
     ap.add_argument("--title", help="Titre de la fiche recap (defaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
@@ -765,7 +867,9 @@ def main():
     if corrections:
         print(f"{len(corrections)} film(s) replace(s) par leur saga TMDB.\n")
 
-    report, library = mkv.Report(), Library([], {}, lectures)
+    report, library = mkv.Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)))
+    if library.approved:
+        print(f"{len(library.approved)} film(s) valide(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signales.\n")
     attente = []
     for entry in movies:
         print(f"--- {entry.display} ---")

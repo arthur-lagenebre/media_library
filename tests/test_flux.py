@@ -113,6 +113,61 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.lancer_films("--no-tag", "--recap", "--apply")
         self.assertTrue((self.racine / "index.html").exists())
 
+    def lancer_peu_vote(self, *options):
+        """Un film que presque personne n'a noté : l'association est suspecte."""
+        class PeuVote(FauxTmdb):
+            def movie(self, movie_id, language=None):
+                return {**super().movie(movie_id, language), "vote_count": 3}
+
+        with mock.patch.object(films.mkv, "check_tools", lambda **k: False), mock.patch.object(films.mkv, "read_light_all", lambda paths: {}):
+            return self.lancer(films, ["--dir", str(self.racine), "--no-tag", *options], tmdb=PeuVote())
+
+    def test_doute_signale_sans_validation(self):
+        _, sortie = self.lancer_peu_vote()
+        self.assertIn("presque inconnue", sortie)
+        self.assertIn("[A VERIFIER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
+
+    def test_film_valide_ne_fait_plus_de_doute(self):
+        (self.racine / "metadata.ok").write_text("https://www.themoviedb.org/movie/1  # Dune, ok\n", encoding="utf-8")
+        _, sortie = self.lancer_peu_vote()
+        self.assertNotIn("presque inconnue", sortie)
+        self.assertNotIn("A VERIFIER", (self.racine / "metadata.log").read_text(encoding="utf-8"))
+        self.assertIn("1 film(s) valide(s)", sortie)
+
+    def test_validation_lue_a_cote_du_journal(self):
+        annexes = self.racine / "__Data__"
+        annexes.mkdir()
+        (annexes / "metadata.ok").write_text("1\n", encoding="utf-8")
+        _, sortie = self.lancer_peu_vote("--recap", "--recap-out", str(annexes))
+        self.assertNotIn("presque inconnue", sortie)
+
+    def test_chaque_film_a_sa_fiche(self):
+        self.lancer_films("--no-tag", "--recap", "--apply")
+        fiche = (self.racine / "Fiches" / "1.html").read_text(encoding="utf-8")
+        self.assertIn("<title>Dune (2021)</title>", fiche)
+        self.assertIn("href='../index.html'", fiche)
+        self.assertIn("href='Fiches/1.html'", (self.racine / "index.html").read_text(encoding="utf-8"))
+
+    def test_simulation_n_ecrit_aucune_fiche(self):
+        self.lancer_films("--no-tag", "--recap")
+        self.assertFalse((self.racine / "Fiches").exists())
+        self.assertFalse((self.racine / "index.html").exists())
+
+    def test_fiches_rangees_a_cote_de_l_index(self):
+        annexes = self.racine / "__Data__"
+        annexes.mkdir()
+        self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes / "films.html"), "--apply")
+        self.assertIn("href='../films.html'", (annexes / "Fiches" / "1.html").read_text(encoding="utf-8"))
+        self.assertFalse((self.racine / "Fiches").exists())
+
+    def test_fiches_identiques_pas_reecrites(self):
+        self.lancer_films("--no-tag", "--recap", "--apply")
+        fiche = self.racine / "Fiches" / "1.html"
+        avant = fiche.stat().st_mtime_ns
+        _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
+        self.assertIn("(0 ecrite(s), 1 inchangee(s))", sortie)
+        self.assertEqual(fiche.stat().st_mtime_ns, avant)
+
     def test_recap_identique_pas_reecrit(self):
         # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
         self.lancer_films("--no-tag", "--recap", "--apply")
