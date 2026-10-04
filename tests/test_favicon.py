@@ -8,7 +8,8 @@ from urllib.parse import unquote
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import favicon, showindex
+from libraries.common import favicon
+from libraries.video import showindex
 from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 

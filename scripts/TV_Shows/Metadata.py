@@ -75,9 +75,9 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, textfile  # noqa: E402
+from libraries.common import cache, cli, favicon, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, cast, embed, favicon, lookup, mkv, naming, showindex  # noqa: E402
+from libraries.video import artwork, cast, embed, lookup, mkv, naming, showindex  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
