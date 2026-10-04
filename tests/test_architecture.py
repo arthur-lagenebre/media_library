@@ -1,4 +1,4 @@
-"""Les dépendances entre les dossiers de libraries/ : common/ ne connaît personne, video/ et music/ ne se connaissent pas.
+"""Les dépendances entre les dossiers de libraries/ : common/ ne connaît personne, video/, music/ et books/ ne se connaissent pas.
 
 C'est ce qui tient le découpage : tant qu'un seul des deux domaines s'appuie sur l'autre, "common" n'est qu'un nom. Ce test échoue dès qu'un import remonte, avant qu'il ne devienne une habitude.
 """
@@ -13,9 +13,10 @@ sys.path.insert(0, str(ROOT))
 
 # Qui n'a pas le droit d'importer qui.
 FORBIDDEN = {
-    "common": {"video", "music"},
-    "video": {"music"},
-    "music": {"video"},
+    "common": {"video", "music", "books"},
+    "video": {"music", "books"},
+    "music": {"video", "books"},
+    "books": {"video", "music"},
 }
 
 
@@ -49,6 +50,11 @@ class TestDependances(unittest.TestCase):
         for path in sorted((ROOT / "scripts" / "Music").glob("*.py")):
             with self.subTest(path.relative_to(ROOT).as_posix()):
                 self.assertNotIn("video", imported_domains(path))
+
+    def test_les_scripts_de_livres_n_importent_ni_la_video_ni_la_musique(self):
+        for path in sorted((ROOT / "scripts" / "Books").glob("*.py")):
+            with self.subTest(path.relative_to(ROOT).as_posix()):
+                self.assertEqual(imported_domains(path) & {"video", "music"}, set())
 
     def test_le_detecteur_voit_un_import_interdit(self):
         # Un test de garde qui ne détecterait rien ne garderait rien.

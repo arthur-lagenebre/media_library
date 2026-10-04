@@ -79,9 +79,9 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, textfile  # noqa: E402
+from libraries.common import cache, cli, favicon, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, embed, favicon, filmpage, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, embed, filmpage, lookup, mkv, naming  # noqa: E402
 from libraries.video import saga as saga_module  # noqa: E402
 from libraries.video.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)

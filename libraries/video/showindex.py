@@ -13,9 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
-from libraries.common import textfile
-
-from . import favicon
+from libraries.common import favicon, textfile
 
 INDEX_NAME = "index.html"
 # La fiche de chaque série porte le même nom que le sommaire : un navigateur ou un serveur ouvre index.html de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.

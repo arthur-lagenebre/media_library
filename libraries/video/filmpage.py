@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from . import cast, embed, favicon
+from libraries.common import favicon
+from . import cast, embed
 
 # Le dossier des fiches, rangé À CÔTÉ de l'index : avec --recap-out __Data__ (voir le README), il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
 DIR = "Fiches"

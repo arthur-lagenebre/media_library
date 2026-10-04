@@ -36,6 +36,16 @@ FILMS_SVG = (
     "<path d='M19 19.4l6 9.3M31 16.3l6 9.3M43 13.2l6 9.3' stroke='#1c1e26' stroke-width='4'/>"
     "</svg>")
 
+# Les livres : trois dos sur une étagère, dans les mêmes couleurs ; le dernier est penché pour qu'on y lise des livres, pas des barres, même à 16 pixels.
+SHELF_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    "<rect width='64' height='64' rx='14' fill='#1c1e26'/>"
+    "<rect x='11' y='13' width='11' height='36' rx='2' fill='#7cc4ff'/>"
+    "<rect x='26' y='9' width='11' height='40' rx='2' fill='#7cc4ff'/>"
+    "<path d='M41 19l10-3 6 31-10 3z' fill='#7cc4ff'/>"
+    "<rect x='8' y='52' width='48' height='4' rx='2' fill='#7cc4ff'/>"
+    "</svg>")
+
 
 def initials(title):
     """'BB' pour Breaking Bad, 'D' pour Dark, '24' pour 24 ; '?' pour un titre vide.
@@ -90,3 +100,7 @@ def index_link():
 
 def films_link():
     return link(FILMS_SVG)
+
+
+def shelf_link():
+    return link(SHELF_SVG)
