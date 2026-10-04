@@ -1,6 +1,6 @@
-# mkv_editors
+# media_library
 
-[![Tests](https://github.com/arthur-lagenebre/mkv_editors/actions/workflows/tests.yml/badge.svg)](https://github.com/arthur-lagenebre/mkv_editors/actions/workflows/tests.yml)
+[![Tests](https://github.com/arthur-lagenebre/media_library/actions/workflows/tests.yml/badge.svg)](https://github.com/arthur-lagenebre/media_library/actions/workflows/tests.yml)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Généré par Claude Code](https://img.shields.io/badge/G%C3%A9n%C3%A9r%C3%A9%20par-Claude%20Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
@@ -28,12 +28,13 @@ scripts/TV_Shows/      la même chose pour les séries
 scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
 scripts/Converters/    changement de conteneur, avant tout étiquetage
-mkvlib/                le code commun, et tout ce qui touche aux films et aux séries
-musiclib/              ce qui ne sert qu'à la musique
+libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage
+libraries/video/       tout ce qui touche aux films et aux séries
+libraries/music/       tout ce qui touche à la musique
 tests/                 les tests
 ```
 
-[mkvlib/](mkvlib/) porte l'accès TMDB, la lecture/écriture des `.mkv` et l'analyse des noms de fichiers, ainsi que ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage. [musiclib/](musiclib/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et la reconnaissance des albums ; il se sert de ces utilitaires communs, jamais de ce qui touche aux films. Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et la reconnaissance des albums. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
@@ -115,7 +116,7 @@ Dans ce qui suit, `<outils>` est le dossier partagé où ranger le script, `<fil
 3. **Essayer en simulation**, dans la même session SSH — la fiche n'est pas écrite, seul le journal `metadata.log` l'est, dans `__Data__` :
 
    ```sh
-   XDG_CACHE_HOME=/volume1/<outils>/cache python3 /volume1/<outils>/mkv_editors/scripts/Movies/Metadata.py --dir /volume1/<films> --no-tag --recap --recap-out /volume1/<films>/__Data__ --no-ask
+   XDG_CACHE_HOME=/volume1/<outils>/cache python3 /volume1/<outils>/media_library/scripts/Movies/Metadata.py --dir /volume1/<films> --no-tag --recap --recap-out /volume1/<films>/__Data__ --no-ask
    ```
 
    `XDG_CACHE_HOME` range le cache des réponses TMDB dans `<outils>` : sans lui, il irait dans le dossier personnel de l'utilisateur, qui n'existe que si le service *Accueil de l'utilisateur* est activé. La corbeille du partage (`#recycle`), ses instantanés (`#snapshot`) et les vignettes de DSM (`@eaDir`) sont ignorés.
@@ -156,7 +157,7 @@ python scripts\TV_Shows\Recap_All.py --dir "D:\Series"            # simulation
 python scripts\TV_Shows\Recap_All.py --dir "D:\Series" --apply    # régénère toutes les fiches
 ```
 
-Pour passer d'une fiche à l'autre, [Index.py](scripts/TV_Shows/Index.py) écrit un `index.html` à la racine de la médiathèque : un mur d'affiches, une par série, chacune menant à sa fiche — son `index.html`, ou l'ancien `recap.html` tant que la fiche n'a pas été régénérée (elle est alors renommée). Le sommaire s'intitule « Séries », ou ce que `--title` lui donne. Tout est lu dans l'en-tête des fiches, qui portent titre, année, saisons (`2/5 saisons` quand il en manque), affiche et résumé — trois lignes sous l'affiche, le texte entier au survol : ni TMDB, ni clé, ni réseau, ni outil externe — seulement Python 3 et `mkvlib/`. Il est donc fait pour tourner **en tâche planifiée sur le NAS** : les fiches s'écrivent sur un disque local puis sont transférées, et seul le NAS voit toutes les séries. Le sommaire n'est réécrit que si son contenu change, un `index.html` qu'il n'a pas écrit n'est jamais remplacé, et les dossiers cachés (`.recycle`…) sont ignorés. Une fiche antérieure à cette version figure sans affiche jusqu'à sa régénération. Classement alphabétique sans article (*The Expanse* à E), filtre de recherche en tête, liens relatifs : la médiathèque peut être déplacée sans rien casser. Chaque fiche porte une icône d'onglet à ses initiales, sur une couleur propre à la série (*BB* pour *Breaking Bad*), et le sommaire un petit téléviseur : des SVG écrits dans la page, sans fichier à côté — Safari, qui gère mal les icônes SVG, affiche la sienne par défaut.
+Pour passer d'une fiche à l'autre, [Index.py](scripts/TV_Shows/Index.py) écrit un `index.html` à la racine de la médiathèque : un mur d'affiches, une par série, chacune menant à sa fiche — son `index.html`, ou l'ancien `recap.html` tant que la fiche n'a pas été régénérée (elle est alors renommée). Le sommaire s'intitule « Séries », ou ce que `--title` lui donne. Tout est lu dans l'en-tête des fiches, qui portent titre, année, saisons (`2/5 saisons` quand il en manque), affiche et résumé — trois lignes sous l'affiche, le texte entier au survol : ni TMDB, ni clé, ni réseau, ni outil externe — seulement Python 3 et `libraries/`. Il est donc fait pour tourner **en tâche planifiée sur le NAS** : les fiches s'écrivent sur un disque local puis sont transférées, et seul le NAS voit toutes les séries. Le sommaire n'est réécrit que si son contenu change, un `index.html` qu'il n'a pas écrit n'est jamais remplacé, et les dossiers cachés (`.recycle`…) sont ignorés. Une fiche antérieure à cette version figure sans affiche jusqu'à sa régénération. Classement alphabétique sans article (*The Expanse* à E), filtre de recherche en tête, liens relatifs : la médiathèque peut être déplacée sans rien casser. Chaque fiche porte une icône d'onglet à ses initiales, sur une couleur propre à la série (*BB* pour *Breaking Bad*), et le sommaire un petit téléviseur : des SVG écrits dans la page, sans fichier à côté — Safari, qui gère mal les icônes SVG, affiche la sienne par défaut.
 
 ```powershell
 python scripts\TV_Shows\Index.py --dir "D:\Series" --apply
@@ -169,8 +170,8 @@ Dans ce qui suit, `<pool>` est le pool de stockage, `<outils>` le dataset où ra
 1. **Copier les fichiers** sur un dataset, depuis l'Explorateur Windows par le partage SMB par exemple — jamais sur le pool système (`boot-pool`), qui est effacé aux mises à jour. Le dépôt entier convient ; à défaut, ces deux éléments suffisent, à condition de garder l'arborescence :
 
    ```text
-   /mnt/<pool>/<outils>/mkv_editors/
-   ├── mkvlib/                      (le dossier entier)
+   /mnt/<pool>/<outils>/media_library/
+   ├── libraries/                     (le dossier entier)
    └── scripts/TV_Shows/Index.py
    ```
 
@@ -179,7 +180,7 @@ Dans ce qui suit, `<pool>` est le pool de stockage, `<outils>` le dataset où ra
 3. **Essayer en simulation**, toujours dans le shell — rien n'est écrit, la liste des séries trouvées s'affiche :
 
    ```sh
-   python3 /mnt/<pool>/<outils>/mkv_editors/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series>
+   python3 /mnt/<pool>/<outils>/media_library/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series>
    ```
 
    `Aucune fiche` signifie que `--dir` ne pointe pas sur le dossier qui contient un sous-dossier par série, ou qu'aucune série n'a encore de fiche.
@@ -189,7 +190,7 @@ Dans ce qui suit, `<pool>` est le pool de stockage, `<outils>` le dataset où ra
    | Champ | Valeur |
    | --- | --- |
    | Description | `Sommaire des séries` |
-   | Command | `python3 /mnt/<pool>/<outils>/mkv_editors/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply` |
+   | Command | `python3 /mnt/<pool>/<outils>/media_library/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply` |
    | Run As User | `<utilisateur>` — pas `root` : un `index.html` créé par `root` pourrait ne plus être modifiable ni supprimable depuis le partage |
    | Schedule | *Hourly* (toutes les heures) |
    | Hide Standard Output | coché — sans quoi chaque passage enverrait un courriel |
@@ -284,7 +285,7 @@ python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --no-recursive # cet
 
 Les `Metadata.py` sortent en **code 1** s'il reste quelque chose à corriger — fichiers non conformes en `--verify`, écritures en échec en `--apply` — et le résument en dernière ligne, de quoi les enchaîner dans un script.
 
-Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAPPDATA%\mkv_editors\tmdb` et `…\musicbrainz` (`~/.cache/mkv_editors/…` ailleurs) — jamais à côté de la médiathèque. Repasser sur une grosse collection ne refait donc pas tous les appels : mesuré sur 8 requêtes, 416 ms contre 56 ms. `--no-cache` ignore ce qui est en cache et le rafraîchit ; supprimer le dossier est sans conséquence, il se reconstruit tout seul.
+Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAPPDATA%\media_library\tmdb` et `…\musicbrainz` (`~/.cache/media_library/…` ailleurs) — jamais à côté de la médiathèque. Repasser sur une grosse collection ne refait donc pas tous les appels : mesuré sur 8 requêtes, 416 ms contre 56 ms. `--no-cache` ignore ce qui est en cache et le rafraîchit ; supprimer le dossier est sans conséquence, il se reconstruit tout seul.
 
 `--skip-done` saute ce qui est déjà conforme, `--language` change la langue TMDB (défaut `fr-FR` ; c'est elle qui détermine le pays de la date de sortie retenue pour les films), et les `--no-*` (`--no-cover`, `--no-date`, `--no-audio-names`, `--no-sub-names`, `--no-flags`, `--no-stats`) désactivent chacun une catégorie d'écriture. `--help` liste le reste.
 

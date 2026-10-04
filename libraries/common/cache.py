@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 TTL = 7 * 24 * 3600        # une semaine : une fiche TMDB ne change pas plus vite
-DOSSIER = "mkv_editors"
+DOSSIER = "media_library"
 
 def default_folder(source="tmdb"):
     """Emplacement du cache, selon le système. Un sous-dossier par service interrogé : une clé de TMDB ne doit jamais pouvoir répondre à MusicBrainz."""

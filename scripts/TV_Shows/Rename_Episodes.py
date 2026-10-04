@@ -27,9 +27,10 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cache, cli, lookup, naming, rename             # noqa: E402
-from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError            # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli, filenames, rename  # noqa: E402
+from libraries.video import lookup, naming  # noqa: E402
+from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError            # noqa: E402
 
 
 def plan_season(folder, season, threshold):
@@ -44,7 +45,7 @@ def plan_season(folder, season, threshold):
         return [], rename.Tally()
 
     width = max(2, len(str(max(by_num))))   # même nb de digits pour toute la saison
-    files = naming.files_with_ext(folder, naming.VIDEO_EXTS)
+    files = filenames.files_with_ext(folder, naming.VIDEO_EXTS)
     if not files:
         print("  aucun fichier video")
         return [], rename.Tally()
@@ -57,7 +58,7 @@ def plan_season(folder, season, threshold):
             continue
 
         n = ep.get("episode_number", 0)
-        stem = f"{n:0{width}d} - {naming.safe_name(ep.get('name', ''))}"
+        stem = f"{n:0{width}d} - {filenames.safe_name(ep.get('name', ''))}"
         dst = f.with_name(stem + f.suffix.lower())
         key = os.path.normcase(dst.name)
         if key in claimed:
@@ -66,7 +67,7 @@ def plan_season(folder, season, threshold):
         claimed[key] = f
 
         # Les sous-titres suivent même quand la vidéo, elle, est déjà bien nommée.
-        subs = [(src, cible) for src, cible in rename.sidecar_renames(f, stem) if cible != src]
+        subs = [(src, cible) for src, cible in rename.sidecar_renames(f, stem, naming.SUBTITLE_EXTS) if cible != src]
         if dst.name == f.name:
             tally.named += 1
             if subs:

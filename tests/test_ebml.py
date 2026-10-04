@@ -9,10 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import ebml
-
-
-# ---------------------------------------------------------------------------
+from libraries.video import ebml  # ---------------------------------------------------------------------------
 # Fabrication d'un .mkv minimal mais licite
 # ---------------------------------------------------------------------------
 def octets_id(ident):
@@ -262,7 +259,7 @@ class TestLectureDesMetadonnees(unittest.TestCase):
 
     def test_meme_forme_que_mkvextract(self):
         # Le XML de mkvextract et la lecture directe doivent rendre le même ensemble : c'est ce que compare mkv.tmdb_id.
-        from mkvlib import mkv
+        from libraries.video import mkv
         xml = ("<Tags><Tag><Targets><TargetTypeValue>50</TargetTypeValue></Targets>"
                "<Simple><Name>TMDB</Name><String>movie/9312</String></Simple>"
                "<Simple><Name>TITLE</Name><String>Mortal Kombat</String></Simple></Tag>"

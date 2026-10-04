@@ -4,7 +4,7 @@ Index.py — Sommaire HTML de toutes les séries d'une médiathèque.
 
 Écrit un index.html à la racine de --dir : un mur d'affiches, une par série, chacune menant à la fiche index.html de son dossier (ou à l'ancien recap.html, tant que la fiche n'a pas été régénérée). Tout est lu dans les fiches elles-mêmes (titre, année, saisons, affiche) : ni clé TMDB ni réseau.
 
-Fait pour tourner en TÂCHE PLANIFIÉE sur le NAS qui héberge la médiathèque : les fiches sont écrites sur un disque local puis transférées, et seul le NAS voit toutes les séries. Le script n'a besoin que de Python 3 et de mkvlib/ - aucun outil, aucune clé, aucun réseau - et ne réécrit index.html que si son contenu change.
+Fait pour tourner en TÂCHE PLANIFIÉE sur le NAS qui héberge la médiathèque : les fiches sont écrites sur un disque local puis transférées, et seul le NAS voit toutes les séries. Le script n'a besoin que de Python 3 et de libraries/ - aucun outil, aucune clé, aucun réseau - et ne réécrit index.html que si son contenu change.
 
 Une fiche écrite avant que les fiches portent ces informations figure sans affiche ni année : régénérer sa fiche les ajoute.
 
@@ -17,15 +17,16 @@ Usage :
   # TrueNAS SCALE : System > Advanced Settings > Cron Jobs, toutes les heures, en tant que
   # l'utilisateur propriétaire du partage (pas root : le fichier doit rester modifiable par SMB).
   # Mise en place détaillée dans le README.
-  python3 /mnt/<pool>/<outils>/mkv_editors/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply
+  python3 /mnt/<pool>/<outils>/media_library/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cli, showindex                               # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cli  # noqa: E402
+from libraries.video import showindex  # noqa: E402
 
 
 def parse_args():

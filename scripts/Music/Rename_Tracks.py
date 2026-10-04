@@ -27,11 +27,11 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer musiclib et mkvlib
-from mkvlib import cache, cli, naming, rename  # noqa: E402
-from musiclib import album as albums  # noqa: E402
-from musiclib import lookup  # noqa: E402
-from musiclib.musicbrainz import MusicBrainz, MusicBrainzError, release_url  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli, filenames, rename  # noqa: E402
+from libraries.music import album as albums  # noqa: E402
+from libraries.music import lookup  # noqa: E402
+from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError, release_url  # noqa: E402
 
 
 def track_stem(medium, track, width, with_disc=False):
@@ -39,7 +39,7 @@ def track_stem(medium, track, width, with_disc=False):
     position = track.get("position") or 0
     number = f"{medium.get('position')}-{position:0{width}d}" if with_disc else f"{position:0{width}d}"
     title = track.get("title") or (track.get("recording") or {}).get("title") or ""
-    return f"{number} - {naming.safe_name(title.replace('/', '-'))}"
+    return f"{number} - {filenames.safe_name(title.replace('/', '-'))}"
 
 
 def plan_album(found, release):
@@ -69,7 +69,7 @@ def plan_album(found, release):
         moves = target.name != entry.path.name
 
         if moves or lyrics or notes:
-            print(f"  {naming.relative_name(entry.path, album.folder)}")
+            print(f"  {filenames.relative_name(entry.path, album.folder)}")
         if moves:
             planned.append((entry.path, target))
             print(f"       -> {target.name}")

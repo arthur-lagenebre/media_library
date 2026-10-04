@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import naming
+from libraries.video import naming
 
 
 class TestTitreAnnee(unittest.TestCase):
@@ -85,13 +85,6 @@ class TestSaisons(unittest.TestCase):
 
 
 class TestNomsEcrits(unittest.TestCase):
-    def test_caracteres_interdits_windows(self):
-        brut = 'A<B>C:D"E/F' + chr(92) + 'G|H?I*J'
-        self.assertEqual(naming.safe_name(brut), "ABCDEFGHIJ")
-
-    def test_point_final_supprime(self):
-        self.assertEqual(naming.safe_name("Fin de partie..."), "Fin de partie")
-
     def test_date_francaise(self):
         self.assertEqual(naming.fr_date("2024-12-10"), "10 décembre 2024")
         self.assertEqual(naming.fr_date(""), "")

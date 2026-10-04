@@ -8,8 +8,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from musiclib import album as albums
-from musiclib import lookup
+from libraries.music import album as albums
+from libraries.music import lookup
 from scripts.Music import Rename_Tracks as renamer
 from tests.test_album import DOUBLE, OUTRUN, piste
 from tests.test_flac import fichier

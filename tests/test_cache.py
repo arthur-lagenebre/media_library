@@ -9,9 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import cache
-
-
+from libraries.common import cache
 class CacheTestCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -99,7 +97,7 @@ class TestEmplacement(unittest.TestCase):
         # Rien ne doit apparaitre à côté des films.
         dossier = cache.default_folder()
         self.assertEqual(dossier.name, "tmdb")
-        self.assertEqual(dossier.parent.name, "mkv_editors")
+        self.assertEqual(dossier.parent.name, "media_library")
 
 
 if __name__ == "__main__":

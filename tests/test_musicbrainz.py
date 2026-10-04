@@ -12,9 +12,9 @@ from urllib.error import URLError
 from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import cache
-from musiclib import musicbrainz as mb_mod
-from musiclib.musicbrainz import MusicBrainz, MusicBrainzError
+from libraries.common import cache
+from libraries.music import musicbrainz as mb_mod
+from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError
 from tests.test_tmdb import FakeResponse, http_error
 
 
@@ -38,7 +38,7 @@ class ClientTestCase(unittest.TestCase):
 class TestRequetes(ClientTestCase):
     def test_user_agent_et_format_json(self):
         _, reqs, _ = self.call([FakeResponse(b"{}")])
-        self.assertIn("mkv_editors", reqs[0].headers["User-agent"])
+        self.assertIn("media_library", reqs[0].headers["User-agent"])
         self.assertTrue(reqs[0].full_url.endswith("release/x?fmt=json"))
 
     def test_format_ajoute_apres_une_requete_existante(self):

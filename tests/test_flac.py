@@ -10,8 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from musiclib import flac
-
+from libraries.music import flac
 SON = bytes(range(256)) * 40          # tient lieu de trames audio : seul compte qu'elles ne bougent pas
 
 

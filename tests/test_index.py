@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import showindex
+from libraries.video import showindex
 from scripts.TV_Shows import Index as index
 from scripts.TV_Shows import Metadata as series
 from tests.test_flux import FauxTmdbSerie, FluxTestCase
@@ -151,6 +151,26 @@ class TestAfficheDesFiches(FluxTestCase):
             [entry] = showindex.find_entries(Path(d))
             self.assertTrue(entry.poster.startswith("data:image/jpeg;base64,"))
             self.assertFalse((Path(d) / "index.html").exists())   # Metadata.py n'y touche pas
+
+
+class TestMarqueDuSommaire(unittest.TestCase):
+    """Un sommaire écrit sous l'ancien nom du projet reste le nôtre : il ne doit pas devenir un fichier étranger qu'on refuse de réécrire."""
+
+    def ecrire(self, contenu):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        page = Path(d.name) / "index.html"
+        page.write_text(contenu, encoding="utf-8")
+        return page
+
+    def test_marque_actuelle(self):
+        self.assertTrue(showindex.is_ours(self.ecrire(f"<head>{showindex.GENERATOR_META}</head><style>")))
+
+    def test_marque_d_avant_le_renommage(self):
+        self.assertTrue(showindex.is_ours(self.ecrire("<head><meta name='generator' content='mkv_editors-index'></head><style>")))
+
+    def test_page_etrangere(self):
+        self.assertFalse(showindex.is_ours(self.ecrire("<head><title>Mon site</title></head><style>")))
 
 
 if __name__ == "__main__":

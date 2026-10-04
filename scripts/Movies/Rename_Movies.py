@@ -23,9 +23,10 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cache, cli, lookup, mkv, naming, rename        # noqa: E402
-from mkvlib.tmdb import Tmdb, TmdbAuthError                       # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli, filenames, rename  # noqa: E402
+from libraries.video import lookup, mkv, naming  # noqa: E402
+from libraries.video.tmdb import Tmdb, TmdbAuthError                       # noqa: E402
 
 
 def target_stem(film, order, pin_id):
@@ -33,7 +34,7 @@ def target_stem(film, order, pin_id):
 
     L'ordre de saga est conservé parce qu'il porte une information que TMDB n'a pas : celle que TU as choisie pour regarder la série de films.
     """
-    titre = naming.safe_name(film.get("title", ""))
+    titre = filenames.safe_name(film.get("title", ""))
     annee = (film.get("release_date") or "")[:4]
     stem = f"{titre} ({annee})" if annee else titre
     if order:
@@ -64,7 +65,7 @@ def plan_entry(entry, film, order, pin_id):
     for video in entry.files:
         renames.append((video, video.with_name(stem + video.suffix.lower())))
         # Les sous-titres posés à côté doivent suivre leur vidéo.
-        renames += rename.sidecar_renames(video, stem)
+        renames += rename.sidecar_renames(video, stem, naming.SUBTITLE_EXTS)
     return renames
 
 

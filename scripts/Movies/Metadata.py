@@ -24,7 +24,7 @@ Dans le terminal : candidats numérotés, le plus vote en tête, Entrée le gard
 Hors terminal (sortie redirigée, CI), les films restent de côté plutôt que de bloquer le passage ; --no-ask rétablit l'ancien comportement, le premier résultat sans rien demander.
 
 Dépendances EXTERNES (dans le PATH) : mkvpropedit + mkvmerge + mkvextract (MKVToolNix), ffprobe (FFmpeg). Aucune dépendance pip. Necessite Internet (API TMDB + jaquettes).
-Le code partage avec les autres scripts du dépôt vit dans mkvlib/ (à la racine).
+Le code partage avec les autres scripts du dépôt vit dans libraries/ (à la racine).
 
 Clé TMDB : ligne TMDB_KEY=... du fichier .env, à la racine du dépôt. C'est la seule source, et le même .env sert à tous les scripts : la clé n'est écrite qu'une fois.
 
@@ -78,10 +78,12 @@ from datetime import date, datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cli, embed, favicon, filmpage, lookup, mkv, naming, textfile  # noqa: E402
-from mkvlib import saga as saga_module  # noqa: E402
-from mkvlib.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli, textfile  # noqa: E402
+from libraries.common.report import Report  # noqa: E402
+from libraries.video import artwork, embed, favicon, filmpage, lookup, mkv, naming  # noqa: E402
+from libraries.video import saga as saga_module  # noqa: E402
+from libraries.video.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
 
 
@@ -177,9 +179,9 @@ def process_movie(entry, movie, lectures, args, opts, tmdb):
     Un film peut occuper plusieurs fichiers : chacun reçoit les mêmes métadonnées, et son nom est rappelé pour qu'on sache lequel parle.
     """
     if report_conflicts(entry, lectures, opts):
-        return mkv.Report(matched=1, total=1, skipped=1)
+        return Report(matched=1, total=1, skipped=1)
 
-    report = mkv.Report(matched=1, total=1)
+    report = Report(matched=1, total=1)
     for path in entry.files:
         if len(entry.files) > 1:
             print(f"      · {path.name}")
@@ -326,7 +328,7 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         library.doubts.append((entry.display, movie, doubts))
     if args.no_tag:
         print("      film non modifie (--no-tag)")
-        report = mkv.Report(matched=1, total=1)
+        report = Report(matched=1, total=1)
     else:
         report = process_movie(entry, movie, library.lectures, args, opts, tmdb)
     if args.artwork and entry.owns_folder:
@@ -349,10 +351,10 @@ def resolve_pending(attente, library, args, opts, tmdb):
         for entry, doute in attente:
             print(f"  [A CONFIRMER] {entry.display} -> {lookup.describe(doute.candidates[0])}")
             library.note(entry.display, None, "[A CONFIRMER]")
-        return mkv.Report(matched=len(attente), total=len(attente), pending=len(attente))
+        return Report(matched=len(attente), total=len(attente), pending=len(attente))
 
     print("  Entree = garder le 1er, i = laisser de cote, q = arreter les questions.\n")
-    report, arrete = mkv.Report(), False
+    report, arrete = Report(), False
     for numero, (entry, doute) in enumerate(attente, 1):
         print(f"[{numero}/{len(attente)}] {entry.display}   (recherche : '{doute.query}')")
         for note in doute.notes:
@@ -364,13 +366,13 @@ def resolve_pending(attente, library, args, opts, tmdb):
             arrete, choix = True, cli.ASK_SKIP
         if choix == cli.ASK_SKIP:
             print("      [NON TRAITE] association non confirmee\n")
-            report += mkv.Report(matched=1, total=1, pending=1)
+            report += Report(matched=1, total=1, pending=1)
             library.note(entry.display, None, "[A CONFIRMER]")
             continue
         candidat = doute.candidates[choix]
         movie = movie_details(candidat["id"], doute.order, args, tmdb)
         if movie is None:
-            report += mkv.Report(total=1)
+            report += Report(total=1)
             continue
         print(f"      -> {lookup.describe(candidat)}")
         print(f"      pour ne plus avoir la question : ajoute "
@@ -909,7 +911,7 @@ def main():
     if corrections:
         print(f"{len(corrections)} film(s) replace(s) par leur saga TMDB.\n")
 
-    report, library = mkv.Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)))
+    report, library = Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)))
     if library.approved:
         print(f"{len(library.approved)} film(s) valide(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signales.\n")
     attente = []
@@ -923,7 +925,7 @@ def main():
             print()
             continue
         if movie is None:
-            report += mkv.Report(total=1)
+            report += Report(total=1)
             library.note(entry.display, None, "[NON ASSOCIE]")
             continue
         report += handle_movie(entry, movie, library, args, opts, tmdb)

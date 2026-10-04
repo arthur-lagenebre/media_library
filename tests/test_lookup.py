@@ -8,8 +8,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import lookup
-from mkvlib.tmdb import TmdbError
+from libraries.video import lookup
+from libraries.video.tmdb import TmdbError
 
 class FauxTmdb:
     """Client TMDB minimal : rejoue des réponses, retient les recherches faites."""

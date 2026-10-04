@@ -10,9 +10,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import mkv
-
-
+from libraries.video import mkv
 def piste(kind, **props):
     return {"type": kind, "codec": props.pop("codec", ""), "properties": props}
 
@@ -363,25 +361,6 @@ class TestOutilsExternes(unittest.TestCase):
         with mock.patch.object(mkv.subprocess, "run", faux):
             code, msg = mkv.write("film.mkv", {"tracks": []}, target, opts, None)
         self.assertEqual((code, msg), (0, ""))
-
-
-class TestReport(unittest.TestCase):
-    def test_addition(self):
-        total = mkv.Report(1, 1) + mkv.Report(2, 3, diffs=1) + mkv.Report(failures=2)
-        self.assertEqual((total.matched, total.total, total.diffs, total.failures), (3, 4, 1, 2))
-
-    def test_code_de_sortie_nul_quand_tout_va_bien(self):
-        self.assertEqual(mkv.Report(matched=5, total=5).exit_code, 0)
-
-    def test_code_de_sortie_non_nul(self):
-        # --verify doit pouvoir servir dans un script.
-        self.assertEqual(mkv.Report(diffs=1).exit_code, 1)
-        self.assertEqual(mkv.Report(failures=1).exit_code, 1)
-
-    def test_epilogue(self):
-        self.assertEqual(mkv.Report().epilogue(), "")
-        self.assertEqual(mkv.Report(diffs=2).epilogue(), "2 fichier(s) non conforme(s)")
-        self.assertEqual(mkv.Report(diffs=1, failures=3).epilogue(), "1 fichier(s) non conforme(s) ; 3 ecriture(s) en echec")
 
 
 class TestLectureParallele(unittest.TestCase):

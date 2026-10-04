@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 API = "https://musicbrainz.org/ws/2"
 WEB_BASE = "https://musicbrainz.org"
 COVER_ART = "https://coverartarchive.org"
-USER_AGENT = "mkv_editors/1.0 ( https://github.com/arthur-lagenebre/mkv_editors )"
+USER_AGENT = "media_library/1.0 ( https://github.com/arthur-lagenebre/media_library )"
 
 # Une requête par seconde, c'est la règle ; mesuré, 1,1 s d'écart entre deux départs passe là où une relance à 1 s déclenchait déjà un 503.
 MIN_INTERVAL = 1.1

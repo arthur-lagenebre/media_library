@@ -6,9 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import textfile
-
-
+from libraries.common import textfile
 class TestTextfile(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

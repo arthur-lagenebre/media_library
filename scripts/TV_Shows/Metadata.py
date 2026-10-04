@@ -18,7 +18,7 @@ Dépendances EXTERNES (à avoir dans le PATH) :
   - mkvpropedit, mkvmerge et mkvextract   -> paquet MKVToolNix
   - ffprobe                   -> paquet FFmpeg  (pour le débit audio + la vérif. des durées)
 
-Aucune dépendance pip. Necessite un accès Internet (API TMDB + jaquettes). Le code partage avec les autres scripts du dépôt vit dans mkvlib/ (à la racine).
+Aucune dépendance pip. Necessite un accès Internet (API TMDB + jaquettes). Le code partage avec les autres scripts du dépôt vit dans libraries/ (à la racine).
 
 Installation des outils (Windows) :
   winget install MoritzBunkus.MKVToolNix
@@ -74,9 +74,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import artwork, cache, cast, cli, embed, favicon, lookup, mkv, naming, showindex, textfile  # noqa: E402
-from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli, textfile  # noqa: E402
+from libraries.common.report import Report  # noqa: E402
+from libraries.video import artwork, cast, embed, favicon, lookup, mkv, naming, showindex  # noqa: E402
+from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
 POSTER_SIZE = "w185"    # affiche que la fiche porte pour le sommaire des séries
@@ -190,9 +192,9 @@ def process_season(mkv_dir, season, args, opts, tmdb):
     plan = build_plan(mkv_dir, season, args, opts)
     if not plan:
         print(f"  Aucun .mkv dans {mkv_dir}")
-        return mkv.Report()
+        return Report()
 
-    report = mkv.Report(total=len(plan))
+    report = Report(total=len(plan))
     for c in plan:
         if c.episode is None:
             print(f"  [NON ASSOCIE] {c.path.name}")
@@ -554,7 +556,7 @@ def main():
     seasons = naming.find_seasons(args.dir)
     if seasons:
         # --- Multi-saisons : --dir est la racine de la série ---
-        report = mkv.Report()
+        report = Report()
         processed = []
         for sub, num in seasons:
             print(f"--- {sub.name}  (TMDB saison {num}) ---")
@@ -581,7 +583,7 @@ def main():
             data = tmdb.season(args.tmdb_id, num)
         except TmdbError as e:
             sys.exit(f"Echec de l'appel TMDB (saison {num}) : {e}")
-        report = mkv.Report()
+        report = Report()
         if args.no_tag:
             print("  episodes non modifies (--no-tag)")
         else:

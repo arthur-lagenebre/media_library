@@ -13,7 +13,9 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
-from . import favicon, textfile
+from libraries.common import textfile
+
+from . import favicon
 
 INDEX_NAME = "index.html"
 # La fiche de chaque série porte le même nom que le sommaire : un navigateur ou un serveur ouvre index.html de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
@@ -22,8 +24,10 @@ LEGACY_NAME = "recap.html"
 DEFAULT_TITLE = "Séries"
 
 # Signe qu'un index.html est bien le nôtre, et peut être réécrit sans demander.
-GENERATOR = "mkv_editors-index"
+GENERATOR = "media_library-index"
 GENERATOR_META = f"<meta name='generator' content='{GENERATOR}'>"
+# La marque d'avant le renommage du projet : un sommaire déjà écrit (sur le NAS, souvent) reste le nôtre, et sera réécrit avec la nouvelle au prochain passage.
+LEGACY_GENERATORS = ("mkv_editors-index",)
 
 # L'en-tête d'une fiche s'arrête au <style> : au-delà commencent les images, des dizaines de Mo qu'il est inutile de lire.
 HEAD_END = "<style>"
@@ -224,7 +228,8 @@ def build_html(library_name, entries):
 
 def is_ours(path):
     """Vrai si `path` est un sommaire écrit par ce module."""
-    return GENERATOR_META in read_head(path)
+    head = read_head(path)
+    return any(f"<meta name='generator' content='{name}'>" in head for name in (GENERATOR, *LEGACY_GENERATORS))
 
 
 def write(root, apply, title=None):

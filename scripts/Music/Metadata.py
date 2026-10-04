@@ -43,12 +43,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer musiclib et mkvlib
-from mkvlib import cache, cli, naming  # noqa: E402
-from mkvlib.mkv import Report  # noqa: E402
-from musiclib import album as albums  # noqa: E402
-from musiclib import flac, lookup  # noqa: E402
-from musiclib.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError, release_url  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cache, cli  # noqa: E402
+from libraries.common.report import Report  # noqa: E402
+from libraries.common import filenames  # noqa: E402
+from libraries.music import album as albums  # noqa: E402
+from libraries.music import flac, lookup  # noqa: E402
+from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError, release_url  # noqa: E402
 
 
 # ----------------------------------------------------------------------------
@@ -111,7 +112,7 @@ def process_album(found, release, group, args, mb):
         # L'Explorateur de Windows ne lit rien d'un en-tête de plus de 4 Mio : quand c'est le padding qui l'enfle, recopier le fichier suffit à le rendre lisible.
         shrink = meta.audio_offset > flac.WINDOWS_HEADER_LIMIT and meta.padding > flac.MAX_PADDING
 
-        name = naming.relative_name(entry.path, album.folder)       # CD1/ et CD2/ se distinguent
+        name = filenames.relative_name(entry.path, album.folder)       # CD1/ et CD2/ se distinguent
         print(f"  [{medium.get('position')}-{track.get('position'):02d}] {name} -> {track.get('title')}")
         for note in albums.entry_notes(entry, track):
             print(f"      /!\\ {note}")

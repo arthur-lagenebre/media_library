@@ -6,9 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from musiclib import album, flac
-
-
+from libraries.music import album, flac
 def meta(*lignes, duree=None):
     """flac.Metadata réduit à ses tags (et à sa durée si on la donne)."""
     m = flac.Metadata(blocks=[], audio_offset=0, comments=[tuple(l.split("=", 1)) for l in lignes])

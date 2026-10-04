@@ -9,6 +9,8 @@ from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from libraries.common.filenames import files_with_ext
+
 # --------------------------------------------------------------------------
 # Saisons
 # --------------------------------------------------------------------------
@@ -251,12 +253,6 @@ def extract_tmdb_id(name):
     reste = (name[:m.start()] + " " + name[m.end():])
     return m.group(1), re.sub(r"\s+", " ", reste).strip(" -")
 
-def safe_name(s):
-    """Nettoie un titre pour en faire un nom de fichier valide sous Windows."""
-    s = re.sub(r'[<>:"/\\|?*]', "", s or "")
-    s = re.sub(r"\s+", " ", s).strip()
-    return s.rstrip(". ")
-
 FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
 
 def fr_date(iso):
@@ -272,23 +268,6 @@ def fr_date(iso):
 # --------------------------------------------------------------------------
 VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".flv", ".webm", ".mpg", ".mpeg", ".mts", ".vob", ".ogm"}
 SUBTITLE_EXTS = {".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt", ".sup", ".smi"}
-
-def files_with_ext(folder, extensions):
-    """Fichiers d'un dossier dont l'extension figure dans `extensions`, triés.
-
-    Un dossier illisible rend une liste vide : l'existence de --dir est vérifiée une fois pour toutes au démarrage, le reste n'a pas à s'en soucier.
-    """
-    try:
-        return sorted(f for f in Path(folder).iterdir() if f.is_file() and f.suffix.lower() in extensions)
-    except OSError:
-        return []
-
-def relative_name(path, root):
-    """Chemin affichable : ce qui distingue le fichier, sans le préfixe commun."""
-    try:
-        return str(Path(path).relative_to(root))
-    except ValueError:                               # hors de la racine (lien, montage)
-        return str(path)
 
 def match_episode(filename, episodes, threshold, by_num=None):
     """(épisode|None, méthode) pour un fichier : par numéro, sinon par titre.

@@ -9,8 +9,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import embed
-from mkvlib.tmdb import TmdbError
+from libraries.video import embed
+from libraries.video.tmdb import TmdbError
 
 class FauxTmdb:
     def __init__(self, echecs=()):

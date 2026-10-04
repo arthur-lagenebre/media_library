@@ -12,9 +12,9 @@ from unittest import mock
 from urllib.error import HTTPError, URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import cache
-from mkvlib import tmdb as tmdb_mod
-from mkvlib.tmdb import Tmdb, TmdbAuthError, TmdbError, release_region
+from libraries.common import cache
+from libraries.video import tmdb as tmdb_mod
+from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError, release_region
 
 
 class FakeResponse(io.BytesIO):

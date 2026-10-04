@@ -6,7 +6,8 @@ Trois pièges que le renommage naïf ignore : sous Windows, changer seulement la
 import os
 from dataclasses import dataclass
 
-from . import naming
+from . import filenames
+
 
 def free_name(path):
     """Nom temporaire libre à côté de `path`, pour un renommage en deux temps."""
@@ -94,14 +95,14 @@ class Tally:
         return Tally(self.named + other.named, self.total + other.total, self.subtitles + other.subtitles)
 
 
-def sidecar_renames(video, new_stem, extensions=naming.SUBTITLE_EXTS):
-    """[(source, destination), ...] pour les sous-titres posés à côté d'une vidéo - ou les paroles à côté d'une piste, avec d'autres `extensions`.
+def sidecar_renames(video, new_stem, extensions):
+    """[(source, destination), ...] pour les fichiers posés à côté d'une vidéo (ses sous-titres) ou d'une piste (ses paroles), selon `extensions`.
 
     Un sous-titre suit sa vidéo s'il porte le même nom : ce qui vient après est conservé tel quel, pour ne pas perdre la langue ni les drapeaux ('S01E02.fr.forced.srt' -> '01 - Titre.fr.forced.srt').
     """
     renames = []
     prefixe = video.stem.lower() + "."
-    for f in naming.files_with_ext(video.parent, extensions):
+    for f in filenames.files_with_ext(video.parent, extensions):
         if not f.name.lower().startswith(prefixe):
             continue
         suite = f.name[len(video.stem):]

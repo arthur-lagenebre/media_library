@@ -25,8 +25,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cli, lookup, naming, showindex                # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cli  # noqa: E402
+from libraries.video import lookup, naming, showindex  # noqa: E402
 
 METADATA = Path(__file__).resolve().with_name("Metadata.py")
 

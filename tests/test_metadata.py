@@ -11,8 +11,9 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import cast, lookup, mkv, naming
-from mkvlib.tmdb import TmdbError
+from libraries.video import cast, lookup, mkv, naming
+from libraries.video.tmdb import TmdbError
+from libraries.common.report import Report
 from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 
@@ -34,7 +35,7 @@ class TestPlanDeSaison(unittest.TestCase):
         # Régression : le retour à 2 valeurs contre 3 attendues faisait planter main().
         with tempfile.TemporaryDirectory() as d:
             resultat, sortie = self.process(Path(d))
-        self.assertEqual(resultat, mkv.Report())
+        self.assertEqual(resultat, Report())
         self.assertIn("Aucun .mkv", sortie)
 
     def test_fichier_illisible_reste_non_bloquant(self):
@@ -151,7 +152,7 @@ class TestFilmNonTraite(unittest.TestCase):
         self.assertNotIn("+Forced", sortie)       # cd1.mkv non plus n a été préparé
 
     def test_le_bilan_le_compte_et_le_signale(self):
-        report = mkv.Report(matched=1, total=1) + mkv.Report(matched=1, total=1, skipped=1)
+        report = Report(matched=1, total=1) + Report(matched=1, total=1, skipped=1)
         self.assertEqual((report.total, report.skipped), (2, 1))
         self.assertIn("1 non traite(s)", report.epilogue())
         self.assertEqual(report.exit_code, 1)

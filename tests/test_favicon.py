@@ -8,7 +8,7 @@ from urllib.parse import unquote
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from mkvlib import favicon, showindex
+from libraries.video import favicon, showindex
 from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 

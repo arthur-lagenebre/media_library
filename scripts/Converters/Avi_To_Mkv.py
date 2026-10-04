@@ -28,9 +28,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cli, naming  # noqa: E402
-from mkvlib.mkv import first_error, identify, probe, run_tool  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cli, filenames  # noqa: E402
+from libraries.video import naming  # noqa: E402
+from libraries.video.mkv import first_error, identify, probe, run_tool  # noqa: E402
 
 TEXT_SUB_EXT = {".srt", ".ass", ".ssa"}   # sous-titres texte : eux seuls ont un encodage
 SUB_EXT = TEXT_SUB_EXT | {".idx"}         # un .sub n'est pas cité : mkvmerge le prend avec son .idx
@@ -112,7 +113,7 @@ def find_subtitles(video):
 
     Un .sub est ignoré volontairement : en VobSub, c'est le .idx qui décrit les deux, et mkvmerge va chercher le .sub tout seul. Le citer aurait fait entrer la même piste deux fois.
     """
-    return [f for f in naming.files_with_ext(video.parent, SUB_EXT)
+    return [f for f in filenames.files_with_ext(video.parent, SUB_EXT)
             if f.stem == video.stem or f.stem.startswith(video.stem + ".")]
 
 
@@ -252,7 +253,7 @@ def main():
 
     entries, start = [], time.time()
     for n, path in enumerate(files, 1):
-        name = naming.relative_name(path, root)
+        name = filenames.relative_name(path, root)
         print(f"  [{n}/{len(files)}] {name}")
         status, detail = convert(path, args, check_duration)
         mark = f"[{status.upper()}] " if status in ("erreur", "ecart") else ""

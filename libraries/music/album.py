@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from mkvlib import naming
+from libraries.common import filenames
 
 AUDIO_EXTS = {".flac"}                     # les formats qu'on sait écrire
 OTHER_AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
@@ -72,10 +72,10 @@ def find_albums(root):
         subs = _subdirs(folder)
         discs = [s for s in subs if DISC_DIR_RE.match(s.name)]
         places = [folder] + discs
-        files = [f for place in places for f in naming.files_with_ext(place, AUDIO_EXTS)]
-        others = [f for place in places for f in naming.files_with_ext(place, OTHER_AUDIO_EXTS)]
+        files = [f for place in places for f in filenames.files_with_ext(place, AUDIO_EXTS)]
+        others = [f for place in places for f in filenames.files_with_ext(place, OTHER_AUDIO_EXTS)]
         if files or others:
-            display = naming.relative_name(folder, root) if folder != root else folder.name
+            display = filenames.relative_name(folder, root) if folder != root else folder.name
             albums.append(Album(folder, files, display, others))
         for sub in subs:
             if sub not in discs:

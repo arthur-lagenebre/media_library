@@ -40,7 +40,7 @@ def release_region(language):
 
 
 class Tmdb:
-    def __init__(self, key, language="fr-FR", user_agent="mkv_editors/1.0", timeout=30, attempts=3, cache=None):
+    def __init__(self, key, language="fr-FR", user_agent="media_library/1.0", timeout=30, attempts=3, cache=None):
         self.key = key
         self.language = language
         self.user_agent = user_agent

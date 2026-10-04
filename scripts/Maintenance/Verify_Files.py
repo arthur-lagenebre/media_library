@@ -6,7 +6,7 @@ Un film peut se lire du début à la fin et avoir le conteneur abîmé : la vid�
 Ça se manifeste par un "erreur dans la structure du fichier Matroska à la position ..." que mkvpropedit répète à chaque passage, et par rien d'autre.
 
 Rien n'est demandé à MKVToolNix pour juger la structure : mesure faite sur des fichiers volontairement cassés, mkvmerge (même en démultiplexant tout vers NUL) et mkvinfo se resynchronisent en silence et rendent 0.
-Seul mkvpropedit proteste, mais il ÉCRIT dans le fichier et laisse passer une troncature. La chaîne est donc suivie directement (mkvlib/ebml.py), en LECTURE SEULE.
+Seul mkvpropedit proteste, mais il ÉCRIT dans le fichier et laisse passer une troncature. La chaîne est donc suivie directement (libraries/video/ebml.py), en LECTURE SEULE.
 
 Deux profondeurs, parce qu'une lecture au hasard coûte ~70 ms sur un partage réseau et qu'un film de 9 Go compte 2500 clusters :
   (défaut)   les points de repère - l'index SeekHead, la table Cues, la queue du fichier. Le prix ne dépend pas de la taille du film : ~0,5 s de structure, plus la lecture d'en-tête par mkvmerge qui coûte le double.
@@ -39,9 +39,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer mkvlib
-from mkvlib import cli, ebml, naming  # noqa: E402
-from mkvlib.mkv import first_error, identify, run_tool  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+from libraries.common import cli, filenames  # noqa: E402
+from libraries.video import ebml, naming  # noqa: E402
+from libraries.video.mkv import first_error, identify, run_tool  # noqa: E402
 
 LARGEUR = 100         # ligne de progression : de quoi tenir dans un terminal étroit
 SECONDES_PAR_GO = 10  # --full lit le fichier entier : mesuré sur un partage gigabit, qui rend ~110 Mo/s
@@ -157,7 +158,7 @@ def write_log(destination, racine, total, defauts, repares, echecs, complet, rec
     if not defauts:
         lignes.append("Aucun defaut de structure.")
     for chemin, message in defauts:
-        nom = naming.relative_name(chemin, racine)
+        nom = filenames.relative_name(chemin, racine)
         etat = "repare" if nom in repares else ("REPARATION ECHOUEE" if nom in echecs else "non repare")
         lignes += [nom, f"    {message}", f"    -> {etat}", ""]
     if echecs:
@@ -195,11 +196,11 @@ def main():
     defauts = []
     debut = time.time()
     for n, chemin in enumerate(fichiers, 1):
-        progress(n, total, naming.relative_name(chemin, racine))
+        progress(n, total, filenames.relative_name(chemin, racine))
         message = check(chemin, args.full)
         if message:
             clear_line()
-            print(f"  [DEFAUT] {naming.relative_name(chemin, racine)}")
+            print(f"  [DEFAUT] {filenames.relative_name(chemin, racine)}")
             print(f"           {message}")
             defauts.append((chemin, message))
     clear_line()
@@ -209,7 +210,7 @@ def main():
         print(f"\nReparation de {len(defauts)} fichier(s) : remux, controle du "
               "resultat, puis remplacement.")
         for n, (chemin, _) in enumerate(defauts, 1):
-            nom = naming.relative_name(chemin, racine)
+            nom = filenames.relative_name(chemin, racine)
             print(f"  [{n}/{len(defauts)}] {nom} ...", end="", flush=True)
             reussi, souci = repair(chemin, args.full)
             print(" repare" if reussi else f" ECHEC : {souci}")
