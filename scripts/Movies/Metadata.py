@@ -672,13 +672,17 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             balise = "a" if lien else "div"
             # L'ancre : le retour depuis la fiche du film ramène à sa vignette.
             ancre = f" id='{filmpage.anchor(card.movie_id)}'" if lien else ""
+            # L'index A-Z ne vise que ce qui est rangé par ordre alphabétique : les films seuls, pas ceux d'une saga (classés par date de sortie).
+            lettre = f" data-i='{layout.initial(card.title)}'" if titre == "Hors saga" else ""
             vignettes.append(
-                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}>"
+                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}{lettre}>"
                 f"<div class='aff'>{img}{manque}</div>"
                 f"<div class='t'>{esc(card.title)}</div>"
                 f"<div class='y'>{esc(card.year)}{duree}</div>"
                 f"</{balise}>")
-        blocs.append(f"<section><h2>{esc(titre)}{compteur}</h2>"
+        # Une saga se range sous la première lettre de son nom ; "Hors saga" n'est pas un nom, ses films le sont.
+        lettre = f" data-i='{layout.initial(titre)}'" if titre != "Hors saga" else ""
+        blocs.append(f"<section><h2{lettre}>{esc(titre)}{compteur}</h2>"
                      f"<div class='grid'>{''.join(vignettes)}</div></section>")
 
     sagas = sum(1 for titre, _ in sections if titre != "Hors saga")
@@ -726,7 +730,8 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             f"<div class='sub'>{esc(resume)}</div>"
             "<div class='bar'>"
             "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
-            + layout.mode_button() + "</div>") +
+            + layout.mode_button() + "</div>"
+            + layout.index_nav()) +
         f"{''.join(blocs)}"
         "<p class='none' hidden>Aucun film ne correspond.</p>"
         "<script>"
@@ -739,7 +744,7 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!q};"
         # Le choix de présentation est gardé dans le navigateur. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, en 7 par ligne.
-        + layout.mode_script() +
+        + layout.mode_script() + layout.index_script() +
         "</script></div></body></html>"
     )
 

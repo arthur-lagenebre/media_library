@@ -138,9 +138,9 @@ CSS_BASE = (
 # ----------------------------------------------------------------------------
 def build_index(library_name, sections, covers, pages=()):
     """Rend le sommaire. 'sections' = [(nom, [Series])] ; 'covers' = {id de série: data-URI} ; 'pages' = ids des séries dont la page existe (les autres vignettes restent inertes plutôt que de mener à un lien cassé)."""
-    blocks = []
+    blocks, chips = [], []
     n_series = n_volumes = 0
-    for name, series_list in sections:
+    for number, (name, series_list) in enumerate(sections):
         n_series += len(series_list)
         count = sum(len(s.volumes) for s in series_list)
         section = series_list[0].section             # "Comics · DC" compte ses tomes comme "Comics"
@@ -151,12 +151,13 @@ def build_index(library_name, sections, covers, pages=()):
             tag = "a" if link else "div"
             warn = " warn" if progress(series) else ""
             tiles.append(
-                f"<{tag} class='bk'{link} data-s='{esc(_search_text(series))}'>"
+                f"<{tag} class='bk'{link} data-s='{esc(_search_text(series))}' data-i='{layout.initial(series.name)}'>"
                 f"<div class='aff'>{_cover(series.cover_volume.key, covers.get(series.id), series.name)}</div>"
                 f"<div class='t'>{esc(series.name)}</div>"
                 f"<div class='y{warn}'>{esc(_count_label(series))}</div>"
                 f"</{tag}>")
-        blocks.append(f"<section><h2>{esc(name)}<span class='cnt'>{len(series_list)} · {esc(shelf.unit(section, count))}</span></h2>"
+        chips.append(f"<button class='chip' type='button' data-t='sec{number}'>{esc(name)}</button>")
+        blocks.append(f"<section id='sec{number}'><h2>{esc(name)}<span class='cnt'>{len(series_list)} · {esc(shelf.unit(section, count))}</span></h2>"
                       f"<div class='grid'>{''.join(tiles)}</div></section>")
 
     summary = f"{n_series} séries · {n_volumes} volumes"
@@ -181,7 +182,8 @@ def build_index(library_name, sections, covers, pages=()):
             f"<div class='sub'>{esc(summary)}</div>"
             "<div class='bar'>"
             "<input class='filter' type='search' placeholder='Rechercher une série, un auteur…' aria-label='Rechercher une série ou un auteur'>"
-            + layout.mode_button() + "</div>") +
+            + f"<div class='line'>{layout.mode_button()}{''.join(chips)}</div></div>"
+            + layout.index_nav()) +
         f"{''.join(blocks)}"
         "<p class='none' hidden>Aucune série ne correspond.</p>"
         "<script>"
@@ -193,7 +195,7 @@ def build_index(library_name, sections, covers, pages=()):
         "var ok=!q||n(c.getAttribute('data-s')).indexOf(q)>=0;c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!q};"
-        + layout.mode_script() +
+        + layout.mode_script() + layout.index_script() +
         "</script></div></body></html>"
     )
 

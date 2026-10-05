@@ -688,6 +688,17 @@ class TestRenduRecapFilms(unittest.TestCase):
         self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<button class='mode'"))
         self.assertIn(".bar{display:flex;flex-direction:column", html)         # le bouton passe sous la zone de recherche
 
+    def test_index_alphabetique_des_sagas_et_des_films_seuls(self):
+        saga = [films.Card("Zeta 2", "2010-01-01"), films.Card("Alpha 1", "2008-01-01")]    # classés par date : seule la saga compte
+        seuls = [films.Card("Éclipse"), films.Card("12 hommes")]
+        html = self.rendre([("Alien", saga), ("Hors saga", seuls)])
+        self.assertIn("<nav class='az'", html)
+        self.assertIn("<h2 data-i='A'>Alien</h2>", html)                             # la saga, sous son nom
+        self.assertIn("<h2>Hors saga</h2>", html)                                    # ce n'est pas un nom
+        self.assertIn("class='film' data-i='E'", html)
+        self.assertIn("class='film' data-i='#'", html)                               # un chiffre se range sous #
+        self.assertNotIn("data-i='Z'", html)                                         # les films d'une saga n'ont pas d'entrée propre
+
     def test_bouton_de_largeur(self):
         html = self.rendre([("Hors saga", [films.Card("Heat")])])
         self.assertIn("<button class='mode'", html)
