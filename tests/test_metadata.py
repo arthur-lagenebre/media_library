@@ -699,6 +699,16 @@ class TestRenduRecapFilms(unittest.TestCase):
         self.assertIn("class='film' data-i='#'", html)                               # un chiffre se range sous #
         self.assertNotIn("data-i='Z'", html)                                         # les films d'une saga n'ont pas d'entrée propre
 
+    def test_menu_des_genres(self):
+        heat = films.Card("Heat", genres=("Action", "Policier"))
+        alien = films.Card("Alien", genres=("Action",))
+        html = self.rendre([("Hors saga", [heat, alien, films.Card("Sans genre")]), ("Saga", [films.Card("Manquant", owned=False)])])
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertIn("<option value='Action'>Action (2)</option>", en_tete)
+        self.assertIn("<option value='Policier'>Policier (1)</option>", en_tete)
+        self.assertIn("data-g='Action|Policier'", html)
+        self.assertNotIn("<select", self.rendre([("Hors saga", [films.Card("Heat")])]))
+
     def test_bouton_de_largeur(self):
         html = self.rendre([("Hors saga", [films.Card("Heat")])])
         self.assertIn("<button class='mode'", html)

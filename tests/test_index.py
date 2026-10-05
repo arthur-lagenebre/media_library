@@ -58,6 +58,33 @@ class TestLectureDesFiches(unittest.TestCase):
         self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
         self.assertTrue(showindex.GENERATOR_META in html[:html.index("<style>")])    # la marque reste lisible par read_head
 
+    def test_index_alphabetique_suit_le_classement(self):
+        # "The Expanse" est classé à E, sans l'article : la lettre de sa vignette doit être celle de sa place.
+        fiche(self.racine / "Expanse", show={**SHOW, "name": "The Expanse"})
+        fiche(self.racine / "Dark")
+        html = showindex.build_html("Series", showindex.find_entries(self.racine))
+        self.assertIn("<nav class='az'", html[html.index("<header class='top'>"):html.index("</header>")])
+        self.assertIn("class='serie' href='Expanse/index.html' data-i='E'", html)
+        self.assertIn("class='serie' href='Dark/index.html' data-i='D'", html)
+
+    def test_genres_ecrits_dans_la_fiche_et_proposes_au_sommaire(self):
+        fiche(self.racine / "Dark", show={**SHOW, "genres": [{"name": "Drame"}, {"name": "Science-Fiction"}]})
+        fiche(self.racine / "Fargo", show={**SHOW, "name": "Fargo", "genres": [{"name": "Drame"}]})
+        fiche(self.racine / "Vieille")                                     # une fiche sans genre : elle reste, mais ne passe aucun filtre
+        entries = showindex.find_entries(self.racine)
+        self.assertEqual({e.folder: e.genres for e in entries}, {"Dark": ("Drame", "Science-Fiction"), "Fargo": ("Drame",), "Vieille": ()})
+        html = showindex.build_html("Series", entries)
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertIn("<option value='Drame'>Drame (2)</option>", en_tete)
+        self.assertIn("<option value='Science-Fiction'>Science-Fiction (1)</option>", en_tete)
+        self.assertIn("data-g='Drame|Science-Fiction'", html)
+        self.assertIn("gok(c)", html)
+
+    def test_pas_de_menu_sans_genre(self):
+        fiche(self.racine / "Dark")
+        html = showindex.build_html("Series", showindex.find_entries(self.racine))
+        self.assertNotIn("<select", html)
+
     def test_le_h1_est_toujours_series(self):
         fiche(self.racine / "Dark")
         html = showindex.build_html("Ma mediatheque", showindex.find_entries(self.racine))

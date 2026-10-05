@@ -7,6 +7,7 @@ Tout est pur : ce module ne rend que des morceaux de page, que chacune assemble.
 
 import string
 import unicodedata
+from xml.sax.saxutils import escape
 
 # Appliqué dans le <head>, avant le <style> : sinon la page s'afficherait dans l'autre largeur avant de basculer. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, centrée.
 BOOT = "<script>try{if(localStorage.getItem('wide')==='1')document.documentElement.classList.add('wide')}catch(e){}</script>"
@@ -22,9 +23,12 @@ CSS = (
     ".row{display:flex;align-items:center;justify-content:space-between;gap:12px}"
     ".bar{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:8px}"
     ".mode{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;padding:7px 16px;border-radius:999px;font:inherit;font-size:14px;flex:none}"
-    ".mode:hover{background:#252833}"
+    ".mode:hover,.totop:hover{background:#252833}"
+    ".ctl{display:flex;gap:8px;flex:none}"
+    ".totop{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;padding:7px 14px;border-radius:999px;font:inherit;font-size:14px}"
     ".filter{width:100%;max-width:320px;margin:0;padding:8px 14px;font:inherit;font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;border-radius:999px;outline:none;box-sizing:border-box}"
-    ".filter:focus{border-color:#7cc4ff}"
+    ".filter:focus,.genre:focus{border-color:#7cc4ff}"
+    ".genre{max-width:220px;padding:8px 14px;font:inherit;font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;border-radius:999px;outline:none;cursor:pointer}"
     ".wide .wrap{max-width:none}"
     ".line{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
     ".chip{cursor:pointer;border:1px solid #2a2c34;background:transparent;color:#9aa0aa;padding:5px 12px;border-radius:999px;font:inherit;font-size:13px}"
@@ -44,8 +48,9 @@ def header(inner):
 
 
 def mode_button(labels=INDEX_LABELS):
-    """Le bouton de largeur ; son texte est celui du mode qu'il fait prendre."""
-    return f"<button class='mode' type='button' aria-pressed='false'>{labels[0]}</button>"
+    """Le bouton de largeur ; son texte est celui du mode qu'il fait prendre. Le retour en haut l'accompagne : l'en-tête est fixe, il est donc toujours sous la main."""
+    return (f"<span class='ctl'><button class='mode' type='button' aria-pressed='false'>{labels[0]}</button>"
+            "<button class='totop' type='button' aria-label='Retour en haut' onclick=\"window.scrollTo({top:0,behavior:'smooth'})\">↑ Haut</button></span>")
 
 
 def mode_script(labels=INDEX_LABELS):
@@ -57,6 +62,38 @@ def mode_script(labels=INDEX_LABELS):
         "wide(root.classList.contains('wide'));"
         "m.onclick=function(){var on=!root.classList.contains('wide');wide(on);"
         "try{localStorage.setItem('wide',on?'1':'0')}catch(e){}};"
+    )
+
+
+# ----------------------------------------------------------------------------
+# Genres
+# ----------------------------------------------------------------------------
+GENRE_SEP = "|"
+
+
+def genre_attr(genres):
+    """L'attribut data-g d'une vignette : ses genres, séparés par GENRE_SEP. Vide, il est omis : la vignette n'a alors aucun genre à montrer."""
+    names = [g for g in genres if g]
+    return f" data-g='{escape(GENRE_SEP.join(names), {chr(39): '&#39;'})}'" if names else ""
+
+
+def genre_select(counts):
+    """La liste des genres, du plus fréquent au moins fréquent (puis par nom), avec leur compte. 'counts' = {genre: nombre de vignettes} ; sans aucun genre, rien n'est rendu : un menu vide ne filtrerait rien."""
+    if not counts:
+        return ""
+    options = "".join(
+        f"<option value='{escape(g, {chr(39): '&#39;'})}'>{escape(g)} ({n})</option>"
+        for g, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].casefold())))
+    return f"<select class='genre' aria-label='Filtrer par genre'><option value=''>Tous les genres</option>{options}</select>"
+
+
+def genre_script():
+    """Le script du menu : `gok(vignette)` dit si une vignette passe le genre choisi, `picked()` s'il y en a un. À placer avant le filtre de la page, qui s'en sert et relance son propre filtre quand le choix change (`f.oninput`, relu à chaque fois : l'index A-Z l'enveloppe plus tard)."""
+    return (
+        "var g=document.querySelector('.genre');"
+        "function picked(){return !!(g&&g.value)}"
+        f"function gok(c){{return !picked()||(c.getAttribute('data-g')||'').split('{GENRE_SEP}').indexOf(g.value)>=0}}"
+        "if(g)g.onchange=function(){f.oninput()};"
     )
 
 

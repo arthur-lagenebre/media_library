@@ -132,6 +132,14 @@ class TestSommaire(unittest.TestCase):
         self.assertIn("<button class='chip' type='button' data-t='sec1'>BD</button>", en_tete)
         self.assertIn("function az()", html)
 
+    def test_menu_des_genres(self):
+        html = self.render([("Manga", [tomes(nom="Akira")]), ("BD", [tomes("BD", "Éclipse", (1,), 1)])])
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertIn("<option value='Football'>Football (2)</option>", en_tete)       # un genre par série, pas par tome
+        self.assertIn("data-g='Football|Sport'", html)
+        self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<select class='genre'"))
+        self.assertLess(en_tete.index("<select class='genre'"), en_tete.index("<button class='mode'"))
+
     def test_fiche_de_serie_pleine_largeur_ou_centree(self):
         html = shelfpage.build_series(tomes(), {}, "../index.html", "Livres")
         self.assertIn("localStorage.getItem('wide')", html)

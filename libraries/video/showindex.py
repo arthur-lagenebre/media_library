@@ -48,6 +48,7 @@ def recap_metas(show, tmdb_id, seasons_on_disk, poster=None):
              "first-air-date": show.get("first_air_date"),
              "seasons": seasons_on_disk,
              "seasons-total": show.get("number_of_seasons"),
+             "genres": layout.GENRE_SEP.join(g["name"] for g in show.get("genres") or [] if g.get("name")),
              "overview": show.get("overview"),
              "poster-key": key,
              "poster": uri}
@@ -98,6 +99,7 @@ class Entry:
     poster: str = ""
     overview: str = ""
     page: str = PAGE_NAME
+    genres: tuple = ()
 
     @property
     def href(self):
@@ -128,7 +130,7 @@ def read_entry(recap):
         return None
     metas = _metas(head)
     poster = metas.get("poster", "")
-    return Entry(folder=Path(recap).parent.name, page=Path(recap).name, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip())
+    return Entry(folder=Path(recap).parent.name, page=Path(recap).name, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip(), genres=tuple(g for g in metas.get("genres", "").split(layout.GENRE_SEP) if g))
 
 
 def series_page(folder):
@@ -170,14 +172,17 @@ def sort_key(title):
 def build_html(library_name, entries):
     """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, "The Expanse" à E.
 
-    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, bouton de largeur) reste fixe en haut de page. Le h1 est toujours « Séries » ; `library_name` ne titre que l'onglet."""
+    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. Le h1 est toujours « Séries » ; `library_name` ne titre que l'onglet."""
     cards = []
+    genres = {}
     for entry in sorted(entries, key=lambda e: sort_key(e.title)):
+        for genre in entry.genres:
+            genres[genre] = genres.get(genre, 0) + 1
         img = (f"<img src='{entry.poster}' alt='' decoding='async' loading='lazy'>"
                if entry.poster else "<div class='noimg'></div>")
         meta = " · ".join(t for t in (entry.year, entry.seasons_label) if t)
         overview = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
-        cards.append(f"<a class='serie' href='{esc(entry.href)}'>"
+        cards.append(f"<a class='serie' href='{esc(entry.href)}' data-i='{layout.initial(sort_key(entry.title))}'{layout.genre_attr(entry.genres)}>"
                      f"<div class='aff'>{img}</div>"
                      f"<div class='t'>{esc(entry.title)}</div>"
                      f"<div class='y'>{esc(meta)}</div>{overview}</a>")
@@ -214,16 +219,19 @@ def build_html(library_name, entries):
             f"<h1>{DEFAULT_TITLE}</h1>"
             f"<div class='sub'>{len(entries)} série(s)</div>"
             "<div class='bar'>"
+            "<div class='line'>"
             "<input class='filter' type='search' placeholder='Filtrer…' aria-label='Filtrer les séries'>"
-            + layout.mode_button() + "</div>") +
+            + layout.genre_select(genres) + "</div>"
+            + layout.mode_button() + "</div>"
+            + layout.index_nav()) +
         f"<div class='grid'>{''.join(cards)}</div>"
         "<script>"
         "var f=document.querySelector('.filter');"
         "function n(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase()}"
         "f.oninput=function(){var q=n(f.value);"
         "document.querySelectorAll('.serie').forEach(function(c){"
-        "c.hidden=!!q&&n(c.querySelector('.t').textContent).indexOf(q)<0})};"
-        + layout.mode_script() +
+        "c.hidden=(!!q&&n(c.querySelector('.t').textContent).indexOf(q)<0)||!gok(c)})};"
+        + layout.genre_script() + layout.mode_script() + layout.index_script() +
         "</script></div></body></html>"
     )
 

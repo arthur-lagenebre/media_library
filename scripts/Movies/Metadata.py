@@ -554,6 +554,7 @@ class Card:
     owned: bool = True
     runtime: int | None = None
     movie_id: int | None = None     # identifiant TMDB, de quoi retrouver sa fiche (voir filmpage)
+    genres: tuple = ()
 
     @property
     def year(self):
@@ -561,7 +562,7 @@ class Card:
 
 
 def _card(movie, owned=True):
-    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), movie_id=movie.get("id"))
+    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), movie_id=movie.get("id"), genres=tuple(g["name"] for g in movie.get("genres") or [] if g.get("name")))
 
 
 def fetch_collections(movies, tmdb):
@@ -656,6 +657,7 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
 
     blocs = []
     total = manquants = 0
+    genres = {}
     for titre, cards in sections:
         possedes = sum(1 for c in cards if c.owned)
         total += possedes
@@ -674,8 +676,10 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             ancre = f" id='{filmpage.anchor(card.movie_id)}'" if lien else ""
             # L'index A-Z ne vise que ce qui est rangé par ordre alphabétique : les films seuls, pas ceux d'une saga (classés par date de sortie).
             lettre = f" data-i='{layout.initial(card.title)}'" if titre == "Hors saga" else ""
+            for genre in card.genres:
+                genres[genre] = genres.get(genre, 0) + 1
             vignettes.append(
-                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}{lettre}>"
+                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}{lettre}{layout.genre_attr(card.genres)}>"
                 f"<div class='aff'>{img}{manque}</div>"
                 f"<div class='t'>{esc(card.title)}</div>"
                 f"<div class='y'>{esc(card.year)}{duree}</div>"
@@ -729,7 +733,9 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             f"<h1>{esc(library_name)}</h1>"
             f"<div class='sub'>{esc(resume)}</div>"
             "<div class='bar'>"
+            "<div class='line'>"
             "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
+            + layout.genre_select(genres) + "</div>"
             + layout.mode_button() + "</div>"
             + layout.index_nav()) +
         f"{''.join(blocs)}"
@@ -740,9 +746,10 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "f.oninput=function(){var q=n(f.value.trim()),any=false;"
         "document.querySelectorAll('section').forEach(function(s){var seen=0;"
         "s.querySelectorAll('.film').forEach(function(c){"
-        "var ok=!q||n(c.querySelector('.t').textContent).indexOf(q)>=0;c.hidden=!ok;if(ok)seen++});"
+        "var ok=(!q||n(c.querySelector('.t').textContent).indexOf(q)>=0)&&gok(c);c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
-        "document.querySelector('.none').hidden=any||!q};"
+        "document.querySelector('.none').hidden=any||!(q||picked())};"
+        + layout.genre_script()
         # Le choix de présentation est gardé dans le navigateur. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, en 7 par ligne.
         + layout.mode_script() + layout.index_script() +
         "</script></div></body></html>"
