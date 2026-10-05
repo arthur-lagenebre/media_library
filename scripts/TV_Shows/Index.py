@@ -33,7 +33,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Sommaire HTML de toutes les series d'une mediatheque, avec un lien vers la fiche de chacune.")
     ap.add_argument("--dir", required=True, help="Racine de la mediatheque : un sous-dossier par serie")
     ap.add_argument("--apply", action="store_true", help="Ecrit reellement index.html (defaut : simulation)")
-    ap.add_argument("--title", help="Titre du sommaire (defaut : celui du sommaire existant, sinon 'Series')")
+    ap.add_argument("--title", help="Titre de l'onglet du sommaire (defaut : celui du sommaire existant, sinon 'Series') ; le titre de la page reste 'Series'")
     return ap.parse_args()
 
 

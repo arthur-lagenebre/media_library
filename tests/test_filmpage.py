@@ -24,6 +24,22 @@ def render(movie=INCEPTION, images=None, **kw):
     return filmpage.build_html(movie, images or {}, "../index.html", "Films", **kw)
 
 
+class TestMiseEnPage(unittest.TestCase):
+    def test_en_tete_fixe_avec_retour_et_bouton(self):
+        html = render()
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertIn("<a class='back' href='../index.html#f27205'>", en_tete)
+        self.assertIn("<button class='mode'", en_tete)
+        self.assertIn(".top{position:sticky;top:0", html)
+
+    def test_pleine_largeur_ou_centree_selon_le_choix_retenu(self):
+        html = render()
+        self.assertIn(".wide .wrap{max-width:none}", html)
+        self.assertIn("'Centrée'", html)
+        # Posé dans le <head> : sinon la fiche s'afficherait centrée avant de basculer.
+        self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
+
+
 class TestContenu(unittest.TestCase):
     def test_titre_de_l_onglet_porte_l_annee(self):
         self.assertIn("<title>Inception (2010)</title>", render())

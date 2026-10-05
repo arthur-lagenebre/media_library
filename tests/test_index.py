@@ -46,7 +46,23 @@ class TestLectureDesFiches(unittest.TestCase):
         html = showindex.build_html("Series", [entry])
         attendu = "Un enfant disparait &#39;a Winden&#39; &amp; &lt;la&gt; famille enquete."
         self.assertIn(f"<div class='o'>{attendu}</div>", html)
-        self.assertIn(f"title='{attendu}'", html)        # en entier au survol
+        self.assertNotIn("title=", html.split("<body>", 1)[1])        # plus d'infobulle au survol
+
+    def test_sept_par_ligne_et_bouton_sous_la_recherche(self):
+        fiche(self.racine / "Dark")
+        html = showindex.build_html("Series", showindex.find_entries(self.racine))
+        self.assertIn(".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}", html)
+        self.assertIn(".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}", html)
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<button class='mode'"))
+        self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
+        self.assertTrue(showindex.GENERATOR_META in html[:html.index("<style>")])    # la marque reste lisible par read_head
+
+    def test_le_h1_est_toujours_series(self):
+        fiche(self.racine / "Dark")
+        html = showindex.build_html("Ma mediatheque", showindex.find_entries(self.racine))
+        self.assertIn("<h1>Séries</h1>", html)
+        self.assertIn("<title>Ma mediatheque</title>", html)
 
     def test_lien_relatif_encode(self):
         fiche(self.racine / "Dark & Co #1", show={**SHOW, "name": "Dark & Co"})

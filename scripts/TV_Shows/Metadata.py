@@ -75,7 +75,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, favicon, textfile  # noqa: E402
+from libraries.common import cache, cli, favicon, layout, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, cast, embed, lookup, mkv, naming, showindex  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
@@ -384,16 +384,17 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         + favicon.monogram_link(series_name)
-        + showindex.recap_metas(show, tmdb_id, sum(1 for run in runs if run.number > 0), poster) +
+        + showindex.recap_metas(show, tmdb_id, sum(1 for run in runs if run.number > 0), poster)
+        + layout.BOOT +
         f"<meta name='still-size' content='{esc(size)}'>"
         f"<meta name='profile-size' content='{esc(profile_size)}'>"
         f"<title>{esc(series_name)}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
-        "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:22px}"
-        ".tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;"
-        "position:sticky;top:0;background:#14151a;padding:12px 0;z-index:1}"
+        "h1{margin:0}.sub{color:#9aa0aa;margin-bottom:22px}"
+        + layout.CSS +
+        ".tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}"
         ".tab{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
         "padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
         ".tab:hover{background:#252833}"
@@ -427,10 +428,10 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".actor .c{color:#c7ccd4;font-size:13px;line-height:1.35}"
         ".actor .e{color:#9aa0aa;font-size:12px;font-variant-numeric:tabular-nums}"
         + cast.noface_rule() +
-        "</style></head><body><div class='wrap'>"
-        f"<h1>{esc(series_name)}</h1>"
+        "</style></head><body>"
+        + layout.header(f"<div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
+                        f"<nav class='tabs'>{''.join(tabs)}</nav>") +
         f"<div class='sub'>{esc(show.get('overview', ''))}</div>"
-        f"<nav class='tabs'>{''.join(tabs)}</nav>"
         f"{''.join(panels)}"
         "<script>"
         "document.querySelectorAll('.tab').forEach(function(b){"
@@ -438,6 +439,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});"
         "document.querySelectorAll('.season').forEach(function(s){s.hidden=s.dataset.s!==b.dataset.s})"
         "}});"
+        + layout.mode_script(layout.SHEET_LABELS) +
         "</script></div></body></html>"
     )
 

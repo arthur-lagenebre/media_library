@@ -79,7 +79,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, favicon, textfile  # noqa: E402
+from libraries.common import cache, cli, favicon, layout, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, embed, filmpage, lookup, mkv, naming  # noqa: E402
 from libraries.video import saga as saga_module  # noqa: E402
@@ -553,7 +553,6 @@ class Card:
     poster: str | None = None
     owned: bool = True
     runtime: int | None = None
-    overview: str = ""
     movie_id: int | None = None     # identifiant TMDB, de quoi retrouver sa fiche (voir filmpage)
 
     @property
@@ -562,7 +561,7 @@ class Card:
 
 
 def _card(movie, owned=True):
-    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), overview=movie.get("overview") or "", movie_id=movie.get("id"))
+    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), movie_id=movie.get("id"))
 
 
 def fetch_collections(movies, tmdb):
@@ -650,9 +649,9 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
 
     `pages` = identifiants des films dont la fiche existe (voir filmpage) : leur vignette mène à elle. Un film sans fiche - ou manquant, que TMDB décrit mais qu'on ne possède pas - reste une vignette inerte plutôt qu'un lien cassé.
 
-    La recherche filtre les vignettes sur leur titre, sans accents ni casse, et masque les sagas qui n'ont plus rien à montrer."""
+    L'en-tête (titre, recherche, bouton de largeur) reste fixe en haut de page. La recherche filtre les vignettes sur leur titre, sans accents ni casse, et masque les sagas qui n'ont plus rien à montrer."""
     def esc(s):
-        # L'apostrophe aussi : les attributs sont entre apostrophes, et un synopsis qui dit "s'entre-tuent" fermerait l'infobulle en plein milieu.
+        # L'apostrophe aussi : les attributs sont entre apostrophes, et un titre qui dit "l'Oeil" fermerait l'attribut en plein milieu.
         return escape(str(s or ""), {"'": "&#39;"})
 
     blocs = []
@@ -674,8 +673,7 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
             # L'ancre : le retour depuis la fiche du film ramène à sa vignette.
             ancre = f" id='{filmpage.anchor(card.movie_id)}'" if lien else ""
             vignettes.append(
-                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien} "
-                f"title='{esc(card.overview)}'>"
+                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}>"
                 f"<div class='aff'>{img}{manque}</div>"
                 f"<div class='t'>{esc(card.title)}</div>"
                 f"<div class='y'>{esc(card.year)}{duree}</div>"
@@ -690,22 +688,15 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
 
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        + favicon.films_link() +
-        "<script>try{if(localStorage.getItem('wide')==='1')document.documentElement.classList.add('wide')}catch(e){}</script>"
+        + favicon.films_link()
+        + layout.BOOT +
         f"<meta name='poster-size' content='{esc(size)}'>"
         f"<title>{esc(library_name)}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
-        "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:12px}"
-        ".bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 16px}"
-        ".mode{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
-        "padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
-        ".mode:hover{background:#252833}"
-        ".filter{width:100%;max-width:320px;margin:0;padding:8px 14px;font:inherit;"
-        "font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;"
-        "border-radius:999px;outline:none;box-sizing:border-box}"
-        ".filter:focus{border-color:#7cc4ff}"
+        "h1{margin:0 0 4px}.sub{color:#9aa0aa}"
+        + layout.CSS +
         ".none{color:#9aa0aa;margin-top:30px}"
         "[hidden]{display:none!important}"
         "h2{font-size:17px;margin:30px 0 14px;padding-bottom:8px;"
@@ -715,7 +706,6 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         # Sept par ligne, pas "autant que la largeur en tient" : c'est ce qu'on regarde, et à 1180 px l'ancien calcul en donnait six. Sous 900 px sept affiches deviennent des timbres-poste : retour au remplissage automatique. En pleine largeur, le remplissage automatique seul décide.
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
         "@media(max-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}"
-        ".wide .wrap{max-width:none}"
         ".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
         ".film{display:block;color:inherit;text-decoration:none}"
         ".film .aff{position:relative;aspect-ratio:2/3;border-radius:8px;overflow:hidden;"
@@ -730,12 +720,13 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         ".miss{position:absolute;left:6px;bottom:6px;padding:2px 8px;border-radius:999px;"
         "font-size:11px;text-transform:uppercase;letter-spacing:.04em;"
         "background:#3a2a2e;color:#ff9aa6}"
-        "</style></head><body><div class='wrap'>"
-        f"<h1>{esc(library_name)}</h1>"
-        f"<div class='sub'>{esc(resume)}</div>"
-        "<div class='bar'>"
-        "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
-        "<button class='mode' type='button' aria-pressed='false'>Pleine largeur</button></div>"
+        "</style></head><body>"
+        + layout.header(
+            f"<h1>{esc(library_name)}</h1>"
+            f"<div class='sub'>{esc(resume)}</div>"
+            "<div class='bar'>"
+            "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
+            + layout.mode_button() + "</div>") +
         f"{''.join(blocs)}"
         "<p class='none' hidden>Aucun film ne correspond.</p>"
         "<script>"
@@ -748,12 +739,7 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!q};"
         # Le choix de présentation est gardé dans le navigateur. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, en 7 par ligne.
-        "var m=document.querySelector('.mode'),root=document.documentElement;"
-        "function wide(on){root.classList.toggle('wide',on);"
-        "m.textContent=on?'7 par ligne':'Pleine largeur';m.setAttribute('aria-pressed',on)}"
-        "wide(root.classList.contains('wide'));"
-        "m.onclick=function(){var on=!root.classList.contains('wide');wide(on);"
-        "try{localStorage.setItem('wide',on?'1':'0')}catch(e){}};"
+        + layout.mode_script() +
         "</script></div></body></html>"
     )
 

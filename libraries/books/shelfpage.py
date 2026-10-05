@@ -15,21 +15,20 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
-from libraries.common import favicon
+from libraries.common import favicon, layout
 from libraries.common.filenames import safe_name
 
 from . import shelf
 
 DIR = "Series"                 # le dossier des pages, rangé À CÔTÉ du sommaire
 MIME = "image/jpeg"
-SUMMARY_LIMIT = 320            # ce que l'infobulle d'une vignette cite du résumé
 
 # Retrouve les couvertures déjà encodées dans une page précédente.
 EMBEDDED_RE = re.compile(r"<img data-img='([^']+)' src='(data:[^']+)'")
 
 
 def esc(value):
-    # L'apostrophe aussi : les attributs sont entre apostrophes, et un résumé qui dit "l'Oeil" fermerait l'infobulle en plein milieu.
+    # L'apostrophe aussi : les attributs sont entre apostrophes, et un nom qui dit "l'Oeil" fermerait l'attribut en plein milieu.
     return escape(str(value or ""), {"'": "&#39;"})
 
 
@@ -105,13 +104,6 @@ def _search_text(series):
     return " ".join([series.name, *series.authors, series.publisher, *series.genres])
 
 
-def _tooltip(series):
-    text, _ = series.summary
-    if len(text) > SUMMARY_LIMIT:
-        text = text[:SUMMARY_LIMIT].rsplit(" ", 1)[0] + "…"
-    return text or ", ".join(series.authors)
-
-
 def _years(series):
     years = series.years
     if not years:
@@ -159,7 +151,7 @@ def build_index(library_name, sections, covers, pages=()):
             tag = "a" if link else "div"
             warn = " warn" if progress(series) else ""
             tiles.append(
-                f"<{tag} class='bk'{link} data-s='{esc(_search_text(series))}' title='{esc(_tooltip(series))}'>"
+                f"<{tag} class='bk'{link} data-s='{esc(_search_text(series))}'>"
                 f"<div class='aff'>{_cover(series.cover_volume.key, covers.get(series.id), series.name)}</div>"
                 f"<div class='t'>{esc(series.name)}</div>"
                 f"<div class='y{warn}'>{esc(_count_label(series))}</div>"
@@ -170,30 +162,26 @@ def build_index(library_name, sections, covers, pages=()):
     summary = f"{n_series} séries · {n_volumes} volumes"
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        + favicon.shelf_link() +
-        "<script>try{if(localStorage.getItem('wide')==='1')document.documentElement.classList.add('wide')}catch(e){}</script>"
+        + favicon.shelf_link()
+        + layout.BOOT +
         f"<title>{esc(library_name)}</title>"
         "<style>"
         + CSS_BASE +
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
-        ".sub{color:#9aa0aa;margin-bottom:12px}"
-        ".bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 16px}"
-        ".mode{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
-        ".mode:hover{background:#252833}"
-        ".filter{width:100%;max-width:320px;margin:0;padding:8px 14px;font:inherit;font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;border-radius:999px;outline:none;box-sizing:border-box}"
-        ".filter:focus{border-color:#7cc4ff}"
+        ".sub{color:#9aa0aa}"
+        + layout.CSS +
         ".none{color:#9aa0aa;margin-top:30px}"
         # Sept par ligne, comme les films ; sous 900 px, remplissage automatique.
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
         "@media(max-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}"
-        ".wide .wrap{max-width:none}"
         ".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
-        "</style></head><body><div class='wrap'>"
-        f"<h1>{esc(library_name)}</h1>"
-        f"<div class='sub'>{esc(summary)}</div>"
-        "<div class='bar'>"
-        "<input class='filter' type='search' placeholder='Rechercher une série, un auteur…' aria-label='Rechercher une série ou un auteur'>"
-        "<button class='mode' type='button' aria-pressed='false'>Pleine largeur</button></div>"
+        "</style></head><body>"
+        + layout.header(
+            f"<h1>{esc(library_name)}</h1>"
+            f"<div class='sub'>{esc(summary)}</div>"
+            "<div class='bar'>"
+            "<input class='filter' type='search' placeholder='Rechercher une série, un auteur…' aria-label='Rechercher une série ou un auteur'>"
+            + layout.mode_button() + "</div>") +
         f"{''.join(blocks)}"
         "<p class='none' hidden>Aucune série ne correspond.</p>"
         "<script>"
@@ -205,12 +193,7 @@ def build_index(library_name, sections, covers, pages=()):
         "var ok=!q||n(c.getAttribute('data-s')).indexOf(q)>=0;c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!q};"
-        "var m=document.querySelector('.mode'),root=document.documentElement;"
-        "function wide(on){root.classList.toggle('wide',on);"
-        "m.textContent=on?'7 par ligne':'Pleine largeur';m.setAttribute('aria-pressed',on)}"
-        "wide(root.classList.contains('wide'));"
-        "m.onclick=function(){var on=!root.classList.contains('wide');wide(on);"
-        "try{localStorage.setItem('wide',on?'1':'0')}catch(e){}};"
+        + layout.mode_script() +
         "</script></div></body></html>"
     )
 
@@ -233,12 +216,9 @@ def _volume_meta(volume):
 
 def _volume_card(volume, images):
     uri = images.get(volume.key)
-    summary = volume.fields.get("Summary", "")
-    if len(summary) > 500:
-        summary = summary[:500].rsplit(" ", 1)[0] + "…"
     bad = " bad" if volume.error else ""
     meta = f"illisible : {volume.error}" if volume.error else _volume_meta(volume)
-    return (f"<div class='bk{bad}' title='{esc(summary or volume.error)}'>"
+    return (f"<div class='bk{bad}'>"
             f"<div class='aff'>{_cover(volume.key, uri, volume.title)}</div>"
             f"<div class='t'>{esc(volume.title)}</div>"
             f"<div class='y'>{esc(meta)}</div></div>")
@@ -269,11 +249,13 @@ def build_series(series, images, back_href, library_name):
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         f"{favicon.monogram_link(series.name)}"
+        + layout.BOOT +
         f"<title>{esc(series.name)}</title>"
         "<style>"
         + CSS_BASE +
         ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
-        ".back{display:inline-block;margin-bottom:22px;color:#7cc4ff;text-decoration:none;font-size:14px}"
+        + layout.CSS +
+        ".back{color:#7cc4ff;text-decoration:none;font-size:14px}"
         ".back:hover{text-decoration:underline}"
         ".head{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:34px}"
         ".head .cov{flex:none;width:240px}"
@@ -285,8 +267,9 @@ def build_series(series, images, back_href, library_name):
         ".src{color:#9aa0aa;font-size:13px;margin-top:6px}"
         ".gap{color:#ffb86b;margin-top:14px;font-size:14.5px}.gap span{color:#9aa0aa}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}"
-        "</style></head><body><div class='wrap'>"
-        f"<a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
+        "</style></head><body>"
+        + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
+                        + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
         f"<div class='head'><div class='cov'><div class='bk'><div class='aff'>{_cover(cover.key, images.get(cover.key), series.name)}</div></div></div>"
         "<div class='info'>"
         f"<h1>{esc(series.name)}</h1>"
@@ -304,5 +287,6 @@ def build_series(series, images, back_href, library_name):
         "var from=document.referrer.split(/[?#]/)[0],"
         "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
         "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
+        + layout.mode_script(layout.SHEET_LABELS) +
         "</script></div></body></html>"
     )
