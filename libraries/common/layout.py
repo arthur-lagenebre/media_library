@@ -5,6 +5,9 @@ Les trois sommaires (films, séries, livres) et leurs fiches se présentent de l
 Tout est pur : ce module ne rend que des morceaux de page, que chacune assemble.
 """
 
+import string
+import unicodedata
+
 # Appliqué dans le <head>, avant le <style> : sinon la page s'afficherait dans l'autre largeur avant de basculer. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, centrée.
 BOOT = "<script>try{if(localStorage.getItem('wide')==='1')document.documentElement.classList.add('wide')}catch(e){}</script>"
 
@@ -23,8 +26,15 @@ CSS = (
     ".filter{width:100%;max-width:320px;margin:0;padding:8px 14px;font:inherit;font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;border-radius:999px;outline:none;box-sizing:border-box}"
     ".filter:focus{border-color:#7cc4ff}"
     ".wide .wrap{max-width:none}"
+    ".line{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
+    ".chip{cursor:pointer;border:1px solid #2a2c34;background:transparent;color:#9aa0aa;padding:5px 12px;border-radius:999px;font:inherit;font-size:13px}"
+    ".chip:hover{background:#252833;color:#e8e8ea}"
+    ".az{display:flex;flex-wrap:wrap;gap:2px;margin-top:8px}"
+    ".az button{cursor:pointer;min-width:26px;padding:3px 0;border:0;border-radius:6px;background:transparent;color:#7cc4ff;font:inherit;font-size:13px;font-weight:600}"
+    ".az button:hover:not(:disabled){background:#252833}"
+    ".az button:disabled{color:#4a4d57;cursor:default}"
     # Le retour depuis une fiche ramène à une vignette par son ancre : sans cette marge, l'en-tête fixe la recouvrirait.
-    "html{scroll-padding-top:190px}"
+    "html{scroll-padding-top:230px}"
 )
 
 
@@ -47,4 +57,56 @@ def mode_script(labels=INDEX_LABELS):
         "wide(root.classList.contains('wide'));"
         "m.onclick=function(){var on=!root.classList.contains('wide');wide(on);"
         "try{localStorage.setItem('wide',on?'1':'0')}catch(e){}};"
+    )
+
+
+# ----------------------------------------------------------------------------
+# Index alphabétique
+# ----------------------------------------------------------------------------
+LETTERS = list(string.ascii_uppercase) + ["#"]
+
+
+# Les ligatures ne se décomposent pas : "Œil pour Œil" se range à O, pas à #.
+LIGATURES = str.maketrans({"Œ": "O", "œ": "o", "Æ": "A", "æ": "a"})
+
+
+def initial(text):
+    """Lettre sous laquelle un titre se range : 'É' -> 'E', 'Le robot' -> 'L' (la page classe sans retirer les articles), un chiffre ou autre chose -> '#'."""
+    for c in unicodedata.normalize("NFD", (text or "").translate(LIGATURES)):
+        if unicodedata.combining(c):
+            continue
+        if c.isalnum():
+            c = c.upper()
+            return c if c in string.ascii_uppercase else "#"
+    return "#"
+
+
+def index_nav():
+    """La barre A-Z de l'en-tête. Chaque lettre mène à l'élément suivant qui porte data-i="<lettre>" ; le script grise celles qui n'en ont aucun."""
+    return ("<nav class='az' aria-label='Index alphabétique'>"
+            + "".join(f"<button type='button' data-l='{c}'>{c}</button>" for c in LETTERS) + "</nav>")
+
+
+def index_script():
+    """Le script de la barre A-Z (et des raccourcis .chip[data-t=<id d'une section>]).
+
+    Une lettre mène à la première occurrence APRÈS la position courante, et revient au début passé la dernière : la même lettre, pressée de nouveau, parcourt tous ses éléments - ceux d'une saga puis ceux des films seuls, d'une section puis de la suivante. Tant qu'on enchaîne (sans défiler à la main), la lettre part de la ligne du dernier élément visé et non de la position de la page : en bas de page, la cible ne peut pas monter jusqu'en haut, et la position seule la reviserait sans fin. Les éléments masqués par la recherche sont ignorés, et leurs lettres grisées."""
+    return (
+        "var bar=document.querySelector('.top'),last=null;"
+        "function seen(e){return e.offsetParent!==null}"
+        "function go(e){window.scrollTo({top:e.getBoundingClientRect().top+window.scrollY-bar.offsetHeight-12,behavior:'smooth'})}"
+        "function az(){var have={};"
+        "document.querySelectorAll('[data-i]').forEach(function(e){if(seen(e))have[e.getAttribute('data-i')]=1});"
+        "document.querySelectorAll('.az button').forEach(function(b){b.disabled=!have[b.getAttribute('data-l')]});"
+        "document.querySelectorAll('.chip').forEach(function(b){b.hidden=!seen(document.getElementById(b.getAttribute('data-t')))})}"
+        "document.querySelectorAll('.az button').forEach(function(b){b.onclick=function(){"
+        "var here=window.scrollY+bar.offsetHeight+16,"
+        "list=[].filter.call(document.querySelectorAll('[data-i]'),function(e){return e.getAttribute('data-i')===b.getAttribute('data-l')&&seen(e)}),"
+        "from=last&&list.indexOf(last)>=0?last.getBoundingClientRect().top+window.scrollY+5:here,"
+        "after=list.filter(function(e){return e.getBoundingClientRect().top+window.scrollY>from}),"
+        "next=after[0]||list[0];"
+        "last=next;if(next)go(next)}});"
+        "['wheel','touchmove','keydown'].forEach(function(t){addEventListener(t,function(){last=null},{passive:true})});"
+        "document.querySelectorAll('.chip').forEach(function(b){b.onclick=function(){go(document.getElementById(b.getAttribute('data-t')))}});"
+        "var typed=f.oninput;f.oninput=function(){typed();az()};az();"
     )

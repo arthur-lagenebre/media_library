@@ -121,6 +121,17 @@ class TestSommaire(unittest.TestCase):
         self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<button class='mode'"))
         self.assertIn(".top{position:sticky;top:0", html)
 
+    def test_index_alphabetique_et_raccourcis_de_section(self):
+        html = self.render([("Manga", [tomes(nom="Akira")]), ("BD", [tomes("BD", "Éclipse", (1,), 1)])])
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertIn("<nav class='az'", en_tete)
+        self.assertEqual(en_tete.count("data-l="), 27)                              # A-Z et #
+        self.assertIn("data-i='A'", html)
+        self.assertIn("data-i='E'", html)                                          # "Éclipse" sous E
+        self.assertIn("<section id='sec0'>", html)
+        self.assertIn("<button class='chip' type='button' data-t='sec1'>BD</button>", en_tete)
+        self.assertIn("function az()", html)
+
     def test_fiche_de_serie_pleine_largeur_ou_centree(self):
         html = shelfpage.build_series(tomes(), {}, "../index.html", "Livres")
         self.assertIn("localStorage.getItem('wide')", html)
@@ -136,7 +147,7 @@ class TestSommaire(unittest.TestCase):
         icone = re.search(r"href='data:image/svg\+xml,([^']+)'", html).group(1)
         ElementTree.fromstring(unquote(icone))
         self.assertTrue(html.startswith("<!DOCTYPE html>"))
-        self.assertEqual(html.count("<section>"), html.count("</section>"))
+        self.assertEqual(html.count("<section"), html.count("</section>"))
 
 
 class TestPageDeSerie(unittest.TestCase):
