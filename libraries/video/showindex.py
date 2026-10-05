@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.sax.saxutils import escape
 
-from libraries.common import favicon, textfile
+from libraries.common import favicon, layout, textfile
 
 INDEX_NAME = "index.html"
 # La fiche de chaque série porte le même nom que le sommaire : un navigateur ou un serveur ouvre index.html de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
@@ -170,15 +170,14 @@ def sort_key(title):
 def build_html(library_name, entries):
     """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, "The Expanse" à E.
 
-    Le résumé est coupé à trois lignes sous l'affiche, et donné en entier au survol : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible."""
+    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, bouton de largeur) reste fixe en haut de page. Le h1 est toujours « Séries » ; `library_name` ne titre que l'onglet."""
     cards = []
     for entry in sorted(entries, key=lambda e: sort_key(e.title)):
         img = (f"<img src='{entry.poster}' alt='' decoding='async' loading='lazy'>"
                if entry.poster else "<div class='noimg'></div>")
         meta = " · ".join(t for t in (entry.year, entry.seasons_label) if t)
         overview = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
-        hover = f" title='{esc(entry.overview)}'" if entry.overview else ""
-        cards.append(f"<a class='serie' href='{esc(entry.href)}'{hover}>"
+        cards.append(f"<a class='serie' href='{esc(entry.href)}'>"
                      f"<div class='aff'>{img}</div>"
                      f"<div class='t'>{esc(entry.title)}</div>"
                      f"<div class='y'>{esc(meta)}</div>{overview}</a>")
@@ -186,16 +185,17 @@ def build_html(library_name, entries):
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         f"{GENERATOR_META}{favicon.index_link()}"
+        + layout.BOOT +
         f"<title>{esc(library_name)}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
-        "h1{margin:0 0 4px}.sub{color:#9aa0aa;margin-bottom:12px}"
-        ".filter{width:100%;max-width:320px;margin:10px 0 26px;padding:8px 14px;font:inherit;"
-        "font-size:14px;color:#e8e8ea;background:#1c1e26;border:1px solid #2a2c34;"
-        "border-radius:999px;outline:none;box-sizing:border-box}"
-        ".filter:focus{border-color:#7cc4ff}"
-        ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(172px,1fr))}"
+        "h1{margin:0 0 4px}.sub{color:#9aa0aa}"
+        + layout.CSS +
+        # Sept par ligne, comme les films ; sous 900 px, remplissage automatique, qui décide seul en pleine largeur.
+        ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
+        "@media(max-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}"
+        ".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
         ".serie{display:block;color:inherit;text-decoration:none}"
         ".serie[hidden]{display:none}"
         ".serie .aff{aspect-ratio:2/3;border-radius:8px;overflow:hidden;"
@@ -209,10 +209,13 @@ def build_html(library_name, entries):
         ".serie .o{margin-top:4px;color:#c7ccd4;font-size:12.5px;line-height:1.4;"
         "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;"
         "overflow:hidden}"
-        "</style></head><body><div class='wrap'>"
-        f"<h1>{esc(library_name)}</h1>"
-        f"<div class='sub'>{len(entries)} série(s)</div>"
-        "<input class='filter' type='search' placeholder='Filtrer…' aria-label='Filtrer les séries'>"
+        "</style></head><body>"
+        + layout.header(
+            f"<h1>{DEFAULT_TITLE}</h1>"
+            f"<div class='sub'>{len(entries)} série(s)</div>"
+            "<div class='bar'>"
+            "<input class='filter' type='search' placeholder='Filtrer…' aria-label='Filtrer les séries'>"
+            + layout.mode_button() + "</div>") +
         f"<div class='grid'>{''.join(cards)}</div>"
         "<script>"
         "var f=document.querySelector('.filter');"
@@ -220,6 +223,7 @@ def build_html(library_name, entries):
         "f.oninput=function(){var q=n(f.value);"
         "document.querySelectorAll('.serie').forEach(function(c){"
         "c.hidden=!!q&&n(c.querySelector('.t').textContent).indexOf(q)<0})};"
+        + layout.mode_script() +
         "</script></div></body></html>"
     )
 

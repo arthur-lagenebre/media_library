@@ -109,17 +109,26 @@ class TestSommaire(unittest.TestCase):
         self.assertNotIn("<b>", html)
         self.assertIn("L&#39;Œil &lt;b&gt;&amp;\"", html)          # les attributs sont entre apostrophes : seule l'apostrophe est dangereuse
 
-    def test_infobulle_resume_tronque(self):
+    def test_pas_d_infobulle_au_survol(self):
         s = tomes(numeros=(1,), total=1)
         s.volumes[0].info["Summary"] = "mot " * 200
-        infobulle = re.search(r"title='([^']*)'", self.render([("Manga", [s])])).group(1)
-        self.assertTrue(infobulle.endswith("…"))
-        self.assertLessEqual(len(infobulle), shelfpage.SUMMARY_LIMIT + 1)
+        self.assertNotIn("title=", self.render([("Manga", [s])]).split("<body>", 1)[1])
+        self.assertNotIn("title=", shelfpage.build_series(s, {}, "../index.html", "Livres").split("<body>", 1)[1])
 
-    def test_sans_resume_l_infobulle_cite_les_auteurs(self):
-        s = tomes(numeros=(1,), total=1)
-        del s.volumes[0].info["Summary"]
-        self.assertIn("title='Yôichi Takahashi'", self.render([("Manga", [s])]))
+    def test_en_tete_fixe_avec_le_bouton_sous_la_recherche(self):
+        html = self.render([("Manga", [tomes()])])
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<button class='mode'"))
+        self.assertIn(".top{position:sticky;top:0", html)
+
+    def test_fiche_de_serie_pleine_largeur_ou_centree(self):
+        html = shelfpage.build_series(tomes(), {}, "../index.html", "Livres")
+        self.assertIn("localStorage.getItem('wide')", html)
+        self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
+        self.assertIn(".wide .wrap{max-width:none}", html)
+        self.assertIn("<button class='mode'", html)
+        self.assertIn("'Centrée'", html)
+        self.assertIn(".top{position:sticky;top:0", html)
 
     def test_html_bien_forme(self):
         html = self.render([("Manga", [tomes()]), ("BD", [tomes("BD", "Megalex", (1,), 1)])], covers={})

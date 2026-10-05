@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from libraries.common import favicon
+from libraries.common import favicon, layout
 from . import cast, embed
 
 # Le dossier des fiches, rangé À CÔTÉ de l'index : avec --recap-out __Data__ (voir le README), il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
@@ -105,13 +105,15 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         f"{favicon.monogram_link(movie.get('title'))}"
+        + layout.BOOT +
         f"<meta name='poster-size' content='{esc(POSTER_SIZE)}'>"
         f"<meta name='profile-size' content='{esc(profile_size)}'>"
         f"<title>{esc(page_title(movie))}</title>"
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
-        ".back{display:inline-block;margin-bottom:22px;color:#7cc4ff;text-decoration:none;font-size:14px}"
+        + layout.CSS +
+        ".back{color:#7cc4ff;text-decoration:none;font-size:14px}"
         ".back:hover{text-decoration:underline}"
         ".head{display:flex;gap:28px;flex-wrap:wrap}"
         ".head .aff{flex:none;width:240px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#21232b}"
@@ -128,8 +130,10 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         ".actor .n{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
         ".actor .c{color:#c7ccd4;font-size:13px;line-height:1.35}"
         + cast.noface_rule() +
-        "</style></head><body><div class='wrap'>"
-        f"<a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
+        "</style></head><body>"
+        + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
+                        + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
+        ""
         f"<div class='head'><div class='aff'>{poster}</div><div class='info'>"
         f"<h1>{esc(movie.get('title'))}</h1>"
         f"<div class='facts'>{esc(_facts(movie))}</div>"
@@ -144,5 +148,6 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         "var from=document.referrer.split(/[?#]/)[0],"
         "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
         "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
+        + layout.mode_script(layout.SHEET_LABELS) +
         "</script></div></body></html>"
     )

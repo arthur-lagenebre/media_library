@@ -289,6 +289,19 @@ class TestRecap(unittest.TestCase):
         run = series.SeasonRun(Path("."), 1, self.SAISON, owned)
         return series.build_recap_html("Ma Serie", {"overview": "Resume"}, [run], "1234", {}, "w300")
 
+    def test_en_tete_fixe_avec_titre_onglets_et_bouton(self):
+        html = self.rendre({1})
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        for morceau in ("<h1>Ma Serie</h1>", "<nav class='tabs'>", "<button class='mode'"):
+            self.assertIn(morceau, en_tete)
+        self.assertIn(".top{position:sticky;top:0", html)
+        self.assertNotIn("Resume", en_tete)                  # le résumé défile : fixé, il mangerait la page
+
+    def test_fiche_pleine_largeur_ou_centree(self):
+        html = self.rendre({1})
+        self.assertIn(".wide .wrap{max-width:none}", html)
+        self.assertLess(html.index("localStorage.getItem('wide')"), html.index("<style>"))
+
     def test_episodes_absents_marques(self):
         html = self.rendre({1})
         self.assertEqual(html.count("class='miss'"), 2)
@@ -540,9 +553,9 @@ class TestRecapFilms(unittest.TestCase):
 
     def test_donnees_du_film_possede_prioritaires(self):
         # Le film qu'on possède apporte sa durée et son synopsis, pas la fiche de saga.
-        possede = film(11, "Iron Man", IRON, runtime=126, overview="Tony Stark")
+        possede = film(11, "Iron Man", IRON, runtime=126)
         cards = films.library_sections([possede], {1: IRON})[0][1]
-        self.assertEqual((cards[0].runtime, cards[0].overview), (126, "Tony Stark"))
+        self.assertEqual(cards[0].runtime, 126)
         self.assertIsNone(cards[1].runtime)
 
 
@@ -647,10 +660,10 @@ class TestRenduRecapFilms(unittest.TestCase):
         self.assertIn(">manquant</div>", html)
         self.assertIn("2010", html)
 
-    def test_apostrophe_du_synopsis_ne_casse_pas_l_infobulle(self):
-        # Régression : "s'entre-tuent" fermait l'attribut title, et la fin du synopsis devenait des attributs.
-        html = self.rendre([("Hors saga", [films.Card("Skizm", overview="des criminels s'entre-tuent.")])])
-        self.assertIn("title='des criminels s&#39;entre-tuent.'", html)
+    def test_pas_d_infobulle_au_survol(self):
+        # Le survol d'une vignette ne montre plus le résumé.
+        html = self.rendre([("Hors saga", [films.Card("Skizm")])])
+        self.assertNotIn("title=", html.split("<body>", 1)[1])
 
     def test_resume_de_la_mediatheque(self):
         sections = [("Saga", [films.Card("A"), films.Card("B", owned=False)]), ("Hors saga", [films.Card("C")])]
@@ -665,6 +678,15 @@ class TestRenduRecapFilms(unittest.TestCase):
         html = self.rendre([("Hors saga", [films.Card("Heat")])])
         self.assertIn("<input class='filter' type='search'", html)
         self.assertIn("Aucun film ne correspond.", html)
+
+    def test_en_tete_fixe_avec_le_bouton_sous_la_recherche(self):
+        html = self.rendre([("Hors saga", [films.Card("Heat")])])
+        self.assertIn(".top{position:sticky;top:0", html)
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        for morceau in ("<h1>Films</h1>", "<input class='filter'", "<button class='mode'"):
+            self.assertIn(morceau, en_tete)
+        self.assertLess(en_tete.index("<input class='filter'"), en_tete.index("<button class='mode'"))
+        self.assertIn(".bar{display:flex;flex-direction:column", html)         # le bouton passe sous la zone de recherche
 
     def test_bouton_de_largeur(self):
         html = self.rendre([("Hors saga", [films.Card("Heat")])])
@@ -705,12 +727,11 @@ class TestRenduRecapFilms(unittest.TestCase):
         html = self.rendre([("Saga", [card])], {"w185/a.jpg": "data:image/jpeg;base64,AAA"})
         self.assertIn("<img data-img='w185/a.jpg' src='data:image/jpeg;base64,AAA'", html)
 
-    def test_titres_et_synopsis_echappes(self):
-        card = films.Card("Tom & Jerry", overview="Un chat & <b>une souris</b>")
+    def test_titres_echappes(self):
+        card = films.Card("Tom & <b>Jerry</b>")
         html = self.rendre([("Hors saga", [card])])
-        self.assertIn("Tom &amp; Jerry", html)
-        self.assertIn("&lt;b&gt;une souris&lt;/b&gt;", html)
-        self.assertNotIn("<b>une souris</b>", html)
+        self.assertIn("Tom &amp; &lt;b&gt;Jerry&lt;/b&gt;", html)
+        self.assertNotIn("<b>Jerry</b>", html)
 
 
 if __name__ == "__main__":
