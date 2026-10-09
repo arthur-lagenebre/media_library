@@ -17,8 +17,8 @@ from pathlib import Path
 
 from libraries.common import filenames
 
-AUDIO_EXTS = {".flac"}                     # les formats qu'on sait écrire
-OTHER_AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
+AUDIO_EXTS = {".flac", ".mp3"}            # les formats qu'on sait écrire
+OTHER_AUDIO_EXTS = {".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
 LYRICS_EXTS = {".lrc"}                     # paroles posées à côté d'une piste : elles suivent son nom
 
 # Dossier de disque d'un album en plusieurs CD : "CD1", "CD 2", "Disc 2", "Disque 1".
@@ -34,7 +34,7 @@ MBID_RE = re.compile(r"[\[{]\s*mbid[-=\s]\s*([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9
 
 @dataclass
 class Album:
-    """Un album sur le disque : ses .flac (dossiers de disque compris), et ce qu'on ne sait pas écrire."""
+    """Un album sur le disque : ses .flac et .mp3 (dossiers de disque compris), et ce qu'on ne sait pas écrire."""
     folder: Path
     files: list
     display: str
@@ -135,7 +135,7 @@ def _most_common(values):
 
 
 def tag_hints(metas):
-    """Hints lus dans les tags des fichiers d'un album (liste de flac.Metadata).
+    """Hints lus dans les tags des fichiers d'un album (liste de flac.Metadata ou mp3.Metadata).
 
     La valeur la plus répandue l'emporte : un morceau bonus rangé avec l'album ne doit pas en changer le titre. L'identifiant MusicBrainz, lui, ne vaut que si TOUS les fichiers le déclarent - un album à moitié étiqueté par Picard n'est pas encore un album étiqueté.
     """
@@ -152,7 +152,7 @@ def tag_hints(metas):
 # Choix de la sortie
 # --------------------------------------------------------------------------
 MIN_TITLE = 0.6                          # en dessous, la sortie trouvée parle d'autre chose
-COVER_FORMATS = {"CD", "Digital Media"}  # d'où viennent les .flac : un vinyle a d'autres faces, parfois d'autres pistes
+COVER_FORMATS = {"CD", "Digital Media"}  # d'où viennent les .flac et les .mp3 : un vinyle a d'autres faces, parfois d'autres pistes
 
 
 def normalize(text):
