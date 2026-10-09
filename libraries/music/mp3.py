@@ -9,6 +9,8 @@ Lit les ID3v2.3 et 2.4, écrit de l'ID3v2.4 : plusieurs valeurs dans une trame (
 Tout ce qui n'est pas un tag géré - ReplayGain, paroles (USLT), commentaires (COMM), notes (POPM), compositeur... - est recopié tel quel.
 """
 
+from __future__ import annotations
+
 import os
 import re
 import shutil
