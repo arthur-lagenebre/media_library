@@ -4,18 +4,18 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Généré par Claude Code](https://img.shields.io/badge/G%C3%A9n%C3%A9r%C3%A9%20par-Claude%20Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
-Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://www.themoviedb.org) pour les films et les séries, en français, et de [MusicBrainz](https://musicbrainz.org) pour la musique : les métadonnées sont écrites **directement dans les fichiers** — `.mkv`, `.flac` — (sans ré-encodage ni remux, c'est quasi instantané), pour que chaque fichier reste autonome. Les livres, BD, comics et mangas portent déjà leur fiche (`ComicInfo.xml`, `.opf`) : ils sont seulement **lus**, pour en tirer une fiche de la bibliothèque.
+Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://www.themoviedb.org) pour les films et les séries, en français, et de [MusicBrainz](https://musicbrainz.org) pour la musique : les métadonnées sont écrites **directement dans les fichiers** — `.mkv`, `.flac`, `.mp3` — (sans ré-encodage ni remux, c'est quasi instantané), pour que chaque fichier reste autonome. Les livres, BD, comics et mangas portent déjà leur fiche (`ComicInfo.xml`, `.opf`) : ils sont seulement **lus**, pour en tirer une fiche de la bibliothèque.
 
 | Script | Rôle |
 | --- | --- |
 | [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes ; fiche récap de la médiathèque |
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, plus une fiche récap HTML |
-| [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
+| [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
 | [scripts/TV_Shows/Recap_All.py](scripts/TV_Shows/Recap_All.py) | Régénère la fiche récap de toutes les séries d'une médiathèque, sans toucher aux épisodes |
 | [scripts/TV_Shows/Index.py](scripts/TV_Shows/Index.py) | Sommaire `index.html` de toutes les séries, chacune menant à sa fiche récap ; fait pour une tâche planifiée sur le NAS |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
-| [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` en `{numéro} - {titre MusicBrainz}.flac`, paroles `.lrc` comprises |
+| [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
 | [scripts/Books/Recap.py](scripts/Books/Recap.py) | Fiche HTML d'une bibliothèque de livres, BD, comics et mangas, lue dans les fiches intégrées aux `.cbz` et `.epub` : une page par série, couvertures, auteurs, tomes manquants ; rien n'est écrit dans les livres |
 | [scripts/Maintenance/Verify_Files.py](scripts/Maintenance/Verify_Files.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
 | [scripts/Converters/Avi_To_Mkv.py](scripts/Converters/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
@@ -37,7 +37,7 @@ libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.e
 tests/                 les tests
 ```
 
-[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et la reconnaissance des albums. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3` et la reconnaissance des albums. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
@@ -51,7 +51,7 @@ winget install MoritzBunkus.MKVToolNix
 winget install Gyan.FFmpeg
 ```
 
-`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` lui-même, et MusicBrainz ne demande aucune clé. `Books/Recap.py` ne demande ni outil, ni clé, ni réseau.
+`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` et les `.mp3` lui-même, et MusicBrainz ne demande aucune clé. `Books/Recap.py` ne demande ni outil, ni clé, ni réseau.
 
 ## Clé TMDB
 
@@ -207,7 +207,7 @@ Ensuite, plus rien à faire : une série traitée sur le disque local puis copi�
 
 ### Musique
 
-Un album est un dossier qui contient des `.flac` — lui ou ses dossiers de disque (`CD1`, `CD2`…) ; les dossiers d'artiste au-dessus ne font que ranger. La référence est [MusicBrainz](https://musicbrainz.org), ouvert et **sans clé**, et les pochettes viennent de [Cover Art Archive](https://coverartarchive.org).
+Un album est un dossier qui contient des `.flac` ou des `.mp3` — lui ou ses dossiers de disque (`CD1`, `CD2`…) ; les dossiers d'artiste au-dessus ne font que ranger. La référence est [MusicBrainz](https://musicbrainz.org), ouvert et **sans clé**, et les pochettes viennent de [Cover Art Archive](https://coverartarchive.org).
 
 ```powershell
 python scripts\Music\Metadata.py --dir "D:\Musique"                  # simulation
@@ -225,7 +225,7 @@ La pochette est ajoutée aux fichiers qui n'en ont pas : celle de l'édition, à
 
 L'identifiant de l'édition (`MUSICBRAINZ_ALBUMID`) est inscrit dans chaque fichier et relu au passage suivant. Priorité : `--mbid`, puis l'identifiant épinglé dans le nom du dossier (`2013 - Outrun [mbid-4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6]`), puis celui que **tous** les fichiers déclarent, puis la recherche.
 
-Aucun outil externe : le script lit et écrit lui-même les blocs du `.flac`. Tant que les tags tiennent dans le padding du fichier, seul l'en-tête est réécrit ; sinon — une pochette ajoutée, typiquement — le fichier est recopié à côté puis substitué, et le son ne bouge pas. La place laissée vide sur place est plafonnée à 64 Ko : l'Explorateur de Windows ne lit plus rien, ni tags ni miniature, d'un `.flac` dont le son commence au-delà de 4 Mio (mesuré à l'octet près), et c'est ainsi que les pistes de *Synthesis* avaient perdu leur pochette à l'affichage. Un fichier que son padding a fait passer au-delà est signalé par `--verify` et recopié par `--apply` ; une image embarquée assez lourde pour franchir seule la limite est signalée. Mesuré sur une médiathèque de 194 pistes : 167 écritures sur place, 27 recopies (les deux albums sans pochette), le son intact à l'octet près, et un `--verify` qui ne trouve plus rien ensuite ; sur un album recopié en entier, l'empreinte MD5 du son décodé par ffmpeg reste la même. Un fichier déjà conforme n'est jamais réécrit, d'où l'absence de `--skip-done`. MusicBrainz n'accepte qu'une requête par seconde : un premier passage coûte environ trois requêtes par album, les suivants sont servis par le cache. Seuls les `.flac` sont écrits : un dossier de `.mp3` est signalé et laissé tel quel. Le journal `metadata.log` donne le lien MusicBrainz de chaque album.
+Aucun outil externe : le script lit et écrit lui-même les blocs du `.flac`. Tant que les tags tiennent dans le padding du fichier, seul l'en-tête est réécrit ; sinon — une pochette ajoutée, typiquement — le fichier est recopié à côté puis substitué, et le son ne bouge pas. La place laissée vide sur place est plafonnée à 64 Ko : l'Explorateur de Windows ne lit plus rien, ni tags ni miniature, d'un `.flac` dont le son commence au-delà de 4 Mio (mesuré à l'octet près), et c'est ainsi que les pistes de *Synthesis* avaient perdu leur pochette à l'affichage. Un fichier que son padding a fait passer au-delà est signalé par `--verify` et recopié par `--apply` ; une image embarquée assez lourde pour franchir seule la limite est signalée. Mesuré sur une médiathèque de 194 pistes : 167 écritures sur place, 27 recopies (les deux albums sans pochette), le son intact à l'octet près, et un `--verify` qui ne trouve plus rien ensuite ; sur un album recopié en entier, l'empreinte MD5 du son décodé par ffmpeg reste la même. Un fichier déjà conforme n'est jamais réécrit, d'où l'absence de `--skip-done`. MusicBrainz n'accepte qu'une requête par seconde : un premier passage coûte environ trois requêtes par album, les suivants sont servis par le cache. Un `.mp3` se traite de la même façon, avec les mêmes options : les tags vont dans son étiquette ID3v2, sous les noms de trames de Picard (`TXXX` « MusicBrainz Album Id »…, `UFID` pour l'enregistrement), les valeurs multiples — genres, labels, artistes — séparées par un octet nul, la pochette dans une trame `APIC`. Une étiquette ID3v2.3 est relue puis réécrite en 2.4, UTF-8 (l'Explorateur de Windows en lit titre, artiste, album, année, numéro de piste, genre et pochette) ; ses trames que le script ne gère pas — ReplayGain, paroles `USLT`, commentaires, notes — sont recopiées telles quelles. Les ID3v2.2, antérieurs à 1999, sont refusés plutôt que réécrits à moitié, et l'étiquette ID3v1 de fin de fichier n'est pas touchée. Tant que l'étiquette tient dans son padding, seule elle est réécrite ; sinon, ou si le fichier n'en avait pas, il est recopié à côté puis substitué, et le son reste identique à l'octet près. La durée d'un `.mp3` (lue dans l'en-tête Xing, sinon estimée sur le débit) sert, comme celle d'un `.flac`, à signaler une piste qui ne colle pas. Seuls les `.flac` et les `.mp3` sont écrits : un dossier de `.m4a`, `.ogg`… est signalé et laissé tel quel. Le journal `metadata.log` donne le lien MusicBrainz de chaque album.
 
 Pour les noms de fichiers, [Rename_Tracks.py](scripts/Music/Rename_Tracks.py) est le pendant de `Rename_Episodes.py` : chaque piste prend le nom `{numéro} - {titre}.flac` que donne MusicBrainz, le numéro sur autant de chiffres dans tout l'album.
 

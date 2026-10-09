@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""
-Rename_Tracks.py — Renomme les pistes des albums .flac avec les titres MusicBrainz.
+Rename_Tracks.py — Renomme les pistes des albums .flac et .mp3 avec les titres MusicBrainz.
 
-Format appliqué :  "{numéro} - {titre}.flac"
+Format appliqué :  "{numéro} - {titre}.flac" (ou .mp3, l'extension ne change pas)
   - Le numéro est zéro-paddé pour avoir le MÊME nombre de chiffres dans tout l'album (largeur = nb de chiffres du plus long disque, minimum 2).  ex : 01, 02, ... 14
   - Un album en plusieurs disques rangés dans le même dossier préfixe le numéro du disque : "2-01 - Alive 1997.flac". Rangés dans CD1, CD2..., chaque dossier de disque repart de 01.
   - Un "/" dans un titre devient "-" : "Robot Rock / Oh Yeah" -> "01 - Robot Rock - Oh Yeah.flac". Windows l'interdit, et le supprimer collerait les morceaux d'un medley.
@@ -20,7 +20,7 @@ Usage :
 
 Options : --apply --no-cache --no-ask --mbid --country (défaut FR)
 
-Seuls les .flac sont renommés, comme seuls ils sont étiquetés : ce sont leurs tags qui reconnaissent l'album et placent chaque fichier. Un dossier de .mp3 est signalé et laissé tel quel.
+Seuls les .flac et les .mp3 sont renommés, comme seuls ils sont étiquetés : ce sont leurs tags qui reconnaissent l'album et placent chaque fichier. Un dossier de .m4a, .ogg... est signalé et laissé tel quel.
 """
 
 import argparse
@@ -117,7 +117,7 @@ def rename_pending(pending, args, mb):
 # Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Renomme les pistes des albums .flac au format '{numero} - {titre}.flac' (donnees MusicBrainz).")
+    ap = argparse.ArgumentParser(description="Renomme les pistes des albums .flac et .mp3 au format '{numero} - {titre}.flac' (donnees MusicBrainz).")
     ap.add_argument("--dir", required=True, help="Dossier de musique, parcouru recursivement (dossiers d'artiste et de disque compris)")
     ap.add_argument("--mbid", help="Force l'identifiant MusicBrainz de l'edition (si --dir ne contient qu'un album)")
     ap.add_argument("--country", default="FR", help="Pays prefere parmi les editions d'un album, code a deux lettres (defaut : FR)")
@@ -156,10 +156,10 @@ def main():
         print(f"--- {album.display} ---")
         if not album.files:
             kinds = ", ".join(sorted({p.suffix.lower() for p in album.unsupported}))
-            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac sont renommes\n")
+            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont renommes\n")
             continue
         if album.unsupported:
-            print(f"  /!\\ {len(album.unsupported)} fichier(s) non .flac ignore(s) : l'album est compte sans eux")
+            print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignore(s) : l'album est compte sans eux")
         metas, errors = lookup.read_album(album)
         if errors:
             print("  [NON TRAITE] fichier(s) illisible(s) :")

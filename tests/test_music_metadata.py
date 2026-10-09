@@ -12,10 +12,13 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.music import album as albums
-from libraries.music import flac, lookup
+from libraries.music import flac, lookup, mp3
 from scripts.Music import Metadata as music
 from tests.test_album import OUTRUN, sortie
 from tests.test_flac import bloc, fichier, image
+from tests.test_mp3 import SON, texte, trame, txxx
+from tests.test_mp3 import fichier as fichier_mp3
+from tests.test_mp3 import image as image_mp3
 
 MBID = "4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6"
 
@@ -239,6 +242,107 @@ class TestResolution(AlbumTestCase):
         with mock.patch.object(music.cli, "can_ask", lambda: False), redirect_stdout(io.StringIO()):
             report = music.resolve_pending([found], journal, arguments(), FauxMusicBrainz())
         self.assertEqual((report.pending, journal.entries[0][2]), (1, "[A CONFIRMER]"))
+
+
+class Mp3AlbumTestCase(AlbumTestCase):
+    """Le même album, en .mp3 : étiquette ID3v2.3 d'un ancien outil, avec ReplayGain et paroles que l'étiquetage doit laisser."""
+
+    def poser(self, extra_trames=(), titres=AlbumTestCase.TITRES, images=(), nom_album="Outrun", name_pattern="0{n} - {title}.mp3", padding=200):
+        for n, titre in enumerate(titres, 1):
+            trames = [trame("TIT2", texte([titre], 1), 3), trame("TRCK", texte([str(n)], 0), 3), trame("TALB", texte([nom_album], 1), 3), trame("TPE1", texte(["Kavinsky"], 1), 3), trame("TYER", texte(["2013"], 0), 3), trame("TXXX", txxx("REPLAYGAIN_TRACK_GAIN", ["-9.5 dB"], 0), 3), *extra_trames]
+            trames = trames + [trame("APIC", image_mp3(i), 3) for i in images] + [trame("USLT", b"\x03eng\x00" + b"la la la", 3)]
+            (self.dossier / name_pattern.format(n=n, title=titre)).write_bytes(fichier_mp3(trames, version=3, padding=padding))
+
+    def relire(self, n=1):
+        return mp3.read(self.dossier / f"0{n} - {self.TITRES[n - 1]}.mp3")
+
+
+class TestAlbumMp3(Mp3AlbumTestCase):
+    def test_un_album_mp3_est_etiquete(self):
+        self.poser()
+        report, _ = self.traiter(FauxMusicBrainz())
+        relu = self.relire(3)
+        self.assertEqual((report.matched, report.failures, report.skipped), (1, 0, 0))
+        self.assertEqual((relu.first("TITLE"), relu.first("ARTIST"), relu.first("ALBUM"), relu.first("MUSICBRAINZ_ALBUMID")), ("Protovision", "Kavinsky feat. Havoc", "OutRun", "rel-1"))
+        self.assertEqual((relu.first("TRACKNUMBER"), relu.first("TRACKTOTAL"), relu.values("GENRE")), ("3", "3", ["Synthwave"]))
+        self.assertEqual(relu.version, 4)
+
+    def test_replaygain_et_paroles_conserves(self):
+        self.poser()
+        self.traiter(FauxMusicBrainz())
+        relu = self.relire(2)
+        self.assertEqual(relu.first("REPLAYGAIN_TRACK_GAIN"), "-9.5 dB")
+        self.assertIn(b"la la la", next(f.body for f in relu.frames if f.id == "USLT"))
+
+    def test_le_son_ne_bouge_pas(self):
+        self.poser()
+        self.traiter(FauxMusicBrainz())
+        for n in (1, 2, 3):
+            chemin = self.dossier / f"0{n} - {self.TITRES[n - 1]}.mp3"
+            self.assertEqual(chemin.read_bytes()[self.relire(n).audio_offset:], SON)
+
+    def test_second_passage_sans_rien_a_faire(self):
+        self.poser()
+        mb = FauxMusicBrainz()
+        self.traiter(mb)
+        avant = [f.read_bytes() for f in sorted(self.dossier.iterdir())]
+        _, sortie_texte = self.traiter(mb)
+        self.assertEqual(sortie_texte.count("deja conforme"), 3)
+        self.assertEqual(avant, [f.read_bytes() for f in sorted(self.dossier.iterdir())])
+
+    def test_verification_compte_les_fichiers(self):
+        self.poser()
+        report, sortie_texte = self.traiter(FauxMusicBrainz(), verify=True)
+        self.assertEqual(report.diffs, 3)
+        self.assertIn("[DIFF] ALBUM : Outrun -> OutRun", sortie_texte)
+
+    def test_verification_apres_ecriture(self):
+        self.poser()
+        mb = FauxMusicBrainz()
+        self.traiter(mb)
+        report, _ = self.traiter(mb, verify=True)
+        self.assertEqual(report.diffs, 0)
+
+    def test_pochette_ajoutee(self):
+        self.poser()
+        mb = FauxMusicBrainz({"rel-1": dict(OUTRUN, **{"cover-art-archive": {"front": True}})})
+        self.traiter(mb)
+        self.assertEqual(mb.covers, [("rel-1", "rg-1")])
+        self.assertTrue(self.relire(2).has_front_cover)
+
+    def test_pochette_existante_gardee(self):
+        self.poser(images=[b"MIENNE"])
+        mb = FauxMusicBrainz({"rel-1": dict(OUTRUN, **{"cover-art-archive": {"front": True}})})
+        self.traiter(mb)
+        self.assertEqual(mb.covers, [])
+        self.assertEqual(self.relire().pictures[0].data, b"MIENNE")
+
+    def test_pochette_remplacee_sur_demande(self):
+        self.poser(images=[b"MIENNE"])
+        mb = FauxMusicBrainz({"rel-1": dict(OUTRUN, **{"cover-art-archive": {"front": True}})})
+        self.traiter(mb, replace_cover=True)
+        self.assertEqual(self.relire().pictures[0].data, b"\xff\xd8JPEG")
+
+    def test_sans_genres(self):
+        self.poser(extra_trames=[trame("TCON", texte(["Rock"], 0), 3)])
+        self.traiter(FauxMusicBrainz(), no_genres=True)
+        self.assertEqual(self.relire().values("GENRE"), ["Rock"])
+
+    def test_album_melant_flac_et_mp3(self):
+        self.poser(titres=("Prelude", "Blizzard"))
+        (self.dossier / "03 - Protovision.flac").write_bytes(fichier(["TITLE=Protovision", "TRACKNUMBER=3", "ALBUM=Outrun", "ARTIST=Kavinsky"]))
+        report, _ = self.traiter(FauxMusicBrainz())
+        self.assertEqual((report.matched, report.failures), (1, 0))
+        self.assertEqual(flac.read(self.dossier / "03 - Protovision.flac").first("MUSICBRAINZ_ALBUMID"), "rel-1")
+        self.assertEqual(self.relire(2).first("MUSICBRAINZ_ALBUMID"), "rel-1")
+
+    def test_fichier_illisible_bloque_l_album(self):
+        self.poser()
+        (self.dossier / "02 - Blizzard.mp3").write_bytes(b"ID3\x02\x00\x00" + bytes(40))
+        (seul,) = albums.find_albums(self.dossier.parent)
+        _, erreurs = lookup.read_album(seul)
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn("02 - Blizzard.mp3", erreurs[0])
 
 
 if __name__ == "__main__":

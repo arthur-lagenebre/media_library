@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from libraries.common import cli
 from . import album as albums
-from . import flac
+from . import audio
 from .musicbrainz import MusicBrainzError
 
 
@@ -19,7 +19,7 @@ from .musicbrainz import MusicBrainzError
 class Found:
     """Un album du disque, ses fichiers lus, et ce qu'on sait de lui."""
     album: albums.Album
-    metas: dict                                   # {chemin: flac.Metadata}
+    metas: dict                                   # {chemin: flac.Metadata ou mp3.Metadata}
     hints: albums.Hints = field(default_factory=albums.Hints)
     choice: albums.Choice | None = None           # quand une question reste à poser
 
@@ -29,8 +29,8 @@ def read_album(album):
     metas, errors = {}, []
     for path in album.files:
         try:
-            metas[path] = flac.read(path)
-        except flac.FlacError as e:
+            metas[path] = audio.read(path)
+        except audio.AudioError as e:
             errors.append(f"{path.name} : {e}")
     return metas, errors
 

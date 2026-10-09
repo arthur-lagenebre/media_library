@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""
-Metadata.py — Étiquette des albums .flac à partir de MusicBrainz.
+Metadata.py — Étiquette des albums .flac et .mp3 à partir de MusicBrainz.
 
-Même principe que Movies/Metadata.py, pour la musique : la base de référence est MusicBrainz (ouverte, sans clé), les pochettes viennent de Cover Art Archive, et tout est écrit DIRECTEMENT dans chaque .flac, sans outil externe.
+Même principe que Movies/Metadata.py, pour la musique : la base de référence est MusicBrainz (ouverte, sans clé), les pochettes viennent de Cover Art Archive, et tout est écrit DIRECTEMENT dans chaque .flac (commentaires Vorbis) ou .mp3 (étiquette ID3v2.4), sans outil externe.
 
 Écrit, pour chaque piste, les tags sous les noms qu'emploie Picard :
   - titre, artiste(s) crédité(s), album, artiste de l'album, noms de tri
@@ -13,9 +13,9 @@ Même principe que Movies/Metadata.py, pour la musique : la base de référence 
   - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover]
 
 Tout ce qui ne vient pas de MusicBrainz reste en place : ReplayGain, paroles, notes, ISRC... Une clé n'est gérée que si la base lui donne une valeur - un genre écrit à la main survit à un album sans genre - sauf celles qui décrivent l'édition (label, code-barres, identifiants), qui mentiraient si elles restaient d'une autre.
-L'écriture se fait sur place tant que les tags tiennent dans le padding du fichier ; sinon (une pochette ajoutée, typiquement) le fichier est recopié à côté puis substitué, le son intact.
+L'écriture se fait sur place tant que les tags tiennent dans le padding du fichier (ou de l'étiquette ID3) ; sinon (une pochette ajoutée, typiquement) le fichier est recopié à côté puis substitué, le son intact.
 
-Un album est un dossier qui contient des .flac, lui ou ses dossiers de disque (CD1, CD2...). --dir est parcouru récursivement : les dossiers d'artiste au-dessus ne font que ranger.
+Un album est un dossier qui contient des .flac ou des .mp3, lui ou ses dossiers de disque (CD1, CD2...). --dir est parcouru récursivement : les dossiers d'artiste au-dessus ne font que ranger.
 L'album est cherché d'après les tags ALBUM et ALBUMARTIST de ses fichiers, puis d'après le nom du dossier ("1994 - Born Dead", "Daft Punk - Discovery (2001) FLAC [...]").
 Seules comptent les éditions qui ont exactement autant de pistes que le dossier a de fichiers : c'est ce qui départage l'album du single, le CD de 17 pistes du pressage de 16. Parmi elles, l'édition officielle de l'année du dossier, du pays --country (défaut FR), puis européenne, puis mondiale.
 Chaque fichier est placé sur sa piste par son numéro (tags, dossier de disque, nom), puis par son titre. Un seul fichier sans piste et l'album n'est PAS traité : à moitié étiqueté, il aurait l'air fait.
@@ -33,7 +33,7 @@ Usage :
 Options : --apply --verify --no-cache --no-ask --no-cover --replace-cover --no-genres --mbid --country (défaut FR) --image-size (défaut 1200)
 
 Aucune dépendance pip, aucun outil externe. Nécessite Internet (MusicBrainz + Cover Art Archive), à raison d'une requête par seconde - la règle de MusicBrainz - que le cache (7 jours) épargne aux passages suivants.
-Seuls les .flac sont écrits : un dossier de .mp3 est signalé et laissé tel quel.
+Seuls les .flac et les .mp3 sont écrits : un dossier de .m4a, .ogg... est signalé et laissé tel quel. Dans un .mp3, les tags portent les noms de trames de Picard (TXXX "MusicBrainz Album Id"...), les ID3v2.3 sont réécrits en 2.4, et l'étiquette ID3v1 de fin de fichier n'est pas touchée.
 À chaque passage, un JOURNAL "metadata.log" est écrit à la racine de --dir : le lien MusicBrainz de chaque album, ceux qui n'en ont pas à la fin.
 """
 
@@ -48,7 +48,7 @@ from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.common import filenames  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
-from libraries.music import flac, lookup  # noqa: E402
+from libraries.music import audio, lookup  # noqa: E402
 from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError, release_url  # noqa: E402
 
 
@@ -85,7 +85,7 @@ class CoverCache:
             except MusicBrainzError as e:
                 print(f"      pochette ignoree ({e})")
                 data = None
-            self.picture = flac.front_cover(data) if data else None
+            self.picture = audio.front_cover(data) if data else None
         return self.picture
 
 
@@ -110,13 +110,13 @@ def process_album(found, release, group, args, mb):
         # --verify n'exige que la pochette que la sortie déclare : celle du release group n'existe peut-être pas, et l'exiger signalerait un écart que rien ne comble.
         missing_cover = not args.no_cover and covers.own and not meta.has_front_cover
         # L'Explorateur de Windows ne lit rien d'un en-tête de plus de 4 Mio : quand c'est le padding qui l'enfle, recopier le fichier suffit à le rendre lisible.
-        shrink = meta.audio_offset > flac.WINDOWS_HEADER_LIMIT and meta.padding > flac.MAX_PADDING
+        shrink = meta.bloated
 
         name = filenames.relative_name(entry.path, album.folder)       # CD1/ et CD2/ se distinguent
         print(f"  [{medium.get('position')}-{track.get('position'):02d}] {name} -> {track.get('title')}")
         for note in albums.entry_notes(entry, track):
             print(f"      /!\\ {note}")
-        if meta.audio_offset - meta.padding > flac.WINDOWS_HEADER_LIMIT:
+        if meta.heavy_header:
             print(f"      /!\\ en-tete de {(meta.audio_offset - meta.padding) / 1048576:.1f} Mo sans le padding : l'Explorateur Windows n'en lit rien (--replace-cover remplace la pochette)")
         if args.verify:
             for key, current, wanted in diffs:
@@ -143,13 +143,13 @@ def process_album(found, release, group, args, mb):
         if wants_cover:
             cover = covers.get()
             if cover is not None:
-                pictures = [cover] + [p for p in meta.pictures if p.kind != flac.FRONT_COVER]
+                pictures = [cover] + [p for p in meta.pictures if p.kind != audio.FRONT_COVER]
             elif not diffs and not shrink:
                 continue
         try:
-            mode = flac.write(entry.path, meta, albums.merge(meta.comments, target), pictures)
+            mode = audio.write(entry.path, meta, albums.merge(meta.comments, target), pictures)
             print(f"      [OK] {mode}")
-        except flac.FlacError as e:
+        except audio.AudioError as e:
             print(f"      [ECHEC] {e}")
             report.failures += 1
     return report
@@ -217,7 +217,7 @@ def write_log(root, journal, args, report):
 # 3. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Etiquette des albums .flac depuis MusicBrainz.")
+    ap = argparse.ArgumentParser(description="Etiquette des albums .flac et .mp3 depuis MusicBrainz.")
     ap.add_argument("--dir", required=True, help="Dossier de musique, parcouru recursivement (dossiers d'artiste et de disque compris)")
     ap.add_argument("--mbid", help="Force l'identifiant MusicBrainz de l'edition (si --dir ne contient qu'un album)")
     ap.add_argument("--country", default="FR", help="Pays prefere parmi les editions d'un album, code a deux lettres (defaut : FR)")
@@ -259,11 +259,11 @@ def main():
         print(f"--- {album.display} ---")
         if not album.files:
             kinds = ", ".join(sorted({p.suffix.lower() for p in album.unsupported}))
-            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac sont etiquetes\n")
+            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont etiquetes\n")
             journal.note(album.display, None, "[NON PRIS EN CHARGE]")
             continue
         if album.unsupported:
-            print(f"  /!\\ {len(album.unsupported)} fichier(s) non .flac ignore(s) : l'album est compte sans eux")
+            print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignore(s) : l'album est compte sans eux")
         metas, errors = lookup.read_album(album)
         if errors:
             print("  [NON TRAITE] fichier(s) illisible(s) :")

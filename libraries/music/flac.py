@@ -12,10 +12,11 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .tags import FRONT_COVER, AudioError, Picture, front_cover, image_dimensions  # noqa: F401  (réexportés : flac.Picture, flac.front_cover...)
+
 MAGIC = b"fLaC"
 STREAMINFO, PADDING, APPLICATION, SEEKTABLE, VORBIS_COMMENT, CUESHEET, PICTURE = range(7)
 MAX_BLOCK = (1 << 24) - 1     # la taille d'un bloc tient sur 24 bits
-FRONT_COVER = 3               # type d'image "couverture (recto)" de la spécification
 DEFAULT_PADDING = 8192        # ce que laisse libFLAC : de quoi retoucher les tags plus tard sans tout recopier
 # L'Explorateur de Windows ne lit les métadonnées d'un .flac - tags comme miniature - que si le son commence dans les 4 premiers Mio. Mesuré à l'octet près : 4 194 304 octets d'en-tête s'affichent, 4 198 400 plus du tout, que la place soit prise par du padding ou par une image.
 WINDOWS_HEADER_LIMIT = 4 * 1024 * 1024
@@ -23,21 +24,8 @@ WINDOWS_HEADER_LIMIT = 4 * 1024 * 1024
 MAX_PADDING = 64 * 1024
 
 
-class FlacError(Exception):
+class FlacError(AudioError):
     """Fichier illisible ou écriture impossible : l'appelant passe au suivant."""
-
-
-@dataclass
-class Picture:
-    """Une image embarquée (bloc PICTURE)."""
-    kind: int
-    mime: str
-    data: bytes
-    description: str = ""
-    width: int = 0
-    height: int = 0
-    depth: int = 0
-    colors: int = 0
 
 
 @dataclass
@@ -71,6 +59,16 @@ class Metadata:
     @property
     def has_front_cover(self):
         return any(p.kind == FRONT_COVER for p in self.pictures)
+
+    @property
+    def bloated(self):
+        """Vrai quand le padding a fait passer le son au-delà de ce que l'Explorateur de Windows lit : une recopie le répare."""
+        return self.audio_offset > WINDOWS_HEADER_LIMIT and self.padding > MAX_PADDING
+
+    @property
+    def heavy_header(self):
+        """Vrai quand l'en-tête dépasse cette limite même sans son padding (une image trop lourde) : il n'y a rien à recopier."""
+        return self.audio_offset - self.padding > WINDOWS_HEADER_LIMIT
 
 
 # --------------------------------------------------------------------------
@@ -183,37 +181,6 @@ def build_comments(vendor, comments):
 def build_picture(picture):
     mime, description = picture.mime.encode("ascii"), picture.description.encode("utf-8")
     return b"".join([struct.pack(">II", picture.kind, len(mime)), mime, struct.pack(">I", len(description)), description, struct.pack(">IIIII", picture.width, picture.height, picture.depth, picture.colors, len(picture.data)), picture.data])
-
-
-def image_dimensions(data):
-    """(largeur, hauteur, bits par pixel) d'un JPEG ou d'un PNG, zéros si on ne sait pas.
-
-    La spécification demande ces valeurs ; certains lecteurs s'en servent pour choisir l'image à afficher.
-    """
-    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 26:
-        channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(data[25], 1)
-        return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"), data[24] * channels
-    if data[:2] == b"\xff\xd8":
-        position = 2
-        while position + 9 < len(data):
-            if data[position] != 0xFF:
-                break
-            marker = data[position + 1]
-            if marker == 0xFF:                     # octet de bourrage entre deux marqueurs
-                position += 1
-                continue
-            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):   # SOF : là où la taille est écrite
-                height = int.from_bytes(data[position + 5:position + 7], "big")
-                width = int.from_bytes(data[position + 7:position + 9], "big")
-                return width, height, data[position + 4] * data[position + 9]
-            position += 2 + int.from_bytes(data[position + 2:position + 4], "big")
-    return 0, 0, 0
-
-
-def front_cover(data, mime="image/jpeg"):
-    """Picture de couverture pour ces octets, dimensions comprises."""
-    width, height, depth = image_dimensions(data)
-    return Picture(FRONT_COVER, mime, data, "", width, height, depth, 0)
 
 
 def _block(kind, body, last):

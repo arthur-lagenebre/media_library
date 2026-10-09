@@ -13,7 +13,7 @@ from libraries.music import lookup
 from scripts.Music import Rename_Tracks as renamer
 from tests.test_album import DOUBLE, OUTRUN, piste
 from tests.test_flac import fichier
-from tests.test_music_metadata import AlbumTestCase
+from tests.test_music_metadata import AlbumTestCase, Mp3AlbumTestCase
 
 MEDIUM = {"position": 2}
 
@@ -116,6 +116,17 @@ class TestPlusieursDisques(RenameTracksTestCase):
         self.run_album(DOUBLE)
         self.assertEqual(self.names(self.dossier / "CD1"), ["01 - Robot Rock.flac", "02 - Touch It.flac"])
         self.assertEqual(self.names(self.dossier / "CD2"), ["01 - Alive 1997.flac"])
+
+
+class TestRenommageMp3(Mp3AlbumTestCase):
+    def test_extension_conservee(self):
+        self.poser(name_pattern="{n}. Kavinsky - {title}.mp3")
+        (found_album,) = albums.find_albums(self.dossier.parent)
+        metas, _ = lookup.read_album(found_album)
+        with redirect_stdout(io.StringIO()):
+            tally = renamer.rename_album(lookup.Found(found_album, metas), OUTRUN, types.SimpleNamespace(apply=True))
+        self.assertEqual(sorted(p.name for p in self.dossier.iterdir()), ["01 - Prelude.mp3", "02 - Blizzard.mp3", "03 - Protovision.mp3"])
+        self.assertEqual(tally.named, 3)
 
 
 if __name__ == "__main__":

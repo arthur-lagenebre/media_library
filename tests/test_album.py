@@ -69,7 +69,7 @@ class TestDossiers(unittest.TestCase):
         self.assertIsNone(seul.disc_folder(seul.files[0]))
 
     def test_formats_non_ecrits_signales(self):
-        self.poser("E-Life/01.mp3", "E-Life/02.mp3")
+        self.poser("E-Life/01.m4a", "E-Life/02.m4a")
         (seul,) = album.find_albums(self.racine)
         self.assertEqual((seul.files, len(seul.unsupported)), ([], 2))
 
