@@ -91,6 +91,19 @@ class TestContenu(unittest.TestCase):
         self.assertNotIn("<script>x</script>", html)
 
 
+class TestFichiers(unittest.TestCase):
+    def test_chemins_en_petit_sous_le_resume(self):
+        html = render(paths=["Nolan/Inception (2010)/Inception.mkv", "Nolan/Inception 4K/Inception.mkv"])
+        self.assertIn("<div class='path'>Nolan/Inception (2010)/Inception.mkv<br>Nolan/Inception 4K/Inception.mkv</div>", html)
+        self.assertLess(html.index("class='o'"), html.index("class='path'"))
+
+    def test_sans_chemin_rien_n_est_ajoute(self):
+        self.assertNotIn("class='path'", render())
+
+    def test_chemin_echappe(self):
+        self.assertIn("Tom &amp; Jerry/L&#39;oeil.mkv", render(paths=["Tom & Jerry/L'oeil.mkv"]))
+
+
 class TestImages(unittest.TestCase):
     def test_affiche_et_portraits_integres(self):
         images = {"w342/inc.jpg": "data:image/jpeg;base64,AFFICHE", "w185/leo.jpg": "data:image/jpeg;base64,LEO"}

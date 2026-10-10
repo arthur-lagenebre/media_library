@@ -162,6 +162,11 @@ class TestPageDeSerie(unittest.TestCase):
     def render(self, s=None, images=None):
         return shelfpage.build_series(s or tomes(), images or {}, "../index.html", "Livres")
 
+    def test_chemin_de_chaque_tome(self):
+        html = self.render()
+        for n in (1, 2, 5):
+            self.assertIn(f"<div class='path'>Manga/Captain Tsubasa/Tome {n}.cbz</div>", html)
+
     def test_titre_et_retour(self):
         s = tomes()
         html = self.render(s)

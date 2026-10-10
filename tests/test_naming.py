@@ -132,6 +132,14 @@ class TestInventaire(unittest.TestCase):
     def test_non_video_ignores(self):
         self.assertEqual(self.inventaire("01 - Episode 1.srt", "notes.txt"), set())
 
+    def test_fichiers_par_episode(self):
+        # Deux versions d'un même épisode : les deux fichiers sont rendus, pour que la fiche les montre.
+        with tempfile.TemporaryDirectory() as d:
+            for nom in ("S01E02.mkv", "S01E02 4K.mkv", "S01E03.mkv"):
+                (Path(d) / nom).write_text(nom, encoding="utf-8")
+            trouves = naming.owned_files(Path(d), self.EPISODES)
+        self.assertEqual({n: sorted(f.name for f in fichiers) for n, fichiers in trouves.items()}, {2: ["S01E02 4K.mkv", "S01E02.mkv"], 3: ["S01E03.mkv"]})
+
     def test_dossier_absent(self):
         self.assertEqual(naming.owned_numbers(Path("nexiste_pas_du_tout"), self.EPISODES), set())
 

@@ -7,6 +7,7 @@ Tout est pur : ce module ne rend que des morceaux de page, que chacune assemble.
 
 import string
 import unicodedata
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 # Appliqué dans le <head>, avant le <style> : sinon la page s'afficherait dans l'autre largeur avant de basculer. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, centrée.
@@ -40,6 +41,25 @@ CSS = (
     # Le retour depuis une fiche ramène à une vignette par son ancre : sans cette marge, l'en-tête fixe la recouvrirait.
     "html{scroll-padding-top:230px}"
 )
+
+
+# Le chemin des fichiers sur une fiche : petit et discret, il sert à retrouver le fichier, pas à être lu. Une longue ligne se coupe plutôt que de déborder.
+PATH_CSS = ".path{color:#6f7480;font-size:12.5px;font-style:italic;line-height:1.35;margin-top:6px;overflow-wrap:anywhere;user-select:all}"
+
+
+def relative_path(path, root):
+    """Chemin d'un fichier relatif à la racine de la médiathèque, avec des '/' : 'Saga/Heat (1995)/Heat.mkv'. Hors de la racine, le chemin entier."""
+    try:
+        return Path(path).relative_to(root).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
+def paths_block(paths):
+    """Les chemins d'une fiche, un par ligne ; rien s'il n'y en a pas."""
+    if not paths:
+        return ""
+    return "<div class='path'>" + "<br>".join(escape(str(p), {"'": "&#39;"}) for p in paths) + "</div>"
 
 
 def header(inner):
@@ -105,6 +125,12 @@ LETTERS = list(string.ascii_uppercase) + ["#"]
 
 # Les ligatures ne se décomposent pas : "Œil pour Œil" se range à O, pas à #.
 LIGATURES = str.maketrans({"Œ": "O", "œ": "o", "Æ": "A", "æ": "a"})
+
+
+def fold(text):
+    """Texte pour classer : sans accents ni casse ('Éden' se range entre 'Dune' et 'Fargo', pas après 'Zorro')."""
+    plain = "".join(c for c in unicodedata.normalize("NFD", (text or "").translate(LIGATURES)) if not unicodedata.combining(c))
+    return plain.casefold()
 
 
 def initial(text):

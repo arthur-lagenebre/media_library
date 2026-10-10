@@ -228,7 +228,8 @@ def _volume_card(volume, images):
     return (f"<div class='bk{bad}'>"
             f"<div class='aff'>{_cover(volume.key, uri, volume.title)}</div>"
             f"<div class='t'>{esc(volume.title)}</div>"
-            f"<div class='y'>{esc(meta)}</div></div>")
+            f"<div class='y'>{esc(meta)}</div>"
+            + layout.paths_block([volume.rel]) + "</div>")
 
 
 def build_series(series, images, back_href, library_name):
@@ -274,6 +275,7 @@ def build_series(series, images, back_href, library_name):
         ".src{color:#9aa0aa;font-size:13px;margin-top:6px}"
         ".gap{color:#ffb86b;margin-top:14px;font-size:14.5px}.gap span{color:#9aa0aa}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}"
+        + layout.PATH_CSS +
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
                         + layout.mode_button(layout.SHEET_LABELS) + "</div>") +

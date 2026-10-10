@@ -82,8 +82,8 @@ def page_title(movie):
     return f"{movie.get('title') or ''} ({year})" if year else (movie.get("title") or "")
 
 
-def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile_size=PROFILE_SIZE):
-    """Rend la fiche d'un film. 'images' = {clé: data-URI}, affiche et portraits mêlés ; 'back_href' = lien vers l'index."""
+def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile_size=PROFILE_SIZE, paths=()):
+    """Rend la fiche d'un film. 'images' = {clé: data-URI}, affiche et portraits mêlés ; 'back_href' = lien vers l'index ; 'paths' = chemins des fichiers du film, montrés en petit sous le résumé."""
     key = embed.image_key(movie.get("poster_path"), POSTER_SIZE)
     uri = images.get(key) if key else None
     poster = embed.tag(key, uri) if uri else "<div class='noimg'></div>"
@@ -124,6 +124,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         ".tag{color:#9aa0aa;font-style:italic;margin-bottom:6px}"
         ".by{color:#c7ccd4;font-size:14px;margin-bottom:14px}"
         ".o{color:#e8e8ea;font-size:15.5px;line-height:1.6}"
+        + layout.PATH_CSS +
         "h2{font-size:17px;margin:34px 0 14px;padding-bottom:8px;border-bottom:1px solid #21232b}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(124px,1fr))}"
         ".actor .ph{aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:#21232b}"
@@ -140,6 +141,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         + (f"<div class='tag'>{esc(tagline)}</div>" if tagline else "")
         + (f"<div class='by'>De {esc(', '.join(by))}</div>" if by else "")
         + f"<div class='o'>{esc(movie.get('overview') or 'Pas de résumé.')}</div>"
+        + layout.paths_block(paths) +
         "</div></div>"
         + (f"<h2>Casting</h2><div class='grid'>{''.join(faces)}</div>" if faces else "")
         + "<script>"

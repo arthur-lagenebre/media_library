@@ -1,5 +1,6 @@
 """Les morceaux de page communs : la lettre sous laquelle un titre se range."""
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -21,6 +22,23 @@ class TestInitiale(unittest.TestCase):
 
     def test_une_entree_par_lettre_et_diese(self):
         self.assertEqual(layout.index_nav().count("data-l="), 27)
+
+
+class TestFold(unittest.TestCase):
+    def test_sans_accents_ni_casse_ni_ligature(self):
+        self.assertEqual([layout.fold(t) for t in ("Éden", "ÀBC", "Œuf", None)], ["eden", "abc", "ouf", ""])
+
+
+class TestChemins(unittest.TestCase):
+    def test_relatif_a_la_racine_avec_des_slashs(self):
+        racine = Path("D:/Films") if os.name == "nt" else Path("/films")
+        self.assertEqual(layout.relative_path(racine / "Saga" / "Heat" / "Heat.mkv", racine), "Saga/Heat/Heat.mkv")
+
+    def test_hors_de_la_racine_chemin_entier(self):
+        self.assertEqual(layout.relative_path(Path("Ailleurs/Heat.mkv"), Path("Films")), "Ailleurs/Heat.mkv")
+
+    def test_bloc_vide_sans_chemin(self):
+        self.assertEqual((layout.paths_block([]), layout.paths_block(None)), ("", ""))
 
 
 class TestRetourEnHaut(unittest.TestCase):
