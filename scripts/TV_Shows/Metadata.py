@@ -63,7 +63,6 @@ Options principales :
   --image-size STR taille TMDB jaquette / folder.jpg : w300 / w780 / original (défaut : w780)
   --still-size STR taille TMDB des vignettes du récap (défaut : w300)
   --profile-size STR taille TMDB des portraits du casting (défaut : w185)
-  --cast-limit N   acteurs gardés par section de l'onglet Casting (défaut : 20)
 """
 
 from __future__ import annotations
@@ -477,7 +476,7 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         known = {**embed.read_embedded(previous), **showindex.recap_poster(previous)}
         # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
         stills = (embed.fetch(collect_stills(processed, show, args.still_size), known, args.still_size, tmdb, label="vignette") if apply else {})
-        casting = cast.split(collect_cast(processed, args, tmdb), limit=args.cast_limit) if apply else cast.Casting()
+        casting = cast.split(collect_cast(processed, args, tmdb)) if apply else cast.Casting()
         profiles = (embed.fetch(collect_profiles(casting, args.profile_size), known, args.profile_size, tmdb, label="portrait") if apply else {})
         images = {**stills, **profiles}
         poster_key = embed.image_key(show.get("poster_path"), POSTER_SIZE)
@@ -525,9 +524,6 @@ def parse_args():
                          "sur ecran HiDPI mais fiche plus lourde)")
     ap.add_argument("--profile-size", default=PROFILE_SIZE,
                     help=f"Taille TMDB des portraits du casting (defaut : {PROFILE_SIZE})")
-    ap.add_argument("--cast-limit", type=int, default=cast.LIMIT,
-                    help=f"Acteurs gardes par section de l'onglet Casting (defaut : {cast.LIMIT} ; "
-                         "une saison en credite facilement une centaine)")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
     return ap.parse_args()
 

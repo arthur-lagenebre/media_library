@@ -2,7 +2,7 @@
 
 Une série qui dure ne garde pas la même distribution. Tout afficher d'un bloc noierait le noyau qui traverse les saisons sous les invités d'un soir, bien plus nombreux ; découper saison par saison recopierait ce noyau autant de fois qu'il y a de saisons. Les acteurs vus dans PLUSIEURS saisons forment donc un ensemble, cité une fois, et chaque saison ne montre plus que ce qui lui est propre.
 
-Le comptage vient de /aggregate_credits, qui totalise ce que chaque épisode crédite : c'est la seule source TMDB qui distingue un rôle tenu toute une saison d'une apparition unique. Une saison en ramène facilement une centaine de noms, d'où le plafond par section - passé les premiers, ce sont des silhouettes.
+Le comptage vient de /aggregate_credits, qui totalise ce que chaque épisode crédite : c'est la seule source TMDB qui distingue un rôle tenu toute une saison d'une apparition unique. Une saison en ramène facilement une centaine de noms : aucun n'est écarté, le classement met seulement les plus présents en tête.
 
 Une série d'une seule saison n'a rien à comparer : tout son casting forme l'ensemble, et la répartition par saison reste vide.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
-LIMIT = 20          # acteurs gardés par section
 MIN_SEASONS = 2     # vu dans au moins tant de saisons -> récurrent
 MAX_ROLES = 2       # personnages cités pour un même acteur
 LAST = 10 ** 6      # rang de générique inconnu : derrière tous les autres
@@ -101,7 +100,7 @@ def _rank(actor):
     return (-len(actor.seasons), -actor.episodes, actor.order, actor.name)
 
 
-def split(casts, limit=LIMIT, min_seasons=MIN_SEASONS):
+def split(casts, min_seasons=MIN_SEASONS):
     """Répartit les castings lus saison par saison en un Casting prêt à afficher.
 
     Un acteur ne figure qu'à un seul endroit : dans l'ensemble récurrent, ou dans la saison qui est la sienne.
@@ -111,13 +110,13 @@ def split(casts, limit=LIMIT, min_seasons=MIN_SEASONS):
     shared = ({person for person, actor in actors.items() if len(actor.seasons) >= min_seasons}
               if len(numbers) >= min_seasons else set(actors))
 
-    recurring = sorted((a for person, a in actors.items() if person in shared), key=_rank)[:limit]
+    recurring = sorted((a for person, a in actors.items() if person in shared), key=_rank)
     per_season = []
     for number in numbers:
         own = sorted((a for person, a in actors.items()
                       if person not in shared and number in a.seasons), key=_rank)
         if own:
-            per_season.append((number, own[:limit]))
+            per_season.append((number, own))
     return Casting(recurring, per_season)
 
 

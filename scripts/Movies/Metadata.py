@@ -63,7 +63,7 @@ Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --n
 
 --recap genere une fiche HTML de la médiathèque à la racine de --dir (ou là où --recap-out le dit, dossier ou fichier .html) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
 Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
-Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de l'index (donc dans __Data__ avec --recap-out). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --cast-limit et --profile-size règlent le casting.
+Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de l'index (donc dans __Data__ avec --recap-out). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --profile-size règle la taille des portraits du casting.
 """
 
 from __future__ import annotations
@@ -796,7 +796,6 @@ def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
     except OSError as e:
         print(f"  [fiches] dossier {folder} non cree : {e} -> pas de fiche par film")
         return set()
-    limit = getattr(args, "cast_limit", filmpage.CAST_LIMIT)
     profile_size = getattr(args, "profile_size", filmpage.PROFILE_SIZE)
     back = f"../{out.name}"
     # Deux dossiers pour un même film n'ont qu'une fiche : elle porte l'identifiant, pas le dossier.
@@ -806,8 +805,8 @@ def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
         page = folder / filmpage.name(movie_id)
         known = embed.read_embedded(page)
         images = {**embed.fetch(filmpage.poster_images(movie), known, filmpage.POSTER_SIZE, tmdb, label="affiche", quiet=True),
-                  **embed.fetch(filmpage.profile_images(movie, limit, profile_size), known, profile_size, tmdb, label="portrait", quiet=True)}
-        html = filmpage.build_html(movie, images, back, library_name, limit, profile_size, sorted((paths or {}).get(movie_id, [])))
+                  **embed.fetch(filmpage.profile_images(movie, profile_size), known, profile_size, tmdb, label="portrait", quiet=True)}
+        html = filmpage.build_html(movie, images, back, library_name, profile_size, sorted((paths or {}).get(movie_id, [])))
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -874,7 +873,6 @@ def parse_args():
     ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la mediatheque (sagas et manquants)")
     ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (defaut : w185)")
     ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (defaut : {filmpage.PROFILE_SIZE})")
-    ap.add_argument("--cast-limit", type=int, default=filmpage.CAST_LIMIT, help=f"Acteurs montres dans la fiche de chaque film (defaut : {filmpage.CAST_LIMIT})")
     ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : index.html a la racine de --dir)")
     ap.add_argument("--title", help="Titre de la fiche recap (defaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")

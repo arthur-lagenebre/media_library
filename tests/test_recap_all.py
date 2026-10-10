@@ -63,9 +63,9 @@ class TestRecapAll(unittest.TestCase):
             self.assertNotIn("--apply", cmd)
 
     def test_options_transmises_et_filtre(self):
-        commandes, _, _ = self.lancer("--only", "dar", "--no-cache", "--cast-limit", "30")
+        commandes, _, _ = self.lancer("--only", "dar", "--no-cache", "--still-size", "w400")
         self.assertEqual(len(commandes), 1)
-        self.assertEqual(commandes[0][-3:], ["--no-cache", "--cast-limit", "30"])
+        self.assertEqual(commandes[0][-3:], ["--no-cache", "--still-size", "w400"])
 
     def test_un_echec_n_arrete_pas_les_autres(self):
         commandes, code, sortie = self.lancer("--apply", codes={"Dark": 1})
