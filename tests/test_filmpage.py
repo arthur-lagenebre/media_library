@@ -13,7 +13,9 @@ INCEPTION = {
     "poster_path": "/inc.jpg", "genres": [{"name": "Action"}, {"name": "Science-Fiction"}],
     "credits": {
         "crew": [{"name": "Christopher Nolan", "job": "Director"}, {"name": "Christopher Nolan", "job": "Director"},
-                 {"name": "Hans Zimmer", "job": "Composer"}],
+                 {"name": "Hans Zimmer", "job": "Composer"},
+                 {"name": "Christopher Nolan", "job": "Screenplay"},
+                 {"name": "Jonathan Nolan", "job": "Story"}, {"name": "Christopher Nolan", "job": "Story"}],
         "cast": [{"name": "Leonardo DiCaprio", "character": "Cobb", "profile_path": "/leo.jpg"},
                  {"name": "Elliot Page", "character": "Ariadne", "profile_path": None},
                  {"name": "Tom Hardy", "character": "Eames", "profile_path": "/tom.jpg"}]},
@@ -50,23 +52,39 @@ class TestContenu(unittest.TestCase):
     def test_resume_realisateur_et_casting(self):
         html = render()
         self.assertIn("Un voleur s&#39;infiltre dans les rêves.", html)
-        self.assertIn("De Christopher Nolan</div>", html)       # le doublon du crédit n'est cité qu'une fois
         self.assertIn("Leonardo DiCaprio", html)
         self.assertIn(">Cobb<", html)
-        self.assertNotIn("Hans Zimmer", html)                   # un compositeur n'est pas un réalisateur
+        self.assertNotIn("Hans Zimmer", html)                   # un compositeur n'est pas de l'équipe présentée
+
+    def test_realisation_scenario_et_histoire(self):
+        html = render()
+        self.assertIn("<div class='by'><div><span class='k'>Réalisation</span> Christopher Nolan</div>"       # le doublon du crédit n'est cité qu'une fois
+                      "<div><span class='k'>Scénario</span> Christopher Nolan</div>"
+                      "<div><span class='k'>Histoire</span> Jonathan Nolan, Christopher Nolan</div></div>", html)
+
+    def test_metier_sans_titulaire_omis(self):
+        html = render({"title": "X", "credits": {"crew": [{"name": "Ada", "job": "Director"}]}})
+        self.assertIn("<span class='k'>Réalisation</span> Ada", html)
+        self.assertNotIn("Scénario", html)
+        self.assertNotIn("Histoire", html)
 
     def test_ligne_de_faits(self):
-        self.assertIn("2010 · 148 min · Action, Science-Fiction", render())
+        self.assertIn("<div class='facts'>16 juillet 2010 · 148 min · Action, Science-Fiction</div>", render())
 
-    def test_casting_borne(self):
-        html = render(limit=2)
-        self.assertIn("Elliot Page", html)
-        self.assertNotIn("Tom Hardy", html)
+    def test_date_inconnue_ou_partielle(self):
+        self.assertIn("<div class='facts'>148 min</div>", render({"title": "X", "runtime": 148}))
+
+    def test_tout_le_casting_par_defaut(self):
+        # Au-delà de vingt acteurs, ceux du bout du générique doivent encore y être.
+        acteurs = [{"name": f"Acteur {n}", "character": f"Rôle {n}"} for n in range(1, 61)]
+        html = render({**INCEPTION, "credits": {"cast": acteurs}})
+        self.assertEqual(html.count("class='actor'"), 60)
+        self.assertIn("Acteur 60", html)
 
     def test_sans_casting_pas_de_section_vide(self):
         html = render({"title": "Court", "overview": "Un film."})
         self.assertNotIn("Casting", html)
-        self.assertNotIn("De ", html.split("<h1>")[1])
+        self.assertNotIn("class='by'", html.split("<h1>")[1])
 
     def test_sans_resume(self):
         self.assertIn("Pas de résumé.", render({"title": "X"}))
@@ -126,7 +144,7 @@ class TestImages(unittest.TestCase):
         self.assertEqual(filmpage.poster_images(INCEPTION), {"w342/inc.jpg": "/inc.jpg"})
         # Elliot Page n'a pas de portrait : rien à télécharger pour lui.
         self.assertEqual(filmpage.profile_images(INCEPTION), {"w185/leo.jpg": "/leo.jpg", "w185/tom.jpg": "/tom.jpg"})
-        self.assertEqual(filmpage.profile_images(INCEPTION, limit=1), {"w185/leo.jpg": "/leo.jpg"})
+        self.assertEqual(filmpage.profile_images(INCEPTION), {"w185/leo.jpg": "/leo.jpg", "w185/tom.jpg": "/tom.jpg"})
 
     def test_relue_comme_cache(self):
         # La fiche écrite doit rendre ses images au passage suivant, sinon elles seraient retéléchargées chaque nuit.

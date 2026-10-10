@@ -72,16 +72,17 @@ class TestOrdreEtPlafond(unittest.TestCase):
         casting = cast.split([(1, [entry(1, "Second role", order=4), entry(2, "Tete d'affiche", order=0)])])
         self.assertEqual([a.name for a in casting.recurring], ["Tete d'affiche", "Second role"])
 
-    def test_le_plafond_garde_les_premiers(self):
-        cast_tmdb = [entry(i, f"Acteur {i}", episodes=100 - i) for i in range(10)]
-        casting = cast.split([(1, cast_tmdb)], limit=3)
-        self.assertEqual([a.name for a in casting.recurring], ["Acteur 0", "Acteur 1", "Acteur 2"])
+    def test_aucun_acteur_ecarte(self):
+        # Ni dans l'ensemble récurrent, ni dans une saison : tout le monde est rendu, les plus présents d'abord.
+        cast_tmdb = [entry(i, f"Acteur {i}", episodes=100 - i) for i in range(60)]
+        casting = cast.split([(1, cast_tmdb)])
+        self.assertEqual([a.name for a in casting.recurring], [f"Acteur {i}" for i in range(60)])
 
-    def test_le_plafond_vaut_aussi_par_saison(self):
+    def test_toute_la_saison_est_rendue(self):
         commun = entry(99, "Vedette", episodes=100)
-        saison = [entry(i, f"Invite {i}", episodes=10 - i) for i in range(5)]
-        casting = cast.split([(1, [commun] + saison), (2, [commun])], limit=2)
-        self.assertEqual([a.name for _, acts in casting.per_season for a in acts], ["Invite 0", "Invite 1"])
+        saison = [entry(i, f"Invite {i}", episodes=100 - i) for i in range(40)]
+        casting = cast.split([(1, [commun] + saison), (2, [commun])])
+        self.assertEqual([a.name for _, acts in casting.per_season for a in acts], [f"Invite {i}" for i in range(40)])
 
 
 class TestRoles(unittest.TestCase):

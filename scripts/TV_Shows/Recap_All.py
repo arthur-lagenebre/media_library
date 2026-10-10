@@ -17,7 +17,7 @@ Usage :
   python Recap_All.py --dir "D:\Séries" --apply               # régénère toutes les fiches
   python Recap_All.py --dir "D:\Séries" --apply --only "Dark"  # seulement les séries dont le nom contient "Dark"
 
-Toute autre option est transmise telle quelle à Metadata.py (--no-cache, --still-size, --cast-limit, --artwork...).
+Toute autre option est transmise telle quelle à Metadata.py (--no-cache, --still-size, --profile-size, --artwork...).
 """
 
 import argparse

@@ -12,14 +12,13 @@ from __future__ import annotations
 from xml.sax.saxutils import escape
 
 from libraries.common import favicon, layout
-from . import cast, embed
+from . import cast, embed, naming
 
 # Le dossier des fiches, rangé À CÔTÉ de l'index : avec --recap-out __Data__ (voir le README), il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
 DIR = "Fiches"
 
 POSTER_SIZE = "w342"      # la fiche montre l'affiche en grand : celle de l'index (w185) y serait floue
 PROFILE_SIZE = "w185"     # la taille TMDB faite pour un visage
-CAST_LIMIT = 20           # comme les fiches de série ; passé les premiers, ce sont des silhouettes
 
 
 def esc(value):
@@ -41,15 +40,24 @@ def anchor(movie_id):
     return f"f{movie_id}"
 
 
-def directors(movie):
-    """Réalisateurs, sans doublon, dans l'ordre TMDB."""
-    names = [c.get("name") for c in (movie.get("credits") or {}).get("crew", []) if c.get("job") == "Director"]
-    return list(dict.fromkeys(n for n in names if n))
+# Les métiers de l'équipe que la fiche présente, sous le nom que TMDB leur donne.
+CREW_JOBS = (("Director", "Réalisation"), ("Screenplay", "Scénario"), ("Story", "Histoire"))
 
 
-def actors(movie, limit=CAST_LIMIT):
-    """Les premiers rôles, au rang du générique : [{'name', 'character', 'profile_path'}, ...]."""
-    return [a for a in (movie.get("credits") or {}).get("cast", []) if a.get("name")][:limit]
+def crew(movie):
+    """[(libellé, [noms])] pour la réalisation, le scénario et l'histoire, sans doublon, dans l'ordre TMDB. Un métier que personne n'a tenu est omis."""
+    members = (movie.get("credits") or {}).get("crew", [])
+    lines = []
+    for job, label in CREW_JOBS:
+        names = list(dict.fromkeys(c["name"] for c in members if c.get("job") == job and c.get("name")))
+        if names:
+            lines.append((label, names))
+    return lines
+
+
+def actors(movie):
+    """Tout le générique, au rang de TMDB : [{'name', 'character', 'profile_path'}, ...]."""
+    return [a for a in (movie.get("credits") or {}).get("cast", []) if a.get("name")]
 
 
 def poster_images(movie):
@@ -58,10 +66,10 @@ def poster_images(movie):
     return {key: movie["poster_path"]} if key else {}
 
 
-def profile_images(movie, limit=CAST_LIMIT, size=PROFILE_SIZE):
+def profile_images(movie, size=PROFILE_SIZE):
     """{clé: chemin TMDB} des portraits du casting."""
     needed = {}
-    for actor in actors(movie, limit):
+    for actor in actors(movie):
         key = embed.image_key(actor.get("profile_path"), size)
         if key:
             needed[key] = actor["profile_path"]
@@ -69,10 +77,10 @@ def profile_images(movie, limit=CAST_LIMIT, size=PROFILE_SIZE):
 
 
 def _facts(movie):
-    """'2010 · 148 min · Science-Fiction, Action' : ce qui présente le film, sans les trous."""
+    """'16 juillet 2010 · 148 min · Science-Fiction, Action' : ce qui présente le film, sans les trous."""
     runtime = movie.get("runtime")
     genres = ", ".join(g.get("name", "") for g in movie.get("genres") or [] if g.get("name"))
-    parts = ((movie.get("release_date") or "")[:4], f"{runtime} min" if runtime else "", genres)
+    parts = (naming.fr_date(movie.get("release_date")), f"{runtime} min" if runtime else "", genres)
     return " · ".join(p for p in parts if p)
 
 
@@ -82,14 +90,14 @@ def page_title(movie):
     return f"{movie.get('title') or ''} ({year})" if year else (movie.get("title") or "")
 
 
-def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile_size=PROFILE_SIZE, paths=()):
+def build_html(movie, images, back_href, library_name, profile_size=PROFILE_SIZE, paths=()):
     """Rend la fiche d'un film. 'images' = {clé: data-URI}, affiche et portraits mêlés ; 'back_href' = lien vers l'index ; 'paths' = chemins des fichiers du film, montrés en petit sous le résumé."""
     key = embed.image_key(movie.get("poster_path"), POSTER_SIZE)
     uri = images.get(key) if key else None
     poster = embed.tag(key, uri) if uri else "<div class='noimg'></div>"
 
     faces = []
-    for actor in actors(movie, limit):
+    for actor in actors(movie):
         pkey = embed.image_key(actor.get("profile_path"), profile_size)
         puri = images.get(pkey) if pkey else None
         face = embed.tag(pkey, puri) if puri else "<div class='noimg'></div>"
@@ -97,7 +105,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
                      f"<div class='n'>{esc(actor.get('name'))}</div>"
                      f"<div class='c'>{esc(actor.get('character'))}</div></div>")
 
-    by = directors(movie)
+    by = "".join(f"<div><span class='k'>{label}</span> {esc(', '.join(names))}</div>" for label, names in crew(movie))
     tagline = movie.get("tagline")
     # Le retour ramène à la vignette du film, pas en haut de l'index. L'ancre est le repli sûr (elle marche partout, en file:// comme sur un NAS) ; quand on vient bien de l'index, un vrai retour en arrière vaut mieux - le navigateur y rend aussi la recherche en cours, que l'ancre ne retrouve pas (la vignette serait masquée).
     if movie.get("id"):
@@ -123,6 +131,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         ".facts{color:#9aa0aa;margin-bottom:6px}"
         ".tag{color:#9aa0aa;font-style:italic;margin-bottom:6px}"
         ".by{color:#c7ccd4;font-size:14px;margin-bottom:14px}"
+        ".by .k{color:#9aa0aa;margin-right:4px}"
         ".o{color:#e8e8ea;font-size:15.5px;line-height:1.6}"
         + layout.PATH_CSS +
         "h2{font-size:17px;margin:34px 0 14px;padding-bottom:8px;border-bottom:1px solid #21232b}"
@@ -139,7 +148,7 @@ def build_html(movie, images, back_href, library_name, limit=CAST_LIMIT, profile
         f"<h1>{esc(movie.get('title'))}</h1>"
         f"<div class='facts'>{esc(_facts(movie))}</div>"
         + (f"<div class='tag'>{esc(tagline)}</div>" if tagline else "")
-        + (f"<div class='by'>De {esc(', '.join(by))}</div>" if by else "")
+        + (f"<div class='by'>{by}</div>" if by else "")
         + f"<div class='o'>{esc(movie.get('overview') or 'Pas de résumé.')}</div>"
         + layout.paths_block(paths) +
         "</div></div>"
