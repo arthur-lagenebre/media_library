@@ -308,6 +308,12 @@ class TestRecap(unittest.TestCase):
         self.assertEqual(html.count("class='ep absent'"), 2)
         self.assertIn("<span class='cnt'>1/3</span>", html)
 
+    def test_chemin_du_fichier_sous_l_episode(self):
+        run = series.SeasonRun(Path("."), 1, self.SAISON, {1}, {1: ["Saison 1/Ma Serie S01E01.mkv"]})
+        html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")
+        self.assertEqual(html.count("class='path'"), 1)          # l'épisode absent n'a pas de fichier
+        self.assertIn("<div class='path'>Saison 1/Ma Serie S01E01.mkv</div>", html)
+
     def test_saison_complete_sans_marquage(self):
         html = self.rendre({1, 2, 3})
         self.assertNotIn("class='miss'", html)
@@ -547,6 +553,19 @@ class TestRecapFilms(unittest.TestCase):
         self.assertEqual([t for t, _ in sections], ["Iron Man", "Hors saga"])
         self.assertEqual([c.title for c in sections[-1][1]], ["Alien", "Heat"])
 
+    def test_films_hors_saga_classes_sans_accents_ni_casse(self):
+        # "Éden" se range entre "Dune" et "Fargo", "alien" avec les A : ni l'accent ni la casse ne comptent.
+        tous = [film(1, "Zorro"), film(2, "Éden"), film(3, "Fargo"), film(4, "Dune"), film(5, "alien")]
+        sections = films.library_sections(tous, {})
+        self.assertEqual([c.title for c in sections[-1][1]], ["alien", "Dune", "Éden", "Fargo", "Zorro"])
+
+    def test_sagas_classees_sans_accents(self):
+        sagas = {1: {"id": 1, "name": "Zorro - Saga", "parts": [{"id": 5, "title": "Zorro", "release_date": "1998-01-01"}]},
+                 2: {"id": 2, "name": "Écho - Saga", "parts": [{"id": 6, "title": "Écho", "release_date": "2001-01-01"}]},
+                 3: {"id": 3, "name": "Dune - Saga", "parts": [{"id": 7, "title": "Dune", "release_date": "2021-01-01"}]}}
+        sections = films.library_sections([film(5, "Zorro", sagas[1]), film(6, "Écho", sagas[2]), film(7, "Dune", sagas[3])], sagas)
+        self.assertEqual([t for t, _ in sections], ["Dune", "Écho", "Zorro"])
+
     def test_saga_non_chargee_bascule_hors_saga(self):
         sections = films.library_sections([film(11, "Iron Man", IRON)], {})
         self.assertEqual([t for t, _ in sections], ["Hors saga"])
@@ -599,7 +618,7 @@ class TestDoutesSurLAssociation(unittest.TestCase):
 
 class TestNomDeSaga(unittest.TestCase):
     def test_habillage_retire(self):
-        for brut, court in [("Iron Man - Saga", "Iron Man"), ("Saga Iron Man", "Iron Man"), ("Iron Man Collection", "Iron Man"), ("Iron Man - Collection", "Iron Man"), ("Mortal Kombat : Saga", "Mortal Kombat"), ("Harry Potter – Saga", "Harry Potter"), ("Saga - Alien", "Alien")]:
+        for brut, court in [("Iron Man - Saga", "Iron Man"), ("Saga Iron Man", "Iron Man"), ("Iron Man Collection", "Iron Man"), ("Iron Man - Collection", "Iron Man"), ("Mortal Kombat : Saga", "Mortal Kombat"), ("Harry Potter – Saga", "Harry Potter"), ("Saga - Alien", "Alien"), ("Une nuit en enfer - Saga", "Une nuit en enfer"), ("Le Parrain - Saga", "Le Parrain"), ("La Colline a des yeux Collection", "La Colline a des yeux")]:
             with self.subTest(brut):
                 self.assertEqual(films.saga_title(brut), court)
 

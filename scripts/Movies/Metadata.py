@@ -208,6 +208,7 @@ class Library:
     journal: list = field(default_factory=list)   # (nom affiche, id TMDB, statut)
     doubts: list = field(default_factory=list)    # (nom affiche, fiche TMDB, [raisons]) - associations suspectes
     approved: set = field(default_factory=set)    # identifiants TMDB validés dans metadata.ok
+    paths: dict = field(default_factory=dict)     # {id TMDB: [chemins des fichiers, relatifs à --dir]} - affichés sur la fiche du film
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
@@ -321,6 +322,8 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
         print(f"  [DOUBLON] meme film que '{jumeau}' -> les deux seront traites")
     library.resolved.append(movie)
+    root = getattr(args, "dir", "")
+    library.paths.setdefault(movie.get("id"), []).extend(layout.relative_path(f, root) for f in entry.files)
     # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
     doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
@@ -600,8 +603,13 @@ def saga_title(name):
     Seul un mot séparé par un tiret ou deux-points, ou prêt à lancer le nom, est retiré : "The Twilight Saga" est un nom entier, pas un habillage.
     """
     name = (name or "").strip()
-    short = SAGA_PREFIX_RE.sub("", SAGA_SUFFIX_RE.sub("", name)).strip()
-    if not short or {short.split()[0].casefold(), short.split()[-1].casefold()} & DANGLING:
+    unsuffixed = SAGA_SUFFIX_RE.sub("", name).strip()
+    short = SAGA_PREFIX_RE.sub("", unsuffixed).strip()
+    if not short:
+        return name
+    # Le mot restant n'est suspect que du côté où on a retiré quelque chose : "Une nuit en enfer - Saga" commençait déjà par "Une".
+    words = short.split()
+    if (unsuffixed != name and words[-1].casefold() in DANGLING) or (short != unsuffixed and words[0].casefold() in DANGLING):
         return name
     return short
 
@@ -615,7 +623,7 @@ def library_sections(movies, sagas, today=None):
     owned = {m.get("id"): m for m in movies}
     sections, classes = [], set()
     # Classées sur le nom court : "Saga Alien" ne doit pas finir à S.
-    for ident, saga in sorted(sagas.items(), key=lambda kv: saga_title(kv[1].get("name")).casefold()):
+    for ident, saga in sorted(sagas.items(), key=lambda kv: layout.fold(saga_title(kv[1].get("name")))):
         cards = []
         for part in sorted(saga.get("parts", []), key=lambda p: p.get("release_date") or "9999"):
             mine = owned.get(part.get("id"))
@@ -628,7 +636,7 @@ def library_sections(movies, sagas, today=None):
             sections.append((saga_title(saga.get("name")) or "Saga", cards))
     seuls = [m for m in movies if m.get("id") not in classes]
     if seuls:
-        sections.append(("Hors saga", [_card(m) for m in sorted(seuls, key=lambda m: m.get("title", ""))]))
+        sections.append(("Hors saga", [_card(m) for m in sorted(seuls, key=lambda m: layout.fold(m.get("title")))]))
     return sections
 
 
@@ -777,7 +785,7 @@ def recap_title(args, previous):
     return getattr(args, "title", None) or textfile.title_of(previous) or DEFAULT_TITLE
 
 
-def write_film_pages(out, library_name, movies, args, tmdb):
+def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
     """Écrit la fiche de chaque film (voir filmpage) à côté de l'index `out`. Retourne les identifiants des films qui en ont une.
 
     Une fiche déjà à jour n'est pas réécrite, et ses images sont reprises d'elle : chaque nuit, seul un film nouveau coûte des téléchargements. Une fiche qu'on n'a pas pu écrire n'est pas rendue, pour que l'index ne mène pas à rien. Les fiches de films sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
@@ -799,7 +807,7 @@ def write_film_pages(out, library_name, movies, args, tmdb):
         known = embed.read_embedded(page)
         images = {**embed.fetch(filmpage.poster_images(movie), known, filmpage.POSTER_SIZE, tmdb, label="affiche", quiet=True),
                   **embed.fetch(filmpage.profile_images(movie, limit, profile_size), known, profile_size, tmdb, label="portrait", quiet=True)}
-        html = filmpage.build_html(movie, images, back, library_name, limit, profile_size)
+        html = filmpage.build_html(movie, images, back, library_name, limit, profile_size, sorted((paths or {}).get(movie_id, [])))
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -812,7 +820,7 @@ def write_film_pages(out, library_name, movies, args, tmdb):
     return pages
 
 
-def write_recap(root_dir, movies, args, tmdb):
+def write_recap(root_dir, movies, args, tmdb, paths=None):
     """Écrit la fiche (index.html à la racine de --dir, ou --recap-out) et celle de chaque film. Ne télécharge ni n'écrit rien en simulation.
 
     La fiche précédente, au même endroit, sert de cache d'affiches ; une fiche encore nommée recap.html est renommée plutôt que doublée."""
@@ -827,7 +835,7 @@ def write_recap(root_dir, movies, args, tmdb):
     needed = collect_posters(sections, args.poster_size)
     posters = (embed.fetch(needed, embed.read_embedded(previous), args.poster_size, tmdb, label="affiche") if apply else {})
     title = recap_title(args, previous)
-    pages = write_film_pages(out, title, movies, args, tmdb) if apply else set()
+    pages = write_film_pages(out, title, movies, args, tmdb, paths) if apply else set()
     html = build_recap_html(title, sections, posters, args.poster_size, pages)
     if not apply:
         print(f"  [mediatheque] ecrirait {out} et une fiche par film dans {filmpage.DIR}/")
@@ -940,7 +948,7 @@ def main():
             print(f"  {name} -> {lookup.describe(movie)} : {' ; '.join(doubts)}")
         print()
     if args.recap and resolved:
-        write_recap(args.dir, resolved, args, tmdb)
+        write_recap(args.dir, resolved, args, tmdb, library.paths)
     write_log(args.dir, library, args, report)
     reste = report.epilogue()
     if reste:

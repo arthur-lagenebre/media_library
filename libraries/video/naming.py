@@ -283,15 +283,20 @@ def match_episode(filename, episodes, threshold, by_num=None):
     return (ep if score >= threshold else None), f"titre (~{score:.0%})"
 
 
-def owned_numbers(folder, episodes, threshold=0.55):
-    """Numéros d'épisode présents sur le disque, quel que soit le format vidéo.
+def owned_files(folder, episodes, threshold=0.55):
+    """{numéro d'épisode: [fichiers]} pour ce qui est sur le disque, quel que soit le format vidéo.
 
     Sert à distinguer, dans la fiche récap, ce qu'on possède de ce qui manque - sans rien lire dans les fichiers.
     """
     by_num = {e.get("episode_number"): e for e in episodes}
-    owned = set()
+    owned = {}
     for f in files_with_ext(folder, VIDEO_EXTS):
         ep, _ = match_episode(f.name, episodes, threshold, by_num)
         if ep is not None:
-            owned.add(ep.get("episode_number"))
+            owned.setdefault(ep.get("episode_number"), []).append(f)
     return owned
+
+
+def owned_numbers(folder, episodes, threshold=0.55):
+    """Numéros d'épisode présents sur le disque (voir owned_files)."""
+    return set(owned_files(folder, episodes, threshold))

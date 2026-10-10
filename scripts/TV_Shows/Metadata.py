@@ -132,6 +132,7 @@ class SeasonRun:
     number: int
     data: dict
     owned: set = field(default_factory=set)
+    paths: dict = field(default_factory=dict)    # {numéro d'épisode: [chemins, relatifs au dossier de la série]} - affichés sous l'épisode
 
     @property
     def episodes(self):
@@ -143,8 +144,9 @@ def season_run(folder, number, data, args):
 
     L'inventaire se lit dans les noms de fichiers, tous formats vidéo confondus : il reste donc juste même avec --no-tag, pour une série qui n'est pas en .mkv.
     """
-    owned = naming.owned_numbers(folder, data.get("episodes", []), args.match_threshold)
-    return SeasonRun(Path(folder), number, data, owned)
+    found = naming.owned_files(folder, data.get("episodes", []), args.match_threshold)
+    paths = {n: sorted(layout.relative_path(f, getattr(args, "dir", "")) for f in files) for n, files in found.items()}
+    return SeasonRun(Path(folder), number, data, set(found), paths)
 
 
 @dataclass
@@ -372,6 +374,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
                 + f"<span class='t'>{esc(ep.get('name'))}</span>{manque}</div>"
                 + f"<div class='d'>{esc(naming.fr_date(ep.get('air_date')))}{rt}</div>"
                 + f"<div class='o'>{esc(ep.get('overview'))}</div>"
+                + layout.paths_block(run.paths.get(ep.get("episode_number")))
                 + "</div></div>")
         panels.append(f"<section class='season' data-s='{run.number}'"
                       f"{'' if i == 0 else ' hidden'}>{''.join(cards)}</section>")
@@ -415,6 +418,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".ep .meta{flex:1}.ep .n{color:#7cc4ff;font-weight:600}"
         ".ep .t{font-weight:600}.ep .d{color:#9aa0aa;font-size:14px;margin:2px 0 6px}"
         ".ep .o{color:#c7ccd4;font-size:14px}"
+        + layout.PATH_CSS +
         # Casting : des portraits en portrait (2/3), comme les affiches du récap des films.
         ".cast h2{font-size:17px;margin:26px 0 14px;padding-bottom:8px;"
         "border-bottom:1px solid #21232b}"
