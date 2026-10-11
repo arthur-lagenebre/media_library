@@ -68,17 +68,7 @@ def _cover(key, uri, name):
             f"{esc(favicon.initials(name))}</div>")
 
 
-def ranges(numbers):
-    """'3, 5–7, 12' : les numéros qui se suivent tiennent en une plage."""
-    parts, start, previous = [], None, None
-    for n in list(numbers) + [None]:
-        if start is not None and (n is None or n != previous + 1):
-            parts.append(str(start) if start == previous else f"{start}–{previous}" if previous - start > 1 else f"{start}, {previous}")
-            start = None
-        if n is not None and start is None:
-            start = n
-        previous = n
-    return ", ".join(parts)
+ranges = layout.ranges
 
 
 def progress(series):

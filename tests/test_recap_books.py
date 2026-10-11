@@ -11,7 +11,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.books import shelfpage, thumbs
+from libraries.books import shelfpage
+from libraries.common import thumbs
 from scripts.Books import Recap as recap
 from tests.test_books_readers import COMICINFO, make_cbz, make_epub, png
 

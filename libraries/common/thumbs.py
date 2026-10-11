@@ -3,6 +3,7 @@
 Une couverture de comics fait 4 Mo et 2700 pixels de large ; une vignette de page en demande 240. Réduire, c'est ce qui permet d'embarquer des milliers de couvertures dans des pages de quelques Mo. Pillow est la seule dépendance de ce dossier, et elle est facultative : sans lui, `thumbnail` rend None et les pages montrent un monogramme à la place.
 """
 
+import base64
 import io
 import warnings
 
@@ -40,3 +41,17 @@ def thumbnail(data, width=WIDTH, quality=QUALITY):
             return out.getvalue()
     except Exception:        # Pillow lève de tout (OSError, ValueError, SyntaxError, DecompressionBombError...) sur un fichier abîmé : une couverture illisible n'arrête pas un passage
         return None
+
+
+def data_uri(jpeg):
+    """Les octets d'un JPEG, en data-URI : l'image tient dans la page, qui reste un fichier unique."""
+    return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
+
+
+def shrink_uri(uri, width, quality=QUALITY):
+    """Version réduite d'une image déjà encodée en data-URI, ou None (Pillow absent, image illisible, ce n'est pas une data-URI)."""
+    try:
+        small = thumbnail(base64.b64decode(uri.split(",", 1)[1]), width, quality)
+    except (ValueError, IndexError):
+        return None
+    return data_uri(small) if small else None
