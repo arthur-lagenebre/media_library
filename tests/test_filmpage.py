@@ -109,6 +109,14 @@ class TestContenu(unittest.TestCase):
         self.assertNotIn("<script>x</script>", html)
 
 
+class TestLienTmdb(unittest.TestCase):
+    def test_lien_vers_la_page_du_film(self):
+        self.assertIn("href='https://www.themoviedb.org/movie/27205'", render())
+
+    def test_pas_de_lien_sans_identifiant(self):
+        self.assertNotIn("themoviedb.org", render(dict(INCEPTION, id=None)))
+
+
 class TestFichiers(unittest.TestCase):
     def test_chemins_en_petit_sous_le_resume(self):
         html = render(paths=["Nolan/Inception (2010)/Inception.mkv", "Nolan/Inception 4K/Inception.mkv"])

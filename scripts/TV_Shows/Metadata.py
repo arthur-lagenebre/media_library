@@ -417,7 +417,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".ep .meta{flex:1}.ep .n{color:#7cc4ff;font-weight:600}"
         ".ep .t{font-weight:600}.ep .d{color:#9aa0aa;font-size:14px;margin:2px 0 6px}"
         ".ep .o{color:#c7ccd4;font-size:14px}"
-        + layout.PATH_CSS +
+        + layout.PATH_CSS + layout.TMDB_CSS +
         # Casting : des portraits en portrait (2/3), comme les affiches du récap des films.
         ".cast h2{font-size:17px;margin:26px 0 14px;padding-bottom:8px;"
         "border-bottom:1px solid #21232b}"
@@ -434,7 +434,9 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "</style></head><body>"
         + layout.header(f"<div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
                         f"<nav class='tabs'>{''.join(tabs)}</nav>") +
-        f"<div class='sub'>{esc(show.get('overview', ''))}</div>"
+        f"<div class='sub'>{esc(show.get('overview', ''))}"
+        + (f"<div style='margin-top:8px'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "") +
+        "</div>"
         f"{''.join(panels)}"
         "<script>"
         "document.querySelectorAll('.tab').forEach(function(b){"

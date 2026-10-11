@@ -133,7 +133,7 @@ def build_html(movie, images, back_href, library_name, profile_size=PROFILE_SIZE
         ".by{color:#c7ccd4;font-size:14px;margin-bottom:14px}"
         ".by .k{color:#9aa0aa;margin-right:4px}"
         ".o{color:#e8e8ea;font-size:15.5px;line-height:1.6}"
-        + layout.PATH_CSS +
+        + layout.PATH_CSS + layout.TMDB_CSS +
         "h2{font-size:17px;margin:34px 0 14px;padding-bottom:8px;border-bottom:1px solid #21232b}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(124px,1fr))}"
         ".actor .ph{aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:#21232b}"
@@ -150,7 +150,8 @@ def build_html(movie, images, back_href, library_name, profile_size=PROFILE_SIZE
         + (f"<div class='tag'>{esc(tagline)}</div>" if tagline else "")
         + (f"<div class='by'>{by}</div>" if by else "")
         + f"<div class='o'>{esc(movie.get('overview') or 'Pas de résumé.')}</div>"
-        + layout.paths_block(paths) +
+        + layout.paths_block(paths)
+        + (f"<div style='margin-top:10px'>{layout.tmdb_link('movie', movie['id'])}</div>" if movie.get("id") else "") +
         "</div></div>"
         + (f"<h2>Casting</h2><div class='grid'>{''.join(faces)}</div>" if faces else "")
         + "<script>"

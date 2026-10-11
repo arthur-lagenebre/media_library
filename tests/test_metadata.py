@@ -308,6 +308,9 @@ class TestRecap(unittest.TestCase):
         self.assertEqual(html.count("class='ep absent'"), 2)
         self.assertIn("<span class='cnt'>1/3</span>", html)
 
+    def test_lien_vers_la_page_tmdb_de_la_serie(self):
+        self.assertIn("href='https://www.themoviedb.org/tv/1234'", self.rendre({1}))
+
     def test_chemin_du_fichier_sous_l_episode(self):
         run = series.SeasonRun(Path("."), 1, self.SAISON, {1}, {1: ["Saison 1/Ma Serie S01E01.mkv"]})
         html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")

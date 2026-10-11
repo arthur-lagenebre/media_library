@@ -62,6 +62,18 @@ def paths_block(paths):
     return "<div class='path'>" + "<br>".join(escape(str(p), {"'": "&#39;"}) for p in paths) + "</div>"
 
 
+# Le lien vers la page TMDB d'une fiche, discret comme les chemins : il mène à la source, il n'est pas le propos de la fiche.
+TMDB_CSS = ".tmdb{color:#7cc4ff;font-size:13px;text-decoration:none;white-space:nowrap}.tmdb:hover{text-decoration:underline}"
+
+
+def tmdb_link(kind, tmdb_id):
+    """Lien vers la page TMDB d'un film ('movie') ou d'une série ('tv') ; rien sans identifiant."""
+    if not tmdb_id:
+        return ""
+    return (f"<a class='tmdb' href='https://www.themoviedb.org/{kind}/{escape(str(tmdb_id), {chr(39): '&#39;'})}' "
+            "target='_blank' rel='noopener'>Voir sur TMDB ↗</a>")
+
+
 def header(inner):
     """L'en-tête fixe. Son contenu est calé sur la même largeur que la page (.wrap), pleine ou centrée."""
     return f"<header class='top'><div class='wrap'>{inner}</div></header><div class='wrap page'>"
