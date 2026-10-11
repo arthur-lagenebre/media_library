@@ -21,8 +21,10 @@ AUDIO_EXTS = {".flac", ".mp3"}            # les formats qu'on sait écrire
 OTHER_AUDIO_EXTS = {".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
 LYRICS_EXTS = {".lrc"}                     # paroles posées à côté d'une piste : elles suivent son nom
 
-# Dossier de disque d'un album en plusieurs CD : "CD1", "CD 2", "Disc 2", "Disque 1".
-DISC_DIR_RE = re.compile(r"^(?:cd|dis[ck]|disque)[\s._-]*0*(\d{1,2})$", re.IGNORECASE)
+# Dossier de disque d'un album en plusieurs CD : "CD1", "CD 2", "Disc 2 - Bonus", "Disque 1".
+DISC_DIR_RE = re.compile(r"^(?:cd|dis[ck]|disque)[\s._-]*0*(\d{1,2})(?:\s*[-–—:]\s+.+)?$", re.IGNORECASE)
+# Le disque nommé d'après son titre sur MusicBrainz : "1 - La fête est finie", "2 - Épilogue". Trop banal pour valoir seul (un dossier "1 - Album" peut être un album) : voir disc_dirs.
+NUMBERED_DISC_DIR_RE = re.compile(r"^0*(\d{1,2})\s+[-–—]\s+\S.*$")
 # "1994 - Born Dead" : l'année devant, l'artiste dans le dossier parent.
 YEAR_PREFIX_RE = re.compile(r"^\s*((?:19|20)\d{2})\s*[-–—]\s+(.+)$")
 YEAR_PAREN_RE = re.compile(r"[\(\[]\s*((?:19|20)\d{2})\s*[\)\]]")
@@ -44,13 +46,30 @@ class Album:
         """Numéro du dossier de disque ("CD2" -> 2) qui contient ce fichier, ou None s'il est à la racine de l'album."""
         if Path(path).parent == self.folder:
             return None
-        found = DISC_DIR_RE.match(Path(path).parent.name)
-        return int(found.group(1)) if found else None
+        return disc_number(Path(path).parent.name)
 
     @property
     def disc_count(self):
         """Disques que le dossier range à part (CD1, CD2...), 1 s'il n'en range aucun."""
         return len({self.disc_folder(f) for f in self.files} - {None}) or 1
+
+
+def disc_number(name):
+    """Numéro de disque d'un nom de dossier ("CD2", "Disc 2 - Bonus", "2 - Épilogue"), ou None."""
+    found = DISC_DIR_RE.match(name) or NUMBERED_DISC_DIR_RE.match(name)
+    return int(found.group(1)) if found else None
+
+
+def disc_dirs(subs):
+    """Ceux des dossiers `subs` qui rangent un disque de l'album.
+
+    "CD1", "Disc 2"... le disent seuls. "1 - La fête est finie" ressemble autant à un album numéroté : il n'est un disque que s'ils se suivent, de 1 à n, au moins deux.
+    """
+    named = [s for s in subs if DISC_DIR_RE.match(s.name)]
+    numbered = [s for s in subs if s not in named and NUMBERED_DISC_DIR_RE.match(s.name)]
+    if len(numbered) >= 2 and sorted(disc_number(s.name) for s in numbered) == list(range(1, len(numbered) + 1)):
+        named += numbered
+    return sorted(named)
 
 
 def _subdirs(folder):
@@ -70,7 +89,7 @@ def find_albums(root):
 
     def scan(folder):
         subs = _subdirs(folder)
-        discs = [s for s in subs if DISC_DIR_RE.match(s.name)]
+        discs = disc_dirs(subs)
         places = [folder] + discs
         files = [f for place in places for f in filenames.files_with_ext(place, AUDIO_EXTS)]
         others = [f for place in places for f in filenames.files_with_ext(place, OTHER_AUDIO_EXTS)]
@@ -242,6 +261,7 @@ class Entry:
     track: int | None = None
     title: str = ""
     duration: float | None = None
+    titled: bool = False               # le titre vient d'un tag, pas du nom du fichier
 
 
 def _number(text):
@@ -267,7 +287,7 @@ def entry_for(path, meta, disc_folder=None):
         elif lead:
             track = int(lead.group(1))
     title = (meta.first("TITLE") if meta else "") or path.stem
-    return Entry(path, disc, track, title, meta.duration if meta else None)
+    return Entry(path, disc, track, title, meta.duration if meta else None, bool(meta and meta.first("TITLE")))
 
 
 def match_tracks(entries, release):
@@ -296,6 +316,13 @@ def match_tracks(entries, release):
             placed[entry.path] = key
             taken.add(key)
 
+    # Un numéro qui tombe sur une piste au titre sans rapport avec celui du fichier est peut-être celui d'une autre édition ("12 - San" quand San est la piste 1) : sa place est remise en jeu, et il la retrouve si aucun titre ne le réclame mieux.
+    by_path = {e.path: e for e in entries}
+    doubtful = {path: key for path, key in placed.items() if by_path[path].titled and similarity(by_path[path].title, by_position[key][1].get("title")) < MIN_TITLE / 2}
+    for path, key in doubtful.items():
+        del placed[path]
+        taken.discard(key)
+
     rest = [e for e in entries if e.path not in placed]
     scores = sorted(((similarity(e.title, t.get("title")), str(e.path), e, (m.get("position"), t.get("position"))) for e in rest for m, t in slots if (m.get("position"), t.get("position")) not in taken), key=lambda x: (-x[0], x[1], x[3]))
     for score, _, entry, key in scores:
@@ -303,6 +330,10 @@ def match_tracks(entries, release):
             continue
         placed[entry.path] = key
         taken.add(key)
+    for path, key in doubtful.items():
+        if path not in placed and key not in taken:
+            placed[path] = key
+            taken.add(key)
 
     missing = [e.path.name for e in entries if e.path not in placed]
     if missing:

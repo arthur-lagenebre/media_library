@@ -207,7 +207,7 @@ Ensuite, plus rien à faire : une série traitée sur le disque local puis copi�
 
 ### Musique
 
-Un album est un dossier qui contient des `.flac` ou des `.mp3` — lui ou ses dossiers de disque (`CD1`, `CD2`…) ; les dossiers d'artiste au-dessus ne font que ranger. La référence est [MusicBrainz](https://musicbrainz.org), ouvert et **sans clé**, et les pochettes viennent de [Cover Art Archive](https://coverartarchive.org).
+Un album est un dossier qui contient des `.flac` ou des `.mp3` — lui ou ses dossiers de disque (`CD1`, `CD2`…, `Disc 2 - Bonus`, ou nommés d'après le disque, `1 - La fête est finie` / `2 - Épilogue`, tant qu'ils se suivent de 1 à n) ; les dossiers d'artiste au-dessus ne font que ranger. La référence est [MusicBrainz](https://musicbrainz.org), ouvert et **sans clé**, et les pochettes viennent de [Cover Art Archive](https://coverartarchive.org).
 
 ```powershell
 python scripts\Music\Metadata.py --dir "D:\Musique"                  # simulation
