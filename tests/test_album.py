@@ -59,6 +59,23 @@ class TestDossiers(unittest.TestCase):
         self.assertEqual(sorted(seul.disc_folder(f) for f in seul.files), [1, 1, 2])
         self.assertEqual(seul.disc_count, 2)
 
+    def test_disques_nommes_d_apres_leur_titre(self):
+        # "La fête est finie - Épilogue" : MusicBrainz titre ses deux CD, et les dossiers portent ces titres.
+        self.poser("Orelsan/La fete/1 - La fete est finie/01 - San.mp3", "Orelsan/La fete/2 - Epilogue/01 - Fantomes.mp3", "Orelsan/La fete/2 - Epilogue/02 - Dis-moi.mp3")
+        (seul,) = album.find_albums(self.racine)
+        self.assertEqual((seul.folder.name, len(seul.files), seul.disc_count), ("La fete", 3, 2))
+        self.assertEqual(sorted(seul.disc_folder(f) for f in seul.files), [1, 2, 2])
+
+    def test_cd_avec_un_titre(self):
+        self.poser("A/CD1 - Live/01.flac", "A/Disc 2 - Bonus/01.flac")
+        (seul,) = album.find_albums(self.racine)
+        self.assertEqual(sorted(seul.disc_folder(f) for f in seul.files), [1, 2])
+
+    def test_albums_numerotes_ne_sont_pas_des_disques(self):
+        # Un seul "1 - Album", ou des numéros qui ne se suivent pas depuis 1 : ce sont des albums.
+        self.poser("A/1 - Premier/01.flac", "A/3 - Troisieme/01.flac", "B/2 - Seul/01.flac")
+        self.assertEqual(len(album.find_albums(self.racine)), 3)
+
     def test_un_disque_sans_dossier_de_disque(self):
         self.poser("A/01.flac", "A/02.flac")
         self.assertEqual(album.find_albums(self.racine)[0].disc_count, 1)
@@ -211,6 +228,18 @@ class TestAppariement(unittest.TestCase):
         entrees = [album.entry_for(Path("a.flac"), meta("TRACKNUMBER=1", "TITLE=Prelude")), album.entry_for(Path("b.flac"), meta("TRACKNUMBER=1", "TITLE=Protovision"))]
         places, _ = album.match_tracks(entrees, OUTRUN)
         self.assertEqual(places[Path("b.flac")][1]["title"], "Protovision")
+
+    def test_numero_d_une_autre_edition_cede_au_titre(self):
+        # Mesuré sur "La fête est finie" : des fichiers numérotés 2-12... par une édition à 25 pistes. Le numéro 3 tomberait sur "Protovision" ; le titre dit "Prelude".
+        entrees = [album.entry_for(Path("a.flac"), meta("TRACKNUMBER=3", "TITLE=Prelude")), album.entry_for(Path("b.flac"), meta("TRACKNUMBER=9", "TITLE=Blizzard")), album.entry_for(Path("c.flac"), meta("TRACKNUMBER=1", "TITLE=Protovision"))]
+        places, raison = album.match_tracks(entrees, OUTRUN)
+        self.assertEqual(raison, "")
+        self.assertEqual([places[Path(f"{n}.flac")][1]["title"] for n in "abc"], ["Prelude", "Blizzard", "Protovision"])
+
+    def test_titre_different_au_bon_numero_garde_sa_place(self):
+        entrees = [album.entry_for(Path("a.flac"), meta("TRACKNUMBER=1", "TITLE=Intro")), album.entry_for(Path("b.flac"), meta("TRACKNUMBER=2", "TITLE=Blizzard")), album.entry_for(Path("c.flac"), meta("TRACKNUMBER=3", "TITLE=Protovision"))]
+        places, raison = album.match_tracks(entrees, OUTRUN)
+        self.assertEqual((raison, places[Path("a.flac")][1]["title"]), ("", "Prelude"))
 
     def test_un_fichier_sans_piste_refuse_l_album(self):
         entrees = [album.entry_for(Path("a.flac"), meta("TRACKNUMBER=1")), album.entry_for(Path("zz.flac"), meta("TITLE=Rien a voir"))]
