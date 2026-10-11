@@ -11,7 +11,8 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.books import archive, cbz, comicinfo, epub, thumbs
+from libraries.books import archive, cbz, comicinfo, epub
+from libraries.common import thumbs
 
 COMICINFO = """<?xml version="1.0"?>
 <ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">

@@ -46,6 +46,17 @@ SHELF_SVG = (
     "<rect x='8' y='52' width='48' height='4' rx='2' fill='#7cc4ff'/>"
     "</svg>")
 
+# La musique : deux croches reliées, dans les mêmes couleurs.
+MUSIC_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    "<rect width='64' height='64' rx='14' fill='#1c1e26'/>"
+    "<ellipse cx='22' cy='47' rx='8' ry='6' fill='#7cc4ff'/>"
+    "<ellipse cx='44' cy='41' rx='8' ry='6' fill='#7cc4ff'/>"
+    "<rect x='27' y='14' width='5' height='33' fill='#7cc4ff'/>"
+    "<rect x='49' y='8' width='5' height='33' fill='#7cc4ff'/>"
+    "<path d='M27 14l27-6v10l-27 6z' fill='#7cc4ff'/>"
+    "</svg>")
+
 
 def initials(title):
     """'BB' pour Breaking Bad, 'D' pour Dark, '24' pour 24 ; '?' pour un titre vide.
@@ -104,3 +115,7 @@ def films_link():
 
 def shelf_link():
     return link(SHELF_SVG)
+
+
+def music_link():
+    return link(MUSIC_SVG)

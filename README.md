@@ -11,6 +11,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes ; fiche récap de la médiathèque |
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, plus une fiche récap HTML |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
+| [scripts/Music/Recap.py](scripts/Music/Recap.py) | Fiche HTML d'une médiathèque musicale, lue dans les tags des `.flac` et `.mp3` : un mur de pochettes par artiste, une fiche par album avec ses pistes et celles qui manquent ; rien n'est écrit dans les fichiers |
 | [scripts/TV_Shows/Recap_All.py](scripts/TV_Shows/Recap_All.py) | Régénère la fiche récap de toutes les séries d'une médiathèque, sans toucher aux épisodes |
 | [scripts/TV_Shows/Index.py](scripts/TV_Shows/Index.py) | Sommaire `index.html` de toutes les séries, chacune menant à sa fiche récap ; fait pour une tâche planifiée sur le NAS |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
@@ -26,7 +27,7 @@ Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine ; 
 ```text
 scripts/Movies/        étiquetage et renommage des films
 scripts/TV_Shows/      la même chose pour les séries
-scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz
+scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, et leur fiche HTML
 scripts/Books/         fiche HTML des livres, BD, comics et mangas
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
 scripts/Converters/    changement de conteneur, avant tout étiquetage
@@ -37,21 +38,21 @@ libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.e
 tests/                 les tests
 ```
 
-[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3` et la reconnaissance des albums. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, miniatures d'images, mise en page des fiches. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums et leur fiche HTML. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
 - Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
 - [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4`
-- [Pillow](https://pypi.org/project/pillow/) (`pip install pillow`) — facultatif : réduit les couvertures de `Books/Recap.py`. Sans lui, les pages montrent un monogramme à la place des couvertures.
+- [Pillow](https://pypi.org/project/pillow/) (`pip install pillow`) — facultatif : réduit les couvertures de `Books/Recap.py` et les pochettes de `Music/Recap.py`. Sans lui, les pages montrent un monogramme à la place.
 
 ```powershell
 winget install MoritzBunkus.MKVToolNix
 winget install Gyan.FFmpeg
 ```
 
-`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` et les `.mp3` lui-même, et MusicBrainz ne demande aucune clé. `Books/Recap.py` ne demande ni outil, ni clé, ni réseau.
+`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` et les `.mp3` lui-même, et MusicBrainz ne demande aucune clé. `Books/Recap.py` et `Music/Recap.py` ne demandent ni outil, ni clé, ni réseau.
 
 ## Clé TMDB
 
@@ -235,6 +236,32 @@ python scripts\Music\Rename_Tracks.py --dir "D:\Musique" --apply         # renom
 ```
 
 L'album est reconnu exactement comme par `Metadata.py` — mêmes éditions, même placement des fichiers, mêmes questions en fin de passage — et un album dont un seul fichier ne trouve pas sa piste n'est pas renommé du tout. Passé après `Metadata.py`, il ne cherche plus rien : l'identifiant est dans les fichiers. Un album en plusieurs disques rangés à plat préfixe le disque (`2-01 - Alive 1997.flac`) ; rangés dans `CD1`, `CD2`…, chaque dossier repart de `01`. Un `/` dans un titre devient `-` (`Robot Rock - Oh Yeah`), et les paroles `.lrc` posées à côté suivent leur piste. Les dossiers ne bougent pas : leur nom reste celui qu'on leur a donné.
+
+#### Fiche de la médiathèque
+
+Les albums passés par `Metadata.py` portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Il n'y a donc **rien à chercher en ligne** : [Recap.py](scripts/Music/Recap.py) lit ces tags — sans réseau, sans clé, sans rien écrire dans les fichiers — et en fait une fiche de la médiathèque, dans le style de celle des films. Elle marche aussi sur des albums qui n'ont pas été étiquetés (le nom du dossier remplace alors les tags), et le journal dit lesquels sont à passer par `Metadata.py`.
+
+```powershell
+python scripts\Music\Recap.py --dir "D:\Musique"            # simulation : lit les fichiers, ne montre que le bilan
+python scripts\Music\Recap.py --dir "D:\Musique" --apply    # écrit la fiche dans D:\Musique\__Data__
+```
+
+Tout est écrit dans `__Data__` à la racine de `--dir` (ou dans `--out`) :
+
+| Fichier | Contenu |
+| --- | --- |
+| `index.html` | Le sommaire : un mur de pochettes **groupé par artiste** — un artiste qui a plusieurs albums a sa section, les autres se rangent ensemble à la fin, classés par artiste —, avec une **zone de recherche** (album, artiste, label, genre), un **filtre de genre**, le bouton *7 par ligne* / *Pleine largeur* et un **index A–Z** dans l'en-tête fixe |
+| `Albums/` | Une fiche par album : pochette, artiste, année, label et numéro de catalogue, genres, durée, format, lien vers la fiche MusicBrainz, pistes avec leur durée (une section par disque), et **les pistes qui manquent** |
+| `catalog.json` | Ce qu'on a lu dans chaque fichier, avec sa taille et sa date : aux passages suivants, seules les pistes **nouvelles ou modifiées** sont rouvertes |
+| `recap.log` | Le journal : les albums pas encore étiquetés, les pistes qui manquent, les fichiers illisibles et ceux d'un format non pris en charge |
+
+Les **pistes manquantes** viennent du total que les tags annoncent (`TRACKTOTAL`, `DISCTOTAL`) comparé aux numéros possédés : `Manque : pistes 3, 5–7 (sur 13)`, et chaque piste absente est grisée à sa place dans la liste. Rien n'est dit d'un disque dont une piste n'a pas de numéro — c'est peut-être elle qui manque. Sur le sommaire, la pochette d'un album incomplet affiche `11/13 pistes` en orange.
+
+Un album est reconnu comme par `Metadata.py` — un dossier qui contient de l'audio, lui ou ses dossiers de disque —, et les mêmes règles tranchent quand les tags manquent : le disque et le numéro viennent des tags, puis du dossier de disque, puis du nom du fichier. Les dossiers dont le nom commence par `__`, `#` ou `@` (`__Data__`, `#recycle`, `@eaDir`) sont ignorés. Les artistes se regroupent sans tenir compte des accents ni de la casse, et les albums d'un artiste se rangent par année.
+
+Les pochettes sont celles que portent les fichiers, réduites et encodées dans la page, qui reste un fichier unique : il faut [Pillow](https://pypi.org/project/pillow/) pour les réduire, et sans lui les pages montrent un monogramme à la place. Une page déjà écrite sert de cache — rien n'est rouvert pour une pochette déjà dedans, et une page qui n'a pas changé n'est pas réécrite —, de quoi la tenir à jour chaque nuit sur le NAS sans réveiller les disques pour rien. Le script sort en **code 1** s'il y a des fichiers illisibles. `--no-cache` rouvre toutes les pistes, `--title` donne son titre à la fiche (« Musique » par défaut, et le choix est repris aux passages suivants), `--cover-width` règle la taille des pochettes des fiches et `--workers` le nombre de fichiers lus en parallèle (8 par défaut).
+
+Pour la mettre à jour sur un NAS, la tâche planifiée est celle de [la fiche des livres](#mettre-la-fiche-à-jour-sur-truenas-scale), avec `Music/Recap.py` et le dossier de la musique : `XDG_CACHE_HOME=/mnt/<pool>/<outils>/cache python3 /mnt/<pool>/<outils>/media_library/scripts/Music/Recap.py --dir /mnt/<pool>/<musique> --apply`. Ouvrir ensuite `\<nas>\<partage>\__Data__\index.html`.
 
 ### Livres, BD, comics et mangas
 

@@ -74,6 +74,19 @@ def tmdb_link(kind, tmdb_id):
             "target='_blank' rel='noopener'>Voir sur TMDB ↗</a>")
 
 
+def ranges(numbers):
+    """'3, 5–7, 12' : les numéros qui se suivent tiennent en une plage. Les tomes qui manquent à une série, les pistes qui manquent à un album."""
+    parts, start, previous = [], None, None
+    for n in list(numbers) + [None]:
+        if start is not None and (n is None or n != previous + 1):
+            parts.append(str(start) if start == previous else f"{start}–{previous}" if previous - start > 1 else f"{start}, {previous}")
+            start = None
+        if n is not None and start is None:
+            start = n
+        previous = n
+    return ", ".join(parts)
+
+
 def header(inner):
     """L'en-tête fixe. Son contenu est calé sur la même largeur que la page (.wrap), pleine ou centrée."""
     return f"<header class='top'><div class='wrap'>{inner}</div></header><div class='wrap page'>"

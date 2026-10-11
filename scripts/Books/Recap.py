@@ -26,16 +26,15 @@ Aucune dépendance obligatoire. Pillow (pip install pillow) réduit les couvertu
 """
 
 import argparse
-import base64
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cli, textfile  # noqa: E402
+from libraries.common import cli, textfile, thumbs  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.books import shelf, shelfpage, thumbs  # noqa: E402
+from libraries.books import shelf, shelfpage  # noqa: E402
 from libraries.books.archive import BookError  # noqa: E402
 
 DATA_DIR = "__Data__"
@@ -73,16 +72,12 @@ def cover_uri(volume, width):
     except BookError:
         return None
     jpeg = thumbs.thumbnail(raw, width) if raw else None
-    return shelfpage.data_uri(jpeg) if jpeg else None
+    return thumbs.data_uri(jpeg) if jpeg else None
 
 
 def index_cover(uri):
     """Version réduite, pour le sommaire, de la couverture d'une page (data-URI). Sans Pillow, ou si elle est illisible, la couverture de la page fait l'affaire."""
-    try:
-        small = thumbs.thumbnail(base64.b64decode(uri.split(",", 1)[1]), INDEX_COVER_WIDTH, INDEX_COVER_QUALITY)
-    except (ValueError, IndexError):
-        small = None
-    return shelfpage.data_uri(small) if small else uri
+    return thumbs.shrink_uri(uri, INDEX_COVER_WIDTH, INDEX_COVER_QUALITY) or uri
 
 
 def write_series_page(series, folder, library_name, width):
