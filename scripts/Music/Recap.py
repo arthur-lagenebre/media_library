@@ -28,6 +28,7 @@ Aucune dépendance obligatoire, et aucune clé. Pillow (pip install pillow) réd
 """
 
 import argparse
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -36,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, layout, textfile, thumbs  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.music import artistinfo, library, librarypage  # noqa: E402
+from libraries.music import artistinfo, library, librarypage, player  # noqa: E402
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError  # noqa: E402
 from libraries.music.tags import AudioError  # noqa: E402
 
@@ -85,7 +86,15 @@ def cover_uri(release, width):
     return thumbs.data_uri(jpeg) if jpeg else None
 
 
-def write_release_page(release, folder, library_name, width, artists):
+def media_base(folder, root):
+    """Le chemin relatif d'une fiche d'album à la racine de la médiathèque, terminé par '/' : par là, la fiche joue les fichiers. None quand il n'y en a pas (autre lecteur Windows)."""
+    try:
+        return Path(os.path.relpath(root, folder)).as_posix().rstrip("/") + "/"
+    except ValueError:
+        return None
+
+
+def write_release_page(release, folder, library_name, width, artists, base=None):
     """Écrit la fiche d'un album. Retourne (pochette, pochette extraite ?, page écrite ?). 'artists' = {id: Artist} de ceux qui auront leur fiche.
 
     La page précédente sert de cache : une pochette déjà dedans n'est pas rouverte. Une page déjà à jour n'est pas réécrite.
@@ -96,7 +105,7 @@ def write_release_page(release, folder, library_name, width, artists):
     if image is None:
         image = cover_uri(release, width)
         fresh = bool(image)
-    html = librarypage.build_release(release, image, f"../{INDEX_NAME}", library_name, artists.get(release.artist_id))
+    html = librarypage.build_release(release, image, f"../{INDEX_NAME}", library_name, artists.get(release.artist_id), base)
     written = not textfile.same(page, html)
     if written:
         textfile.write(page, html)
@@ -168,13 +177,24 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name):
     return done, written
 
 
-def write_pages(sections, out, args):
+def write_shell(path, library_name):
+    """Écrit la coque qui garde la lecture en vie d'une fiche à l'autre : le sommaire dans une iframe, au-dessus d'une barre de lecture."""
+    html = player.build_shell(library_name, INDEX_NAME)
+    if textfile.same(path, html):
+        print(f"  [lecteur] {path} inchange")
+    else:
+        textfile.write(path, html)
+        print(f"  [lecteur] {path} ecrit  (ouvrir celle-ci pour naviguer sans couper la musique)")
+
+
+def write_pages(sections, out, root, args):
     """Écrit la fiche de chaque album, celle de chaque artiste, puis le sommaire. Retourne le nombre de fiches d'albums écrites.
 
     Une fiche qu'on n'a pas pu écrire n'est pas rendue au sommaire, pour qu'il ne mène pas à rien. Les fiches d'albums ou d'artistes sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
     """
     folder = out / librarypage.DIR
     folder.mkdir(parents=True, exist_ok=True)
+    base = None if args.no_player else media_base(folder, root)
     index = out / INDEX_NAME
     library_name = args.title or textfile.title_of(index) or DEFAULT_TITLE
     if not thumbs.available():
@@ -189,7 +209,7 @@ def write_pages(sections, out, args):
 
     def build(release):
         try:
-            return release, write_release_page(release, folder, library_name, args.cover_width, artists)
+            return release, write_release_page(release, folder, library_name, args.cover_width, artists, base)
         except OSError as e:
             print(f"  [pages] {librarypage.page_name(release)} non ecrite : {e}")
             return release, None
@@ -216,6 +236,8 @@ def write_pages(sections, out, args):
     else:
         textfile.write(index, html)
         print(f"  [sommaire] {index} ecrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} pochette(s) integree(s))")
+    if base is not None:
+        write_shell(out / player.SHELL_NAME, library_name)
     return written
 
 
@@ -277,6 +299,7 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Ecrit reellement la fiche (defaut : simulation)")
     ap.add_argument("--no-cache", action="store_true", help="Rouvre toutes les pistes, sans reprendre le catalogue, et redemande tous les artistes")
     ap.add_argument("--no-artist-info", action="store_true", help="N'interroge ni MusicBrainz ni Wikipedia : les fiches d'artiste n'ont que ce qu'on savait deja")
+    ap.add_argument("--no-player", action="store_true", help="Les fiches d'album ne lisent pas les pistes (utile si elles sont copiees sans la musique)")
     ap.add_argument("--cover-width", type=int, default=COVER_WIDTH, help=f"Largeur des pochettes des fiches en pixels (defaut : {COVER_WIDTH})")
     ap.add_argument("--workers", type=int, default=8, help="Pistes lues en parallele (defaut : 8)")
     args = ap.parse_args()
@@ -312,7 +335,7 @@ def main():
         catalog = library.dump_catalog(tracks)
         if not textfile.same(out / CATALOG_NAME, catalog):
             textfile.write(out / CATALOG_NAME, catalog)
-        write_pages(sections, out, args)
+        write_pages(sections, out, root, args)
     else:
         print(f"  [fiche] ecrirait {out / INDEX_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
         asked = pending(library.artists(releases), artistinfo.load(out / ARTISTS_NAME), args)

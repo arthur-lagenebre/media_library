@@ -223,7 +223,7 @@ Tout est écrit dans `__Data__` à la racine de `--dir` (ou dans `--out`) :
 | Fichier | Contenu |
 | --- | --- |
 | `index.html` | Le sommaire : un mur de pochettes **groupé par artiste** — un artiste qui a plusieurs albums a sa section, les autres se rangent ensemble à la fin, classés par artiste —, avec une **zone de recherche** (album, artiste, label, genre), un **filtre de genre**, le bouton *7 par ligne* / *Pleine largeur* et un **index A–Z** dans l'en-tête fixe |
-| `Albums/` | Une fiche par album : pochette, artiste, année, label et numéro de catalogue, genres, durée, format, lien vers la fiche MusicBrainz, pistes avec leur durée (une section par disque), et **les pistes qui manquent** |
+| `Albums/` | Une fiche par album : pochette, artiste, année, label et numéro de catalogue, genres, durée, format, lien vers la fiche MusicBrainz, pistes avec leur durée (une section par disque), **les pistes qui manquent**, et un **lecteur** (voir plus bas) |
 | `Artistes/` | Une fiche par artiste ou groupe, où mène son nom — dans le sommaire comme sur la fiche d'un album : ses albums, ses genres, et ce que MusicBrainz et Wikipédia en disent (voir plus bas) |
 | `artists.json` | Ce que MusicBrainz et Wikipédia ont dit des artistes (voir plus bas) : redemandé au bout d'un mois seulement |
 | `catalog.json` | Ce qu'on a lu dans chaque fichier, avec sa taille et sa date : aux passages suivants, seules les pistes **nouvelles ou modifiées** sont rouvertes |
@@ -237,7 +237,9 @@ Un album est reconnu comme par `Metadata.py` — un dossier qui contient de l'au
 
 C'est le seul endroit où le script sort sur le réseau, à raison d'**une requête par seconde** pour MusicBrainz — comptez un quart d'heure pour 500 artistes au premier passage. Les réponses sont gardées dans `artists.json`, à côté des pages, et redemandées au bout d'un mois : aux passages suivants, seuls les **nouveaux artistes** coûtent une requête, et un artiste sans fiche MusicBrainz (supprimée ou fusionnée) n'est pas redemandé. Sans réseau, le script abandonne après **trois échecs d'affilée** et garde ce qu'il avait ; le reste est repris au passage suivant. La simulation n'interroge personne et annonce combien d'artistes elle interrogerait. `--no-artist-info` n'interroge jamais, et les fiches gardent alors ce qu'on savait déjà ; `--no-cache` redemande tous les artistes.
 
-Les pochettes sont celles que portent les fichiers, réduites et encodées dans la page, qui reste un fichier unique : il faut [Pillow](https://pypi.org/project/pillow/) pour les réduire, et sans lui les pages montrent un monogramme à la place. Une page déjà écrite sert de cache — rien n'est rouvert pour une pochette déjà dedans, et une page qui n'a pas changé n'est pas réécrite —, de quoi la tenir à jour chaque nuit sur le NAS sans réveiller les disques pour rien. Le script sort en **code 1** s'il y a des fichiers illisibles. `--no-cache` rouvre toutes les pistes, `--title` donne son titre à la fiche (« Musique » par défaut, et le choix est repris aux passages suivants), `--cover-width` règle la taille des pochettes des fiches et `--workers` le nombre de fichiers lus en parallèle (8 par défaut).
+**Écouter depuis la fiche.** Chaque piste d'une fiche d'album a un bouton ▶ qui joue le fichier lui-même, dans un lecteur fixé en bas de page. **Tout lire**, en tête de fiche, lit l'album du début à la fin, disques à la suite (le même bouton met en pause, puis reprend) ; une piste finie lance la suivante, la barre porte ⏮ et ⏭ et la position (`3/12`), ⏮ relance la piste si elle a plus de 3 secondes ou si c'est la première, recliquer sur la piste en cours la met en pause, et un fichier introuvable le dit dans la barre. **Pour naviguer sans couper la musique**, ouvrir `lecteur.html` (écrit à côté de `index.html`) plutôt que le sommaire : il affiche le sommaire, les albums et les artistes dans une iframe, au-dessus d'une barre de lecture qui ne change jamais. Les fiches n'y jouent plus elles-mêmes, elles envoient leurs pistes à la barre et marquent celle qui joue ; cliquer le nom de l'album dans la barre y ramène. L'adresse du navigateur reste celle de `lecteur.html` pendant qu'on navigue, donc un favori ou un rechargement ramène au sommaire. Ouvertes seules (sans `lecteur.html`), les fiches jouent comme avant, mais la musique s'arrête quand on change de page. Rien n'est copié ni encodé dans la page : le bouton pointe vers le fichier par un **lien relatif** (`../../Daft%20Punk/Discovery/01.flac`), donc la fiche ne lit que là où les fichiers sont joignables depuis elle — ouverte depuis le disque ou le partage réseau (`file://`), ou servie avec la musique par un serveur web du NAS. Écrite ailleurs avec `--out`, le lien est recalculé vers la médiathèque ; **copiée sans la musique**, elle ne lit rien, et `--no-player` retire alors les boutons, et n'écrit pas `lecteur.html`. Les `.flac` et `.mp3` se lisent dans les navigateurs récents, et dans l'ordre de la fiche : les pistes manquantes ou illisibles n'ont pas de bouton.
+
+Les pochettes sont celles que portent les fichiers, réduites et encodées dans la page, qui reste un fichier unique : il faut [Pillow](https://pypi.org/project/pillow/) pour les réduire, et sans lui les pages montrent un monogramme à la place. Une page déjà écrite sert de cache — rien n'est rouvert pour une pochette déjà dedans, et une page qui n'a pas changé n'est pas réécrite —, de quoi la tenir à jour chaque nuit sur le NAS sans réveiller les disques pour rien. Le script sort en **code 1** s'il y a des fichiers illisibles. `--no-cache` rouvre toutes les pistes, `--no-player` retire les boutons de lecture, `--title` donne son titre à la fiche (« Musique » par défaut, et le choix est repris aux passages suivants), `--cover-width` règle la taille des pochettes des fiches et `--workers` le nombre de fichiers lus en parallèle (8 par défaut).
 
 Pour la mettre à jour sur un NAS, la tâche planifiée est celle de [la fiche des livres](#mettre-la-fiche-à-jour-sur-truenas-scale), avec `Music/Recap.py` et le dossier de la musique : `XDG_CACHE_HOME=/mnt/<pool>/<outils>/cache python3 /mnt/<pool>/<outils>/media_library/scripts/Music/Recap.py --dir /mnt/<pool>/<musique> --apply`. Ouvrir ensuite `\<nas>\<partage>\__Data__\index.html`.
 
@@ -338,6 +340,25 @@ Les `Metadata.py` sortent en **code 1** s'il reste quelque chose à corriger —
 Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAPPDATA%\media_library\tmdb` et `…\musicbrainz` (`~/.cache/media_library/…` ailleurs) — jamais à côté de la médiathèque. Repasser sur une grosse collection ne refait donc pas tous les appels : mesuré sur 8 requêtes, 416 ms contre 56 ms. `--no-cache` ignore ce qui est en cache et le rafraîchit ; supprimer le dossier est sans conséquence, il se reconstruit tout seul.
 
 `--skip-done` saute ce qui est déjà conforme, `--language` change la langue TMDB (défaut `fr-FR` ; c'est elle qui détermine le pays de la date de sortie retenue pour les films), et les `--no-*` (`--no-cover`, `--no-date`, `--no-audio-names`, `--no-sub-names`, `--no-flags`, `--no-stats`) désactivent chacun une catégorie d'écriture. `--help` liste le reste.
+
+## Pistes à explorer
+
+Rien de tout ça n'est fait ; c'est ce qu'on a retenu en y réfléchissant.
+
+### Lire films et séries depuis leurs fiches
+
+La musique se lit déjà depuis ses fiches (voir [Musique](#musique)), parce que `<audio>` lit le FLAC et le MP3 tels quels. Pour la vidéo le blocage est le **format**, pas la page :
+
+- le `.mkv` n'est lu que par Chrome et Edge, et pas toujours ; Firefox et Safari ne le lisent pas ;
+- l'audio AC-3, E-AC-3 et DTS ne passe pas dans `<video>`, le HEVC est aléatoire, les sous-titres PGS ne s'affichent pas.
+
+Seul un **transcodage à la volée** (ffmpeg, HLS) lirait tout dans le navigateur. Il demande un serveur qui tourne en permanence, ce qui sort du principe actuel — pages statiques écrites par une tâche planifiée, sans dépendance — et ffmpeg est aujourd'hui facultatif. Trois voies, de la plus simple à la plus lourde :
+
+1. **Un bouton « Lire » qui sort du navigateur** : un `.m3u` à télécharger, ou un lien `vlc://`. Ça lit tout, et ça se fait avec les mêmes liens relatifs que la musique (`lecteur.html` pourrait aussi porter un `<video>`, mais le format reste le blocage) (`libraries/video/filmpage.py` connaît déjà les chemins des fichiers, `paths=`). C'est la voie recommandée pour commencer.
+2. **Un lien vers Jellyfin, Plex ou Video Station** si le NAS en héberge un : la fiche pointerait vers le titre correspondant, et le transcodage est déjà fait par eux. À voir : retrouver un titre par son identifiant TMDB, que les fiches portent déjà.
+3. **Un `<video>` direct, sans transcodage** : à écarter, il ne marcherait que pour les rares fichiers compatibles, sans dire pourquoi aux autres.
+
+À décider avant : où les fiches sont servies (`file://`, partage réseau, serveur web du NAS) et s'il y a déjà un serveur de médias.
 
 ## Tests
 
