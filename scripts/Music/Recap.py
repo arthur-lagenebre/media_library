@@ -2,15 +2,19 @@
 r"""
 Recap.py — Fiche HTML d'une médiathèque musicale, comme celle des films et des séries.
 
-Les albums étiquetés par Metadata.py portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Ce script les LIT - sans réseau, sans clé, sans rien écrire dans les fichiers - pour en faire une fiche de la médiathèque : un mur de pochettes groupé par artiste, et une fiche par album.
+Les albums étiquetés par Metadata.py portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Ce script les LIT - sans clé, sans rien écrire dans les fichiers - pour en faire une fiche de la médiathèque : un mur de pochettes groupé par artiste, une fiche par album et une par artiste. Seules ces dernières ont besoin du réseau, et seulement pour s'enrichir (voir plus bas).
 
 Un album est un dossier qui contient des .flac ou des .mp3, lui ou ses dossiers de disque (CD1, CD2...) ; les dossiers d'artiste au-dessus ne font que ranger. Un artiste qui a plusieurs albums a sa section, les autres se rangent ensemble à la fin. Les dossiers dont le nom commence par "__", "#" ou "@" (__Data__, #recycle, @eaDir) sont ignorés.
+
+Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wikipédia en disent : type, pays, dates, membres du groupe, liens officiels et un court résumé (en français, à défaut en anglais). Seuls les artistes dont les tags portent l'identifiant MusicBrainz (MUSICBRAINZ_ALBUMARTISTID, écrit par Metadata.py) sont concernés, à raison d'une requête par seconde - la règle de MusicBrainz. Les réponses sont gardées dans artists.json et redemandées au bout d'un mois : aux passages suivants, seuls les nouveaux artistes coûtent une requête. Sans réseau, le script abandonne après trois échecs d'affilée et garde ce qu'il avait ; --no-artist-info ne s'en sert jamais.
 
 Les pistes qui manquent à un album viennent du total que les tags annoncent (TRACKTOTAL, DISCTOTAL), comparé aux numéros possédés : "Manque : pistes 3, 5-7 (sur 13)". Rien n'est dit d'un disque dont une piste n'a pas de numéro.
 
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
   index.html     le sommaire : recherche (album, artiste, label, genre), filtre de genre, index A-Z
   Albums/        une fiche par album : pochette, artiste, année, label, genres, pistes et durées, pistes manquantes
+  Artistes/      une fiche par artiste, où mène son nom : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant
+  artists.json   ce que MusicBrainz et Wikipédia ont dit des artistes : redemandé au bout d'un mois seulement
   catalog.json   ce qu'on a lu dans chaque fichier : au passage suivant, seules les pistes nouvelles ou modifiées sont rouvertes
   recap.log      le journal : les albums pas encore étiquetés, les pistes qui manquent, les fichiers illisibles
 
@@ -18,29 +22,33 @@ Usage :
   python Recap.py --dir "D:\Musique"                  # simulation : lit les fichiers, n'écrit que le journal si --out existe
   python Recap.py --dir "D:\Musique" --apply          # écrit la fiche dans D:\Musique\__Data__
 
-Options : --apply --out --title --no-cache --cover-width (défaut 480) --workers (défaut 8)
+Options : --apply --out --title --no-cache --no-artist-info --cover-width (défaut 480) --workers (défaut 8)
 
-Aucune dépendance obligatoire. Pillow (pip install pillow) réduit les pochettes ; sans lui, les pages montrent un monogramme à leur place. Le premier passage ouvre l'en-tête de chaque fichier ; les suivants ne rouvrent que ce qui a changé, et ne réécrivent pas une page déjà à jour : de quoi tourner chaque nuit sur le NAS sans réveiller les disques pour rien.
+Aucune dépendance obligatoire, et aucune clé. Pillow (pip install pillow) réduit les pochettes ; sans lui, les pages montrent un monogramme à leur place. Le premier passage ouvre l'en-tête de chaque fichier ; les suivants ne rouvrent que ce qui a changé, et ne réécrivent pas une page déjà à jour : de quoi tourner chaque nuit sur le NAS sans réveiller les disques pour rien.
 """
 
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, layout, textfile, thumbs  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.music import library, librarypage  # noqa: E402
+from libraries.music import artistinfo, library, librarypage  # noqa: E402
+from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError  # noqa: E402
 from libraries.music.tags import AudioError  # noqa: E402
 
 DATA_DIR = "__Data__"
 INDEX_NAME = "index.html"
 CATALOG_NAME = "catalog.json"
+ARTISTS_NAME = "artists.json"
 LOG_NAME = "recap.log"
 DEFAULT_TITLE = "Musique"
 PROGRESS_EVERY = 500
+PROGRESS_ARTISTS = 25
+MAX_FAILURES = 3              # échecs d'affilée après lesquels on n'interroge plus : le réseau ne répond pas, pas la peine d'attendre chaque artiste
 COVER_WIDTH = 480             # la fiche montre la pochette à 280 px : le double, pour un écran haute densité
 INDEX_COVER_WIDTH = 200       # une pochette du sommaire en demande ~150 : le sommaire en porte des centaines
 INDEX_COVER_QUALITY = 65
@@ -77,8 +85,8 @@ def cover_uri(release, width):
     return thumbs.data_uri(jpeg) if jpeg else None
 
 
-def write_release_page(release, folder, library_name, width):
-    """Écrit la fiche d'un album. Retourne (pochette, pochette extraite ?, page écrite ?).
+def write_release_page(release, folder, library_name, width, artists):
+    """Écrit la fiche d'un album. Retourne (pochette, pochette extraite ?, page écrite ?). 'artists' = {id: Artist} de ceux qui auront leur fiche.
 
     La page précédente sert de cache : une pochette déjà dedans n'est pas rouverte. Une page déjà à jour n'est pas réécrite.
     """
@@ -88,17 +96,82 @@ def write_release_page(release, folder, library_name, width):
     if image is None:
         image = cover_uri(release, width)
         fresh = bool(image)
-    html = librarypage.build_release(release, image, f"../{INDEX_NAME}", library_name)
+    html = librarypage.build_release(release, image, f"../{INDEX_NAME}", library_name, artists.get(release.artist_id))
     written = not textfile.same(page, html)
     if written:
         textfile.write(page, html)
     return image, fresh, written
 
 
-def write_pages(sections, out, args):
-    """Écrit la fiche de chaque album puis le sommaire. Retourne le nombre de fiches écrites.
+def pending(artists, entries, args):
+    """Les identifiants MusicBrainz des artistes à interroger : ceux qu'on ne connaît pas encore, ou depuis plus d'un mois (tous, avec --no-cache)."""
+    if args.no_artist_info:
+        return []
+    wanted = sorted({a.mbid for a in artists if a.mbid})
+    return [m for m in wanted if args.no_cache or m not in entries or artistinfo.stale(entries[m])]
 
-    Une fiche qu'on n'a pas pu écrire n'est pas rendue au sommaire, pour qu'il ne mène pas à rien. Les fiches d'albums sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
+
+def update_artist_info(artists, path, args):
+    """{mbid: {'fetched', 'info'}} de tous les artistes connus, après avoir demandé à MusicBrainz et à Wikipédia ceux qui manquent.
+
+    Un artiste dont la fiche n'existe plus (404) est noté sans rien dire, pour ne pas être redemandé à chaque passage. Une panne ne perd rien : ce qu'on savait déjà reste, et le passage suivant reprendra où celui-ci s'est arrêté.
+    """
+    entries = artistinfo.load(path)
+    todo = pending(artists.values(), entries, args)
+    if not todo:
+        return entries
+    names = {a.mbid: a.name for a in artists.values() if a.mbid}
+    print(f"  [artistes] {len(todo)} artiste(s) a demander a MusicBrainz et Wikipedia (environ {max(1, round(len(todo) * 1.5 / 60))} min)")
+    client, failures, fetched = MusicBrainz(), 0, 0
+    try:
+        for done, mbid in enumerate(todo, 1):
+            try:
+                entries[mbid] = {"fetched": date.today().isoformat(), "info": artistinfo.fetch(client, mbid)}
+                failures, fetched = 0, fetched + 1
+            except MusicBrainzError as e:
+                print(f"  [artistes] {names[mbid]} : {e}")
+                if e.code == 404:
+                    entries[mbid] = {"fetched": date.today().isoformat(), "info": {}}
+                    failures = 0
+                else:
+                    failures += 1
+                    if failures >= MAX_FAILURES:
+                        print(f"  [artistes] {MAX_FAILURES} echecs d'affilee : abandon, le reste au prochain passage")
+                        break
+            if done % PROGRESS_ARTISTS == 0:
+                print(f"  [artistes] {done}/{len(todo)}")
+    finally:                                   # même interrompu (Ctrl-C), ce qu'on a obtenu est gardé
+        text = artistinfo.dump(entries)
+        if not textfile.same(path, text):
+            textfile.write(path, text)
+    print(f"  [artistes] {fetched} fiche(s) obtenue(s) sur {len(todo)}")
+    return entries
+
+
+def write_artist_pages(artists, entries, covers, pages, out, library_name):
+    """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites)."""
+    folder = out / librarypage.ARTIST_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    done, written = {}, 0
+    for artist in artists.values():
+        page = folder / librarypage.artist_page_name(artist)
+        html = librarypage.build_artist(artist, covers, f"../{INDEX_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"))
+        try:
+            if not textfile.same(page, html):
+                textfile.write(page, html)
+                written += 1
+        except OSError as e:
+            print(f"  [artistes] {page.name} non ecrite : {e}")
+            continue
+        done[artist.id] = artist
+    print(f"  [artistes] {len(done)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(done) - written} inchangee(s))")
+    return done, written
+
+
+def write_pages(sections, out, args):
+    """Écrit la fiche de chaque album, celle de chaque artiste, puis le sommaire. Retourne le nombre de fiches d'albums écrites.
+
+    Une fiche qu'on n'a pas pu écrire n'est pas rendue au sommaire, pour qu'il ne mène pas à rien. Les fiches d'albums ou d'artistes sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
     """
     folder = out / librarypage.DIR
     folder.mkdir(parents=True, exist_ok=True)
@@ -108,12 +181,15 @@ def write_pages(sections, out, args):
         print("  [pochettes] Pillow absent : les pages montrent un monogramme a la place (pip install pillow)")
 
     every = [r for _, releases in sections for r in releases]
+    # Les albums d'artiste inconnu n'ont rien en commun : ils n'ont pas de fiche à eux.
+    artists = {a.id: a for a in library.artists(every) if a.name != library.UNKNOWN_ARTIST}
+    entries = update_artist_info(artists, out / ARTISTS_NAME, args)
     # Les albums les plus fournis d'abord : sinon le dernier, seul sur un fil, fait attendre tous les autres.
     queue = sorted(every, key=lambda r: -len(r.tracks))
 
     def build(release):
         try:
-            return release, write_release_page(release, folder, library_name, args.cover_width)
+            return release, write_release_page(release, folder, library_name, args.cover_width, artists)
         except OSError as e:
             print(f"  [pages] {librarypage.page_name(release)} non ecrite : {e}")
             return release, None
@@ -132,7 +208,9 @@ def write_pages(sections, out, args):
                 print(f"  [pages] {done}/{len(queue)}")
     print(f"  [pages] {len(pages)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(pages) - written} inchangee(s)), {fresh} pochette(s) extraite(s)")
 
-    html = librarypage.build_index(library_name, sections, covers, pages)
+    artists, _ = write_artist_pages(artists, entries, covers, pages, out, library_name)
+
+    html = librarypage.build_index(library_name, sections, covers, pages, artists)
     if textfile.same(index, html):
         print(f"  [sommaire] {index} inchange")
     else:
@@ -197,7 +275,8 @@ def parse_args():
     ap.add_argument("--out", help=f"Ou ecrire la fiche (defaut : {DATA_DIR} a la racine de --dir)")
     ap.add_argument("--title", help=f"Titre de la fiche (defaut : celui de la fiche existante, sinon '{DEFAULT_TITLE}')")
     ap.add_argument("--apply", action="store_true", help="Ecrit reellement la fiche (defaut : simulation)")
-    ap.add_argument("--no-cache", action="store_true", help="Rouvre toutes les pistes, sans reprendre le catalogue")
+    ap.add_argument("--no-cache", action="store_true", help="Rouvre toutes les pistes, sans reprendre le catalogue, et redemande tous les artistes")
+    ap.add_argument("--no-artist-info", action="store_true", help="N'interroge ni MusicBrainz ni Wikipedia : les fiches d'artiste n'ont que ce qu'on savait deja")
     ap.add_argument("--cover-width", type=int, default=COVER_WIDTH, help=f"Largeur des pochettes des fiches en pixels (defaut : {COVER_WIDTH})")
     ap.add_argument("--workers", type=int, default=8, help="Pistes lues en parallele (defaut : 8)")
     args = ap.parse_args()
@@ -235,7 +314,10 @@ def main():
             textfile.write(out / CATALOG_NAME, catalog)
         write_pages(sections, out, args)
     else:
-        print(f"  [fiche] ecrirait {out / INDEX_NAME} et une fiche par album dans {librarypage.DIR}/")
+        print(f"  [fiche] ecrirait {out / INDEX_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
+        asked = pending(library.artists(releases), artistinfo.load(out / ARTISTS_NAME), args)
+        if asked:
+            print(f"  [artistes] interrogerait MusicBrainz et Wikipedia sur {len(asked)} artiste(s)")
     if out.is_dir():
         write_log(out / LOG_NAME, root, releases, args, report)
 

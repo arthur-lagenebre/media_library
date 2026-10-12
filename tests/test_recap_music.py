@@ -13,12 +13,16 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import thumbs
-from libraries.music import flac
+from libraries.music import artistinfo, flac
+from libraries.music.musicbrainz import MusicBrainzError
 from scripts.Music import Recap as recap
 from tests import test_mp3
 from tests.test_books_readers import png
 from tests.test_flac import fichier, image
-from tests.test_library import MBID, piste
+from tests.test_artistinfo import EN, FR, WIKIDATA, ClientFactice, groupe, resume
+from tests.test_library import ARTISTE, MBID, piste
+
+SITELINKS = {"entities": {"Q185": {"sitelinks": {"frwiki": {"title": "Daft Punk"}, "enwiki": {"title": "Daft Punk"}}}}}
 
 
 class TestRecapMusique(unittest.TestCase):
@@ -33,6 +37,19 @@ class TestRecapMusique(unittest.TestCase):
         (self.racine / "Kavinsky" / "Outrun" / "02.m4a").write_bytes(b"x")
         piste(self.racine / "__Data__" / "Ancien", "01.flac")                                                    # nos propres pages : ignoré
         self.data = self.racine / "__Data__"
+        # Jamais de vrai réseau : sans réponse préparée, le client factice dit qu'il n'a rien trouvé.
+        self.reseau = ClientFactice({})
+        patch = mock.patch.object(recap, "MusicBrainz", lambda *a, **k: self.reseau)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def etiqueter_daft_punk(self):
+        for n in (1, 2, 4):
+            piste(self.racine / "Daft Punk" / "Discovery", f"{n:02d}.flac", number=n, total=4, title=f"Titre {n}", mbid=MBID, extra=(f"MUSICBRAINZ_ALBUMARTISTID={ARTISTE}",))
+        self.reseau.reponses.update({f"artist/{ARTISTE}": groupe(), WIKIDATA: SITELINKS, FR: resume()})
+
+    def fiche_daft_punk(self):
+        return next((self.data / "Artistes").glob("Daft Punk-*.html")).read_text(encoding="utf-8")
 
     def lancer(self, *options):
         sortie = io.StringIO()
@@ -68,6 +85,122 @@ class TestRecapMusique(unittest.TestCase):
         self.assertIn("<title>Musique</title>", index)
         self.assertEqual(len(re.findall(r"href='Albums/", index)), 3)
 
+    def test_une_fiche_par_artiste_et_des_liens_qui_y_mennent(self):
+        self.lancer("--apply")
+        fiches = sorted(p.name for p in (self.data / "Artistes").glob("*.html"))
+        self.assertEqual([n.rsplit("-", 1)[0] for n in fiches], ["Daft Punk", "Kavinsky"])
+        index = (self.data / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r"href='Artistes/", index)), 2)
+        album = next((self.data / "Albums").glob("Daft Punk - Discovery-*.html")).read_text(encoding="utf-8")
+        self.assertIn("<a href='../Artistes/Daft%20Punk-", album)
+        artiste = next((self.data / "Artistes").glob("Daft Punk-*.html")).read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r"href='\.\./Albums/", artiste)), 2)
+
+    def test_lien_musicbrainz_de_l_artiste_lu_dans_les_tags(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply", "--no-artist-info")
+        daft = next((self.data / "Artistes").glob("Daft Punk-*.html")).read_text(encoding="utf-8")
+        kavinsky = next((self.data / "Artistes").glob("Kavinsky-*.html")).read_text(encoding="utf-8")
+        self.assertIn(f"https://musicbrainz.org/artist/{ARTISTE}", daft)
+        self.assertNotIn("musicbrainz.org", kavinsky)
+
+    def test_fiche_d_artiste_complete_par_musicbrainz_et_wikipedia(self):
+        self.etiqueter_daft_punk()
+        _, sortie = self.lancer("--apply")
+        daft = self.fiche_daft_punk()
+        self.assertIn("1 fiche(s) obtenue(s) sur 1", sortie)
+        self.assertIn("<div class='kind'>Groupe · France · depuis 1993</div>", daft)
+        self.assertIn("French electronic duo", daft)
+        self.assertIn("Daft Punk est un duo français.", daft)
+        self.assertIn("Source : Wikipédia (fr)", daft)
+        self.assertIn("https://www.daftpunk.com/", daft)
+        self.assertIn("Site officiel", daft)
+        self.assertIn("<summary>Membres<", daft)
+        self.assertIn("<summary>Anciens membres<", daft)
+        self.assertLess(daft.index("Thomas Bangalter"), daft.index("Guy-Manuel"))
+        self.assertEqual(self.reseau.appels, [f"artist/{ARTISTE}", WIKIDATA, FR])
+
+    def test_les_artistes_sans_identifiant_ne_coutent_aucune_requete(self):
+        self.lancer("--apply")
+        self.assertEqual(self.reseau.appels, [])
+        self.assertFalse((self.data / "artists.json").exists())
+
+    def test_reponses_gardees_le_passage_suivant_ne_demande_rien(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply")
+        avant = {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in self.data.rglob("*") if p.is_file() and p.name != "recap.log"}
+        self.reseau.appels.clear()
+        _, sortie = self.lancer("--apply")
+        self.assertEqual(self.reseau.appels, [])
+        self.assertNotIn("a demander", sortie)
+        self.assertEqual({p: (p.stat().st_mtime_ns, p.read_bytes()) for p in avant}, avant)
+
+    def test_reponses_perimees_redemandees(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply")
+        gardees = artistinfo.load(self.data / "artists.json")
+        gardees[ARTISTE]["fetched"] = "2020-01-01"
+        (self.data / "artists.json").write_text(artistinfo.dump(gardees), encoding="utf-8")
+        self.reseau.appels.clear()
+        self.lancer("--apply")
+        self.assertEqual(self.reseau.appels[0], f"artist/{ARTISTE}")
+        self.assertNotEqual(artistinfo.load(self.data / "artists.json")[ARTISTE]["fetched"], "2020-01-01")
+
+    def test_no_cache_redemande_tout(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply")
+        self.reseau.appels.clear()
+        self.lancer("--apply", "--no-cache")
+        self.assertEqual(self.reseau.appels[0], f"artist/{ARTISTE}")
+
+    def test_no_artist_info_n_interroge_personne_mais_garde_ce_qu_on_savait(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply")
+        self.reseau.appels.clear()
+        self.lancer("--apply", "--no-artist-info", "--no-cache")
+        self.assertEqual(self.reseau.appels, [])
+        self.assertIn("Daft Punk est un duo français.", self.fiche_daft_punk())
+
+    def test_simulation_n_interroge_personne(self):
+        self.etiqueter_daft_punk()
+        _, sortie = self.lancer()
+        self.assertEqual(self.reseau.appels, [])
+        self.assertIn("interrogerait MusicBrainz et Wikipedia sur 1 artiste(s)", sortie)
+
+    def test_panne_du_reseau_n_efface_rien_et_n_arrete_pas_le_passage(self):
+        self.etiqueter_daft_punk()
+        self.lancer("--apply")
+        self.reseau.reponses[f"artist/{ARTISTE}"] = MusicBrainzError("coupure")
+        _, sortie = self.lancer("--apply", "--no-cache")
+        self.assertIn("Daft Punk : coupure", sortie)
+        self.assertIn("Daft Punk est un duo français.", self.fiche_daft_punk())
+
+    def test_abandon_apres_trois_echecs_d_affilee(self):
+        for n in range(5):
+            piste(self.racine / f"Groupe {n}" / "Album", "01.flac", artist=f"Groupe {n}", album="Album", extra=(f"MUSICBRAINZ_ALBUMARTISTID=00000000-0000-0000-0000-00000000000{n}",))
+            self.reseau.reponses[f"artist/00000000-0000-0000-0000-00000000000{n}"] = MusicBrainzError("coupure")
+        _, sortie = self.lancer("--apply")
+        self.assertEqual(len(self.reseau.appels), 3)
+        self.assertIn("3 echecs d'affilee : abandon", sortie)
+        self.assertTrue((self.data / "Artistes").is_dir())
+
+    def test_fiche_disparue_notee_pour_ne_pas_etre_redemandee(self):
+        self.etiqueter_daft_punk()
+        del self.reseau.reponses[f"artist/{ARTISTE}"]
+        self.lancer("--apply")
+        self.assertEqual(artistinfo.load(self.data / "artists.json")[ARTISTE]["info"], {})
+        self.reseau.appels.clear()
+        self.lancer("--apply")
+        self.assertEqual(self.reseau.appels, [])
+        self.assertIn(f"https://musicbrainz.org/artist/{ARTISTE}", self.fiche_daft_punk())
+
+    def test_artiste_inconnu_sans_fiche(self):
+        piste(self.racine / "Mystere", "01.flac", artist="", albumartist=False, album="Mystere")
+        self.lancer("--apply")
+        self.assertEqual(sorted(p.name.rsplit("-", 1)[0] for p in (self.data / "Artistes").glob("*.html")), ["Daft Punk", "Kavinsky"])
+        index = (self.data / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<div class='a'>Artiste inconnu</div>", index)
+
     def test_aucune_ecriture_dans_la_musique(self):
         avant = {p: p.read_bytes() for p in self.racine.rglob("*") if p.is_file() and "__Data__" not in p.parts}
         self.lancer("--apply")
@@ -99,6 +232,7 @@ class TestRecapMusique(unittest.TestCase):
         _, sortie = self.lancer("--apply")
         self.assertIn("5 piste(s), 5 reprise(s) du catalogue, 0 a lire", sortie)
         self.assertIn("0 ecrite(s), 3 inchangee(s)", sortie)
+        self.assertIn("[artistes] 2 fiche(s) dans Artistes/ (0 ecrite(s), 2 inchangee(s))", sortie)
         self.assertIn("inchange", sortie)
         self.assertEqual({p: (p.stat().st_mtime_ns, p.read_bytes()) for p in fichiers}, fichiers)
 

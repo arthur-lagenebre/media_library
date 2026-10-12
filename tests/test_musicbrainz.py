@@ -63,6 +63,41 @@ class TestRequetes(ClientTestCase):
         self.assertEqual(data, [{"id": "a"}])
 
 
+class TestArtistes(ClientTestCase):
+    def test_fiche_d_artiste_avec_relations_et_genres(self):
+        _, reqs, _ = self.call([FakeResponse(b'{"id": "a"}')], methode="artist", args=("abc",))
+        self.assertTrue(reqs[0].full_url.endswith("artist/abc?inc=url-rels+artist-rels+genres&fmt=json"))
+
+    def test_json_d_un_autre_site_sans_cadence(self):
+        data, reqs, attentes = self.call([FakeResponse(b'{"extract": "x"}')], methode="external", args=("https://fr.wikipedia.org/api/rest_v1/page/summary/X",))
+        self.assertEqual(data, {"extract": "x"})
+        self.assertEqual(reqs[0].full_url, "https://fr.wikipedia.org/api/rest_v1/page/summary/X")
+        self.assertIn("media_library", reqs[0].headers["User-agent"])
+        self.assertEqual(attentes, [])
+
+    def test_json_d_un_autre_site_illisible(self):
+        with self.assertRaises(MusicBrainzError):
+            self.call([FakeResponse(b"<html>")], methode="external", args=("https://x.example/",))
+
+    def test_json_d_un_autre_site_garde_en_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            client = MusicBrainz(cache=cache.Cache(Path(d)))
+            self.call([FakeResponse(b'{"a": 1}')], methode="external", args=("https://x.example/",), client=client)
+            data, reqs, _ = self.call([], methode="external", args=("https://x.example/",), client=client)
+        self.assertEqual((data, reqs), ({"a": 1}, []))
+
+    def test_le_statut_http_accompagne_l_erreur(self):
+        with self.assertRaises(MusicBrainzError) as plante:
+            self.call([http_error(404)])
+        self.assertEqual(plante.exception.code, 404)
+        with self.assertRaises(MusicBrainzError) as plante:
+            self.call([http_error(400)])
+        self.assertEqual(plante.exception.code, 400)
+        with self.assertRaises(MusicBrainzError) as plante:
+            self.call([URLError("coupure")] * 2, attempts=2)
+        self.assertIsNone(plante.exception.code)
+
+
 class TestCadence(ClientTestCase):
     def test_deux_requetes_espacees(self):
         client = MusicBrainz(interval=1.1)

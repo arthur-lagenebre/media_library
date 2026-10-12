@@ -9,8 +9,9 @@ from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common.filenames import safe_name
-from libraries.music import library, librarypage
-from tests.test_library import MBID, piste
+from libraries.music import artistinfo, library, librarypage
+from tests.test_artistinfo import groupe, resume
+from tests.test_library import ARTISTE, MBID, piste
 
 URI = "data:image/jpeg;base64,QUJD"
 
@@ -146,9 +147,59 @@ class TestSommaire(PageTestCase):
         self.assertNotIn("data-s='L'Oeil", html)
 
 
+class TestSommaireArtistes(PageTestCase):
+    def sommaire(self, avec_fiches=True):
+        sections = library.sections(self.albums())
+        pages = {r.id for _, releases in sections for r in releases}
+        artistes = {a.id: a for a in library.artists(self.albums())} if avec_fiches else {}
+        return librarypage.build_index("Musique", sections, {}, pages, artistes)
+
+    def test_le_nom_de_la_section_mene_a_l_artiste(self):
+        self.album("Daft Punk", "Homework", annee="1997")
+        self.album("Daft Punk", "Discovery")
+        artiste, = library.artists(self.albums())
+        html = self.sommaire()
+        self.assertIn(f"<h2 id='s{artiste.id}' data-i='D'><a href='{librarypage.artist_href(artiste)}'>Daft Punk</a>", html)
+
+    def test_l_artiste_d_un_album_seul_mene_a_sa_fiche(self):
+        self.album("Kavinsky", "Outrun")
+        artiste, = library.artists(self.albums())
+        html = self.sommaire()
+        self.assertIn(f"<a class='a' href='{librarypage.artist_href(artiste)}'>Kavinsky</a>", html)
+
+    def test_le_lien_de_l_album_ne_contient_pas_celui_de_l_artiste(self):
+        self.album("Kavinsky", "Outrun")
+        album = self.albums()[0]
+        html = self.sommaire()
+        self.assertIn(f"<a class='cv' href='{librarypage.href(album)}'><div class='aff'>", html)
+        self.assertIn("Outrun</div></a><a class='a'", html)
+
+    def test_sans_fiche_d_artiste_le_nom_reste_du_texte(self):
+        self.album("Daft Punk", "Homework", annee="1997")
+        self.album("Daft Punk", "Discovery")
+        self.album("Kavinsky", "Outrun")
+        html = self.sommaire(avec_fiches=False)
+        self.assertNotIn("href='Artistes/", html)
+        self.assertEqual(re.findall(r"<h2[^>]*>(.*?)<span", html), ["Daft Punk", "Autres artistes"])
+        self.assertIn("<div class='a'>Kavinsky</div>", html)
+
+    def test_section_des_autres_artistes_sans_lien(self):
+        self.album("Kavinsky", "Outrun")
+        self.assertIn("Autres artistes<span", self.sommaire())
+
+
 class TestFiche(PageTestCase):
-    def fiche(self, album, image=None):
-        return librarypage.build_release(album, image, "../index.html", "Musique")
+    def fiche(self, album, image=None, artiste=None):
+        return librarypage.build_release(album, image, "../index.html", "Musique", artiste)
+
+    def test_le_nom_de_l_artiste_mene_a_sa_fiche(self):
+        album = self.un()
+        artiste, = library.artists([album])
+        html = self.fiche(album, artiste=artiste)
+        self.assertIn(f"<div class='artist'><a href='{librarypage.artist_href(artiste, '../')}'>Daft Punk</a></div>", html)
+
+    def test_sans_fiche_d_artiste_le_nom_reste_du_texte(self):
+        self.assertNotIn("Artistes/", self.fiche(self.un()))
 
     def test_titre_artiste_faits(self):
         html = self.fiche(self.un(mbid=MBID))
@@ -227,6 +278,133 @@ class TestFiche(PageTestCase):
         album = self.un()
         album.unsupported = ["04.m4a"]
         self.assertIn("Non pris en charge : 04.m4a", self.fiche(album))
+
+
+class TestFicheArtiste(PageTestCase):
+    def fiche(self, mbid=None, **kw):
+        self.album("Daft Punk", "Homework", annee="1997", extra=(f"MUSICBRAINZ_ALBUMARTISTID={mbid}",) if mbid else ())
+        self.album("Daft Punk", "Discovery", genres=("Electronic", "House"))
+        albums = self.albums()
+        artiste, = library.artists(albums)
+        return artiste, albums, librarypage.build_artist(artiste, kw.get("covers", {}), "../index.html", "Musique", {r.id for r in albums})
+
+    def test_nom_et_faits(self):
+        _, _, html = self.fiche()
+        self.assertIn("<title>Daft Punk</title>", html)
+        self.assertIn("<h1>Daft Punk</h1>", html)
+        self.assertIn("2 albums · 1997–2001 · 6 pistes", html)
+        self.assertIn("Electronic, House", html)
+
+    def test_albums_dans_l_ordre_et_menant_a_leur_fiche(self):
+        artiste, albums, html = self.fiche()
+        liens = re.findall(r"<a class='cv' href='([^']*)'", html)
+        self.assertEqual([unquote(x) for x in liens], [f"../Albums/{librarypage.page_name(r)}" for r in artiste.releases])
+        self.assertLess(html.index("Homework"), html.index("Discovery"))
+
+    def test_pochette_du_sommaire_reprise(self):
+        artiste, albums, html = self.fiche(covers={})
+        album = artiste.releases[0]
+        html = librarypage.build_artist(artiste, {album.id: URI}, "../index.html", "Musique", {album.id})
+        self.assertIn(f"<img data-img='{album.key}' src='{URI}'", html)
+
+    def test_lien_musicbrainz_de_l_artiste(self):
+        _, _, html = self.fiche(mbid=ARTISTE)
+        self.assertIn(f"href='https://musicbrainz.org/artist/{ARTISTE}'", html)
+        self.assertIn("Voir sur MusicBrainz", html)
+
+    def test_sans_identifiant_pas_de_lien(self):
+        _, _, html = self.fiche()
+        self.assertNotIn("musicbrainz.org", html)
+
+    def test_retour_a_la_section_de_l_artiste(self):
+        artiste, _, html = self.fiche()
+        self.assertIn(f"href='../index.html#s{artiste.id}'", html)
+
+    def test_retour_a_la_pochette_d_un_artiste_seul(self):
+        self.album("Kavinsky", "Outrun")
+        album = self.albums()[0]
+        artiste, = library.artists([album])
+        html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", {album.id})
+        self.assertIn(f"href='../index.html#{librarypage.anchor(album)}'", html)
+
+    def test_album_sans_fiche_reste_inerte(self):
+        artiste, albums, _ = self.fiche()
+        html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", set())
+        self.assertNotIn("../Albums/", html)
+
+    def test_apostrophe_dans_un_nom(self):
+        self.album("Guns N' Roses", "Appetite")
+        album = self.albums()[0]
+        artiste, = library.artists([album])
+        html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", {album.id})
+        self.assertIn("<h1>Guns N&#39; Roses</h1>", html)
+
+    def info(self, **kw):
+        info = artistinfo.parse(groupe(**kw))
+        info["wiki"] = {"lang": "fr", "title": "Daft Punk", "url": "https://fr.wikipedia.org/wiki/Daft_Punk", "extract": "Daft Punk est un duo français."}
+        return info
+
+    def avec_info(self, info, mbid=ARTISTE):
+        self.album("Daft Punk", "Homework", annee="1997", extra=(f"MUSICBRAINZ_ALBUMARTISTID={mbid}",))
+        albums = self.albums()
+        artiste, = library.artists(albums)
+        return librarypage.build_artist(artiste, {}, "../index.html", "Musique", {r.id for r in albums}, info)
+
+    def test_type_pays_dates_et_desambiguation(self):
+        html = self.avec_info(self.info())
+        self.assertIn("<div class='kind'>Groupe · France · depuis 1993</div>", html)
+        self.assertIn("<div class='dis'>French electronic duo</div>", html)
+
+    def test_resume_wikipedia_et_sa_source(self):
+        html = self.avec_info(self.info())
+        self.assertIn("<div class='bio'><p>Daft Punk est un duo français.</p>", html)
+        self.assertIn("href='https://fr.wikipedia.org/wiki/Daft_Punk' target='_blank' rel='noopener'>Source : Wikipédia (fr) ↗", html)
+
+    def test_membres_actuels_puis_anciens_avec_leurs_roles(self):
+        html = self.avec_info(self.info())
+        self.assertEqual(re.findall(r"<summary>(Membres|Anciens membres)<span class='cnt'>(\d+)</span>", html), [("Membres", "1"), ("Anciens membres", "1")])
+        self.assertIn("synthesizer · depuis 1993", html)
+        self.assertIn("1993 – 2021", html)
+        self.assertIn("https://musicbrainz.org/artist/0e6a5d0a-1f2b-4c3d-8e4f-5a6b7c8d9e01", html)
+
+    def test_listes_de_membres_repliees_par_defaut(self):
+        html = self.avec_info(self.info())
+        self.assertEqual(re.findall(r"<details class='mem'( open)?><summary>([^<]+)<", html),
+                         [("", "Membres"), ("", "Anciens membres"), (" open", "Albums")])
+
+    def test_albums_deplies_par_defaut(self):
+        html = self.avec_info(self.info())
+        self.assertIn("<details class='mem' open><summary>Albums<span class='cnt'>1</span></summary><div class='grid'>", html)
+        self.assertEqual(len(re.findall(r"<details class='mem' open>", html)), 1)
+
+    def test_albums_repliables_meme_sans_info(self):
+        self.assertIn("<details class='mem' open><summary>Albums<", self.avec_info(None))
+
+    def test_liens_de_l_artiste_apres_celui_de_musicbrainz(self):
+        html = self.avec_info(self.info())
+        self.assertLess(html.index("Voir sur MusicBrainz ↗"), html.index("Site officiel ↗"))
+        self.assertIn("href='https://www.daftpunk.com/'", html)
+
+    def test_liens_sans_identifiant_musicbrainz(self):
+        html = self.avec_info(self.info(), mbid="")
+        self.assertNotIn("Voir sur MusicBrainz", html)
+        self.assertIn("Site officiel ↗", html)
+
+    def test_sans_info_rien_de_plus(self):
+        html = self.avec_info(None)
+        for absent in ("class='kind'", "class='dis'", "class='bio'", "Membres"):
+            self.assertNotIn(absent, html.split("</style>")[1])
+
+    def test_texte_de_wikipedia_echappe(self):
+        info = self.info()
+        info["wiki"]["extract"] = "<script>alert('x')</script>"
+        html = self.avec_info(info).split("</style>")[1]
+        self.assertNotIn("<script>alert", html)
+        self.assertIn("&lt;script&gt;alert(&#39;x&#39;)", html)
+
+    def test_nom_de_fichier(self):
+        artiste, _, _ = self.fiche()
+        self.assertEqual(librarypage.artist_page_name(artiste), f"Daft Punk-{artiste.id}.html")
 
 
 class TestCache(PageTestCase):

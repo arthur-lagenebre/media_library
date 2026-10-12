@@ -1,6 +1,6 @@
-"""Pages HTML de la médiathèque musicale : un sommaire de tous les albums, et une fiche par album.
+"""Pages HTML de la médiathèque musicale : un sommaire de tous les albums, une fiche par album et une fiche par artiste.
 
-Le sommaire est un mur de pochettes groupé par artiste - ceux qui ont plusieurs albums ont leur section, les autres se rangent ensemble à la fin -, avec une zone de recherche, un filtre de genre et un index A-Z, comme celui des films. Chaque pochette mène à la fiche de son album : pochette, artiste, année, label, genres, pistes avec leur durée, et celles qui manquent d'après les tags.
+Le sommaire est un mur de pochettes groupé par artiste - ceux qui ont plusieurs albums ont leur section, les autres se rangent ensemble à la fin -, avec une zone de recherche, un filtre de genre et un index A-Z, comme celui des films. Chaque pochette mène à la fiche de son album : pochette, artiste, année, label, genres, pistes avec leur durée, et celles qui manquent d'après les tags. Le nom de l'artiste, sur le sommaire comme sur la fiche d'un album, mène à sa fiche : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant.
 
 Comme les fiches des films et des livres, chaque page est un fichier unique - les pochettes y sont encodées - et la page précédente sert de cache : régénérer ne rouvre que les pochettes nouvelles.
 
@@ -17,10 +17,11 @@ from xml.sax.saxutils import escape
 from libraries.common import favicon, layout
 from libraries.common.filenames import safe_name
 
-from . import library
-from .musicbrainz import release_url
+from . import artistinfo, library
+from .musicbrainz import artist_url, release_url
 
 DIR = "Albums"                 # le dossier des fiches, rangé À CÔTÉ du sommaire
+ARTIST_DIR = "Artistes"        # celui des fiches d'artiste
 
 # Retrouve les pochettes déjà encodées dans une page précédente.
 EMBEDDED_RE = re.compile(r"<img data-img='([^']+)' src='(data:[^']+)'")
@@ -36,9 +37,24 @@ def page_name(release):
     return f"{safe_name(f'{release.artist} - {release.title}')[:70] or 'album'}-{release.id}.html"
 
 
-def href(release):
-    """Lien, relatif au sommaire, vers la fiche d'un album."""
-    return f"{DIR}/{quote(page_name(release))}"
+def href(release, base=""):
+    """Lien vers la fiche d'un album, relatif au sommaire ; 'base' = '../' depuis une fiche."""
+    return f"{base}{DIR}/{quote(page_name(release))}"
+
+
+def artist_page_name(artist):
+    """Nom du fichier de la fiche d'un artiste : son nom, lisible, et l'identifiant qui le distingue d'un homonyme à la graphie voisine."""
+    return f"{safe_name(artist.name)[:70] or 'artiste'}-{artist.id}.html"
+
+
+def artist_href(artist, base=""):
+    """Lien vers la fiche d'un artiste, relatif au sommaire ; 'base' = '../' depuis une fiche."""
+    return f"{base}{ARTIST_DIR}/{quote(artist_page_name(artist))}"
+
+
+def artist_anchor(artist):
+    """Où le sommaire range un artiste : sa section, ou la pochette de son album s'il n'en a qu'un."""
+    return f"s{artist.id}" if len(artist.releases) >= library.MIN_ALBUMS else anchor(artist.releases[0])
 
 
 def anchor(release):
@@ -105,28 +121,57 @@ CSS_BASE = (
     "h2{font-size:17px;margin:30px 0 14px;padding-bottom:8px;border-bottom:1px solid #21232b}"
     ".cnt{margin-left:9px;font-size:13px;font-weight:400;color:#9aa0aa;font-variant-numeric:tabular-nums}"
     ".al{display:block;color:inherit;text-decoration:none}"
+    ".al .cv{display:block;color:inherit;text-decoration:none}"
     ".al .aff{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#21232b;transition:transform .15s,box-shadow .15s}"
-    "a.al:hover .aff,a.al:focus-visible .aff{transform:translateY(-3px);box-shadow:0 0 0 2px #7cc4ff}"
-    "a.al:hover .t{color:#7cc4ff}"
+    "a.cv:hover .aff,a.cv:focus-visible .aff{transform:translateY(-3px);box-shadow:0 0 0 2px #7cc4ff}"
+    "a.cv:hover .t{color:#7cc4ff}"
     ".al img,.al .noimg{width:100%;height:100%;object-fit:cover;display:block}"
     ".mono{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:34px}"
     ".al .t{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}"
-    ".al .a{color:#c7ccd4;font-size:13px;line-height:1.3;overflow-wrap:anywhere}"
+    ".al .a{display:block;color:#c7ccd4;font-size:13px;line-height:1.3;overflow-wrap:anywhere;text-decoration:none}"
+    "a.a:hover,.artist a:hover,h2 a:hover{color:#7cc4ff;text-decoration:underline}"
+    "h2 a{color:inherit;text-decoration:none}"
     ".al .y{color:#9aa0aa;font-size:13px}"
     ".al .y.warn{color:#ffb86b}"
     ".al.bad .aff{box-shadow:0 0 0 2px #ff9aa6}"
 )
 
 
+def _tile(release, uri, link, artist="", attrs=""):
+    """Une pochette avec son titre. 'link' = adresse de la fiche de l'album, ou '' ; 'artist' = le HTML de la ligne d'artiste, s'il y en a une.
+
+    Le lien de l'album ne couvre que la pochette et le titre : l'artiste a le sien, et un lien ne s'imbrique pas dans un autre.
+    """
+    warn = " warn" if release.progress() else ""
+    facts = " · ".join(p for p in (release.year, _count_label(release)) if p)
+    tag, target = ("a", f" href='{esc(link)}'") if link else ("div", "")
+    return (f"<div class='al'{attrs}>"
+            f"<{tag} class='cv'{target}>"
+            f"<div class='aff'>{_cover(release.key, uri, release.title)}</div>"
+            f"<div class='t'>{esc(release.title)}</div>"
+            f"</{tag}>{artist}"
+            f"<div class='y{warn}'>{esc(facts)}</div>"
+            "</div>")
+
+
+def _artist_line(release, artists):
+    """La ligne d'artiste sous une pochette du sommaire : un lien vers sa fiche quand elle existe."""
+    artist = artists.get(release.artist_id)
+    if artist is None:
+        return f"<div class='a'>{esc(release.artist)}</div>"
+    return f"<a class='a' href='{esc(artist_href(artist))}'>{esc(release.artist)}</a>"
+
+
 # ----------------------------------------------------------------------------
 # Sommaire
 # ----------------------------------------------------------------------------
-def build_index(library_name, sections, covers, pages=()):
-    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé)."""
+def build_index(library_name, sections, covers, pages=(), artists=None):
+    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé) ; 'artists' = {id d'artiste: Artist} de ceux dont la fiche existe, de même."""
+    artists = artists or {}
     blocks = []
     n_albums = n_tracks = 0
     seconds = 0
-    artists = set()
+    names = set()
     genre_counts = {}
     for name, releases in sections:
         single = name == library.SINGLES            # ses albums se rangent par artiste : c'est eux que l'index A-Z vise, et la pochette dit de qui ils sont
@@ -135,26 +180,25 @@ def build_index(library_name, sections, covers, pages=()):
             n_albums += 1
             n_tracks += len(release.tracks)
             seconds += release.duration
-            artists.add(layout.fold(release.artist))
-            link = f" href='{esc(href(release))}' id='{anchor(release)}'" if release.id in pages else ""
-            tag = "a" if link else "div"
-            warn = " warn" if release.progress() else ""
+            names.add(layout.fold(release.artist))
             for genre in release.genres:
                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
-            facts = " · ".join(p for p in (release.year, _count_label(release)) if p)
             letter = f" data-i='{layout.initial(release.artist)}'" if single else ""
-            tiles.append(
-                f"<{tag} class='al'{link} data-s='{esc(_search_text(release))}'{letter}{layout.genre_attr(release.genres)}>"
-                f"<div class='aff'>{_cover(release.key, covers.get(release.id), release.title)}</div>"
-                f"<div class='t'>{esc(release.title)}</div>"
-                + (f"<div class='a'>{esc(release.artist)}</div>" if single else "")
-                + f"<div class='y{warn}'>{esc(facts)}</div>"
-                f"</{tag}>")
-        letter = "" if single else f" data-i='{layout.initial(name)}'"
-        blocks.append(f"<section><h2{letter}>{esc(name)}<span class='cnt'>{len(releases)} album{'s' if len(releases) != 1 else ''}</span></h2>"
+            tiles.append(_tile(
+                release, covers.get(release.id), href(release) if release.id in pages else "",
+                _artist_line(release, artists) if single else "",
+                f" id='{anchor(release)}' data-s='{esc(_search_text(release))}'{letter}{layout.genre_attr(release.genres)}"))
+        shown, letter, ident = esc(name), "", ""
+        if not single:
+            letter = f" data-i='{layout.initial(name)}'"
+            artist = artists.get(releases[0].artist_id)
+            if artist is not None:
+                ident = f" id='{artist_anchor(artist)}'"
+                shown = f"<a href='{esc(artist_href(artist))}'>{shown}</a>"
+        blocks.append(f"<section><h2{ident}{letter}>{shown}<span class='cnt'>{len(releases)} album{'s' if len(releases) != 1 else ''}</span></h2>"
                       f"<div class='grid'>{''.join(tiles)}</div></section>")
 
-    summary = " · ".join(p for p in (f"{n_albums} album{'s' if n_albums != 1 else ''}", f"{len(artists)} artiste{'s' if len(artists) != 1 else ''}", tracks_label(n_tracks), length(seconds)) if p)
+    summary = " · ".join(p for p in (f"{n_albums} album{'s' if n_albums != 1 else ''}", f"{len(names)} artiste{'s' if len(names) != 1 else ''}", tracks_label(n_tracks), length(seconds)) if p)
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         + favicon.music_link()
@@ -199,10 +243,27 @@ def build_index(library_name, sections, covers, pages=()):
 # ----------------------------------------------------------------------------
 # Fiche d'un album
 # ----------------------------------------------------------------------------
+# Le retour au sommaire : quand on en vient, c'est l'historique qui revient - le sommaire retrouve sa position -, sinon le lien mène à la vignette.
+BACK_SCRIPT = (
+    "var b=document.querySelector('.back');"
+    "b.onclick=function(e){"
+    "var from=document.referrer.split(/[?#]/)[0],"
+    "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
+    "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
+)
+
+
 def _facts(release):
     label = " ".join(p for p in (release.label, f"({release.catalog})" if release.catalog else "") if p)
     parts = (release.year, label, tracks_label(len(release.tracks)), length(release.duration), " + ".join(release.formats))
     return " · ".join(p for p in parts if p)
+
+
+def _name(name, artist):
+    """Un nom d'artiste sur une fiche d'album : un lien vers la fiche de l'artiste quand il en a une."""
+    if artist is None:
+        return esc(name)
+    return f"<a href='{esc(artist_href(artist, '../'))}'>{esc(name)}</a>"
 
 
 def _row(track, album_artist):
@@ -224,8 +285,8 @@ def _disc_table(tracks, lacking, album_artist):
     return "<table class='trk'>" + "".join(html for _, html in sorted(rows, key=lambda r: r[0])) + "</table>"
 
 
-def build_release(release, image, back_href, library_name):
-    """Rend la fiche d'un album. 'image' = data-URI de la pochette, ou None ; 'back_href' = lien vers le sommaire."""
+def build_release(release, image, back_href, library_name, artist=None):
+    """Rend la fiche d'un album. 'image' = data-URI de la pochette, ou None ; 'back_href' = lien vers le sommaire ; 'artist' = l'Artist dont la fiche existe, ou None."""
     back_href = f"{back_href}#{anchor(release)}"
     gaps = {number: lacking for number, lacking, _ in release.missing()}
     totals = {number: total for number, _, total in release.missing()}
@@ -265,6 +326,7 @@ def build_release(release, image, back_href, library_name):
         ".head .cov{flex:none;width:280px;max-width:100%}"
         ".info{flex:1;min-width:260px}"
         ".artist{color:#c7ccd4;font-size:18px;margin-bottom:6px}"
+        ".artist a{color:inherit;text-decoration:none}"
         ".facts{color:#9aa0aa;margin-bottom:6px}"
         ".genres{color:#9aa0aa;font-size:14px;margin-bottom:10px}"
         ".links{margin-top:6px}"
@@ -283,19 +345,118 @@ def build_release(release, image, back_href, library_name):
         f"<div class='head'><div class='cov'><div class='al'><div class='aff'>{_cover(release.key, image, release.title)}</div></div></div>"
         "<div class='info'>"
         f"<h1>{esc(release.title)}</h1>"
-        f"<div class='artist'>{esc(release.artist)}</div>"
+        f"<div class='artist'>{_name(release.artist, artist)}</div>"
         f"<div class='facts'>{esc(_facts(release))}</div>"
         + (f"<div class='genres'>{esc(', '.join(release.genres))}</div>" if release.genres else "")
         + mb + gap_lines + unsupported
         + "</div></div>"
         + tables
         + layout.paths_block([where])
-        + "<script>"
-        "var b=document.querySelector('.back');"
-        "b.onclick=function(e){"
-        "var from=document.referrer.split(/[?#]/)[0],"
-        "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
-        "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
-        + layout.mode_script(layout.SHEET_LABELS) +
+        + "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) +
+        "</script></div></body></html>"
+    )
+
+
+# ----------------------------------------------------------------------------
+# Fiche d'un artiste
+# ----------------------------------------------------------------------------
+def _artist_facts(artist):
+    first, last = artist.years
+    span = first if first == last else f"{first}–{last}"
+    count = len(artist.releases)
+    parts = (f"{count} album{'s' if count != 1 else ''}", span, tracks_label(artist.tracks), length(artist.duration))
+    return " · ".join(p for p in parts if p)
+
+
+def _bio(info):
+    """Le résumé Wikipédia et sa source ; rien sans article."""
+    wiki = info.get("wiki")
+    if not wiki:
+        return ""
+    return (f"<div class='bio'><p>{esc(wiki['extract'])}</p>"
+            f"<a class='src' href='{esc(wiki['url'])}' target='_blank' rel='noopener'>Source : Wikipédia ({esc(wiki['lang'])}) ↗</a></div>")
+
+
+def _members(info):
+    """La liste des membres d'un groupe : les actuels, puis les anciens, chacun lié à sa fiche MusicBrainz. Chaque liste est repliée : on vient pour les albums, et un orchestre en compte des dizaines."""
+    rows = []
+    for member in info.get("members") or []:
+        detail = " · ".join(p for p in (", ".join(member.get("roles") or []), artistinfo.period(member)) if p)
+        rows.append((member.get("ended"), f"<li><a href='{esc(artist_url(member['mbid']))}' target='_blank' rel='noopener'>{esc(member['name'])}</a>"
+                     + (f"<span>{esc(detail)}</span>" if detail else "") + "</li>"))
+    out = ""
+    for ended, title in ((False, "Membres"), (True, "Anciens membres")):
+        part = [html for flag, html in rows if bool(flag) == ended]
+        if part:
+            out += f"<details class='mem'><summary>{title}<span class='cnt'>{len(part)}</span></summary><ul class='members'>{''.join(part)}</ul></details>"
+    return out
+
+
+def _links(artist, info):
+    """Les liens de l'artiste : sa fiche MusicBrainz, puis ceux qu'il tient lui-même."""
+    found = [("Voir sur MusicBrainz", artist_url(artist.mbid))] if artist.mbid else []
+    found += [(link["label"], link["url"]) for link in info.get("links") or []]
+    if not found:
+        return ""
+    return "<div class='links'>" + "".join(
+        f"<a class='mb' href='{esc(url)}' target='_blank' rel='noopener'>{esc(label)} ↗</a>" for label, url in found) + "</div>"
+
+
+def build_artist(artist, covers, back_href, library_name, pages=(), info=None):
+    """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None."""
+    info = info or {}
+    back_href = f"{back_href}#{artist_anchor(artist)}"
+    tiles = "".join(
+        _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "")
+        for release in artist.releases)
+    return (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        f"{favicon.monogram_link(artist.name)}"
+        + layout.BOOT +
+        f"<title>{esc(artist.name)}</title>"
+        "<style>"
+        + CSS_BASE +
+        ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
+        + layout.CSS +
+        ".back{color:#7cc4ff;text-decoration:none;font-size:14px}"
+        ".back:hover{text-decoration:underline}"
+        ".head{margin-bottom:10px}"
+        ".kind{color:#c7ccd4;font-size:18px;margin-bottom:6px}"
+        ".dis{color:#9aa0aa;font-size:14px;font-style:italic;margin-bottom:6px}"
+        ".bio{max-width:760px;margin:14px 0 8px}.bio p{margin:0 0 6px}"
+        ".src{color:#9aa0aa;font-size:12.5px;text-decoration:none}.src:hover{color:#7cc4ff;text-decoration:underline}"
+        ".links{display:flex;flex-wrap:wrap;gap:6px 18px}"
+        ".mem{margin-top:30px}.mem+.mem{margin-top:18px}"
+        ".mem summary{cursor:pointer;list-style:none;font-size:17px;font-weight:700;padding-bottom:8px;border-bottom:1px solid #21232b}"
+        ".mem summary::-webkit-details-marker{display:none}"
+        ".mem summary::before{content:'▸';display:inline-block;width:1.1em;color:#9aa0aa}"
+        ".mem[open] summary::before{content:'▾'}"
+        ".mem summary:hover{color:#7cc4ff}"
+        ".mem .grid{margin-top:14px}"
+        ".members{list-style:none;margin:14px 0 0;padding:0;columns:2 260px;column-gap:28px}"
+        ".members li{break-inside:avoid;padding:4px 0}"
+        ".members a{color:inherit;text-decoration:none}.members a:hover{color:#7cc4ff;text-decoration:underline}"
+        ".members span{display:block;color:#9aa0aa;font-size:13px}"
+        ".facts{color:#9aa0aa;margin-bottom:6px}"
+        ".genres{color:#9aa0aa;font-size:14px;margin-bottom:10px}"
+        ".links{margin-top:6px}"
+        ".mb{color:#7cc4ff;font-size:13px;text-decoration:none;white-space:nowrap}.mb:hover{text-decoration:underline}"
+        ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}"
+        "</style></head><body>"
+        + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
+                        + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
+        "<div class='head'>"
+        f"<h1>{esc(artist.name)}</h1>"
+        + (f"<div class='dis'>{esc(info['disambiguation'])}</div>" if info.get("disambiguation") else "")
+        + (f"<div class='kind'>{esc(artistinfo.facts(info))}</div>" if artistinfo.facts(info) else "")
+        + f"<div class='facts'>{esc(_artist_facts(artist))}</div>"
+        + (f"<div class='genres'>{esc(', '.join(artist.genres))}</div>" if artist.genres else "")
+        + _links(artist, info)
+        + _bio(info)
+        + "</div>"
+        + _members(info)
+        + f"<details class='mem' open><summary>Albums<span class='cnt'>{len(artist.releases)}</span></summary>"
+        f"<div class='grid'>{tiles}</div></details>"
+        "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) +
         "</script></div></body></html>"
     )
