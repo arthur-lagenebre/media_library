@@ -27,8 +27,6 @@ from .tags import FRONT_COVER, AudioError
 
 SKIPPED_PREFIXES = ("__", "#", "@")      # __Data__ (nos pages), #recycle, @eaDir (vignettes DSM) : ce n'est pas de la musique rangée. Les dossiers cachés sont déjà écartés par find_albums.
 UNKNOWN_ARTIST = "Artiste inconnu"
-SINGLES = "Autres artistes"              # la section des artistes qui n'ont qu'un album
-MIN_ALBUMS = 2                           # albums qu'il faut à un artiste pour avoir sa section
 MAX_TRACKS = 500                         # un total de pistes au-delà est une faute de frappe, pas un album à compléter
 MAX_GENRES = 6
 
@@ -359,19 +357,11 @@ def artists(releases):
 
 
 def sections(releases):
-    """[(nom de la section, [Release])] : une section par artiste qui a au moins MIN_ALBUMS albums, puis les autres artistes.
+    """[(nom de la section, [Release])] : une section par artiste, même s'il n'a qu'un album.
 
-    Les artistes se rangent sans accents ni casse ; leurs albums par année, puis par titre. Les albums des artistes qui n'en ont qu'un sont classés par artiste, dans une dernière section.
+    Les artistes se rangent sans accents ni casse ; leurs albums par année, puis par titre.
     """
-    grouped, singles = [], []
-    for artist in artists(releases):
-        if len(artist.releases) >= MIN_ALBUMS:
-            grouped.append((artist.name, artist.releases))
-        else:
-            singles += artist.releases
-    if singles:
-        grouped.append((SINGLES, sorted(singles, key=lambda r: (layout.fold(r.artist), *order(r)))))
-    return grouped
+    return [(artist.name, artist.releases) for artist in artists(releases)]
 
 
 # ----------------------------------------------------------------------------

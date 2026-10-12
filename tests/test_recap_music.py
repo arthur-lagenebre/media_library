@@ -199,7 +199,7 @@ class TestRecapMusique(unittest.TestCase):
         self.lancer("--apply")
         self.assertEqual(sorted(p.name.rsplit("-", 1)[0] for p in (self.data / "Artistes").glob("*.html")), ["Daft Punk", "Kavinsky"])
         index = (self.data / "index.html").read_text(encoding="utf-8")
-        self.assertIn("<div class='a'>Artiste inconnu</div>", index)
+        self.assertIn("<h2 data-i='A'>Artiste inconnu<span", index)          # sa section, sans lien : il n'a pas de fiche
 
     def test_aucune_ecriture_dans_la_musique(self):
         avant = {p: p.read_bytes() for p in self.racine.rglob("*") if p.is_file() and "__Data__" not in p.parts}

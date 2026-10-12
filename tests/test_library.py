@@ -277,19 +277,18 @@ class TestRangement(MediathequeTestCase):
     def album(self, artiste, titre, annee="2001"):
         piste(self.racine / artiste / titre, "01.flac", artist=artiste, album=titre, date=annee)
 
-    def test_un_artiste_a_plusieurs_albums_a_sa_section(self):
+    def test_chaque_artiste_a_sa_section_meme_avec_un_seul_album(self):
         self.album("Daft Punk", "Homework", "1997")
         self.album("Daft Punk", "Discovery", "2001")
         self.album("Kavinsky", "Outrun", "2013")
         noms = [(nom, [r.title for r in releases]) for nom, releases in library.sections(self.lire())]
-        self.assertEqual(noms, [("Daft Punk", ["Homework", "Discovery"]), (library.SINGLES, ["Outrun"])])
+        self.assertEqual(noms, [("Daft Punk", ["Homework", "Discovery"]), ("Kavinsky", ["Outrun"])])
 
-    def test_les_artistes_seuls_sont_classes_par_artiste(self):
+    def test_les_sections_sont_classees_par_artiste(self):
         self.album("Zebda", "Essence ordinaire")
         self.album("Étienne Daho", "Éden")
         self.album("Air", "Moon Safari")
-        (_, releases), = library.sections(self.lire())
-        self.assertEqual([r.artist for r in releases], ["Air", "Étienne Daho", "Zebda"])
+        self.assertEqual([nom for nom, _ in library.sections(self.lire())], ["Air", "Étienne Daho", "Zebda"])
 
     def test_casse_et_accents_ne_separent_pas_un_artiste(self):
         self.album("Beyoncé", "Lemonade", "2016")
