@@ -99,6 +99,44 @@ class TestLectureDUnePiste(MediathequeTestCase):
         self.assertEqual(library.read_cover(track), b"FRONT")
 
 
+ARTISTE = "056e4f3e-765f-4e34-b4ce-4c2d3ce6f1d6"
+AUTRE_ARTISTE = "a3a5f1f9-3b3e-4e0c-8f3a-0d6a0c6e2b11"
+
+
+class TestArtiste(MediathequeTestCase):
+    def test_identifiant_musicbrainz_de_l_artiste(self):
+        piste(self.racine / "A", "01.flac", extra=(f"MUSICBRAINZ_ALBUMARTISTID={ARTISTE.upper()}",))
+        release = self.lire()[0]
+        self.assertEqual(release.tracks[0].info["artistid"], ARTISTE)
+        self.assertEqual(release.artist_mbid, ARTISTE)
+
+    def test_plusieurs_artistes_credites_aucun_identifiant(self):
+        piste(self.racine / "A", "01.flac", extra=(f"MUSICBRAINZ_ALBUMARTISTID={ARTISTE}", f"MUSICBRAINZ_ALBUMARTISTID={AUTRE_ARTISTE}"))
+        self.assertEqual(self.lire()[0].artist_mbid, "")
+
+    def test_identifiant_invalide_ignore(self):
+        piste(self.racine / "A", "01.flac", extra=("MUSICBRAINZ_ALBUMARTISTID=pas-un-uuid",))
+        self.assertEqual(self.lire()[0].artist_mbid, "")
+
+    def test_sans_tag_pas_d_identifiant(self):
+        piste(self.racine / "A", "01.flac")
+        self.assertEqual(self.lire()[0].artist_mbid, "")
+
+    def test_albums_d_un_meme_artiste_malgre_casse_et_accents(self):
+        piste(self.racine / "x" / "A", "01.flac", artist="Beyoncé", album="Lemonade", date="2016", extra=(f"MUSICBRAINZ_ALBUMARTISTID={ARTISTE}",))
+        piste(self.racine / "x" / "B", "01.flac", artist="BEYONCE", album="Renaissance", date="2022")
+        albums = self.lire()
+        self.assertEqual(albums[0].artist_id, albums[1].artist_id)
+        artiste, = library.artists(albums)
+        self.assertEqual((artiste.id, artiste.mbid, artiste.years), (albums[0].artist_id, ARTISTE, ("2016", "2022")))
+        self.assertEqual([r.title for r in artiste.releases], ["Lemonade", "Renaissance"])
+
+    def test_artistes_classes_sans_accents_ni_casse(self):
+        for nom in ("Zebda", "Étienne Daho", "air"):
+            piste(self.racine / nom, "01.flac", artist=nom, album=nom)
+        self.assertEqual([a.name for a in library.artists(self.lire())], ["air", "Étienne Daho", "Zebda"])
+
+
 class TestAlbum(MediathequeTestCase):
     def test_titre_artiste_annee_label(self):
         for n in (1, 2):

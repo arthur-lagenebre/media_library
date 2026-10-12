@@ -37,7 +37,8 @@ PLACEHOLDERS = {"[none]", "[no label]", "[unknown]"}
 
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 TOTAL_RE = re.compile(r"/\s*(\d{1,3})\s*$")          # "3/12" : le total, quand il est collé au numéro
-CATALOG_VERSION = 1
+UUID_RE = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+CATALOG_VERSION = 2                                  # 2 : l'identifiant MusicBrainz de l'artiste de l'album
 
 
 def _int(text):
@@ -55,6 +56,13 @@ def _total(meta, *keys, joined=""):
     return int(found.group(1)) if found else None
 
 
+def _artist_mbid(meta):
+    """L'identifiant MusicBrainz de l'artiste de l'album, quand les tags en donnent un seul : "Kavinsky feat. Havoc" en porte deux, et aucun ne dit à lui seul qui est l'artiste."""
+    found = {v.strip().lower() for v in meta.values("MUSICBRAINZ_ALBUMARTISTID") if v.strip()}
+    only = found.pop() if len(found) == 1 else ""
+    return only if UUID_RE.fullmatch(only) else ""
+
+
 def track_info(path, meta, disc_folder=None):
     """Ce qu'une fiche retient d'une piste, lu dans ses tags : un dictionnaire JSON, gardé dans le catalogue.
 
@@ -68,6 +76,7 @@ def track_info(path, meta, disc_folder=None):
         "artist": meta.first("ARTIST"),
         "albumartist": meta.first("ALBUMARTIST") or meta.first("ALBUM ARTIST"),
         "album": meta.first("ALBUM"),
+        "artistid": _artist_mbid(meta),
         "year": year.group(0) if year else "",
         "genres": genres,
         "label": meta.first("LABEL"), "catalog": meta.first("CATALOGNUMBER"),
@@ -150,6 +159,15 @@ class Release:
     @property
     def artist(self):
         return self._tagged("albumartist") or self._tagged("artist") or self.hints.artist or UNKNOWN_ARTIST
+
+    @property
+    def artist_id(self):
+        """Identifiant de la page de l'artiste : ses albums, qui s'écrivent à la casse et aux accents près, partagent la même."""
+        return artist_id(self.artist)
+
+    @property
+    def artist_mbid(self):
+        return self._tagged("artistid")
 
     @property
     def year(self):
@@ -241,6 +259,47 @@ class Release:
         return len(self.tracks), len(self.tracks) + sum(len(lacking) for _, lacking, _ in gaps)
 
 
+def artist_id(name):
+    return hashlib.sha1(layout.fold(name).encode("utf-8")).hexdigest()[:8]
+
+
+@dataclass
+class Artist:
+    """Un artiste de la médiathèque : tous les albums qui s'écrivent à son nom."""
+    releases: list
+
+    @property
+    def name(self):
+        return _most_common(r.artist for r in self.releases)
+
+    @property
+    def id(self):
+        return artist_id(self.releases[0].artist)
+
+    @property
+    def mbid(self):
+        return _most_common(r.artist_mbid for r in self.releases)
+
+    @property
+    def genres(self):
+        found = Counter(g for r in self.releases for g in r.genres)
+        return [name for name, _ in found.most_common(MAX_GENRES)]
+
+    @property
+    def tracks(self):
+        return sum(len(r.tracks) for r in self.releases)
+
+    @property
+    def duration(self):
+        return sum(r.duration for r in self.releases)
+
+    @property
+    def years(self):
+        """(première, dernière) année de ses albums ; ("", "") si aucun n'en a."""
+        found = sorted(r.year for r in self.releases if r.year)
+        return (found[0], found[-1]) if found else ("", "")
+
+
 def _skipped(rel):
     return any(part.startswith(SKIPPED_PREFIXES) for part in rel.split("/"))
 
@@ -287,25 +346,29 @@ def read_cover(track):
 # ----------------------------------------------------------------------------
 # Rangement
 # ----------------------------------------------------------------------------
+def order(release):
+    return (release.year or "9999", layout.fold(release.title))
+
+
+def artists(releases):
+    """[Artist], rangés sans accents ni casse ; les albums de chacun par année, puis par titre."""
+    by_artist = {}
+    for release in releases:
+        by_artist.setdefault(layout.fold(release.artist), []).append(release)
+    return [Artist(sorted(by_artist[key], key=order)) for key in sorted(by_artist)]
+
+
 def sections(releases):
     """[(nom de la section, [Release])] : une section par artiste qui a au moins MIN_ALBUMS albums, puis les autres artistes.
 
     Les artistes se rangent sans accents ni casse ; leurs albums par année, puis par titre. Les albums des artistes qui n'en ont qu'un sont classés par artiste, dans une dernière section.
     """
-    by_artist = {}
-    for release in releases:
-        by_artist.setdefault(layout.fold(release.artist), []).append(release)
-
-    def order(release):
-        return (release.year or "9999", layout.fold(release.title))
-
     grouped, singles = [], []
-    for key in sorted(by_artist):
-        mine = sorted(by_artist[key], key=order)
-        if len(mine) >= MIN_ALBUMS:
-            grouped.append((_most_common(r.artist for r in mine), mine))
+    for artist in artists(releases):
+        if len(artist.releases) >= MIN_ALBUMS:
+            grouped.append((artist.name, artist.releases))
         else:
-            singles += mine
+            singles += artist.releases
     if singles:
         grouped.append((SINGLES, sorted(singles, key=lambda r: (layout.fold(r.artist), *order(r)))))
     return grouped

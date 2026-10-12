@@ -32,12 +32,21 @@ def release_url(mbid):
     return f"{WEB_BASE}/release/{mbid}"
 
 
+def artist_url(mbid):
+    """Adresse de la fiche d'un artiste sur le site MusicBrainz."""
+    return f"{WEB_BASE}/artist/{mbid}"
+
+
 def escape_query(text):
     return LUCENE_SPECIAL_RE.sub(r"\\\1", text or "")
 
 
 class MusicBrainzError(Exception):
-    """Échec ponctuel : l'appelant peut sauter cet album et continuer."""
+    """Échec ponctuel : l'appelant peut sauter cet album et continuer. 'code' = le statut HTTP quand le serveur a répondu (404 : la fiche n'existe pas ; rien : le réseau n'a pas répondu)."""
+
+    def __init__(self, message="", code=None):
+        super().__init__(message)
+        self.code = code
 
 
 def _retry_after(headers):
@@ -77,9 +86,9 @@ class MusicBrainz:
                     return r.read(), r.headers
             except HTTPError as e:            # sous-classe d'URLError : à rattraper avant
                 if e.code == 404:
-                    raise MusicBrainzError("introuvable (HTTP 404)") from e
+                    raise MusicBrainzError("introuvable (HTTP 404)", 404) from e
                 if e.code not in (429, 503) and e.code < 500:
-                    raise MusicBrainzError(f"HTTP {e.code} {e.reason}") from e
+                    raise MusicBrainzError(f"HTTP {e.code} {e.reason}", e.code) from e
                 failure, wait = e, _retry_after(e.headers)
             except (URLError, OSError) as e:  # réseau, DNS, timeout, connexion coupée
                 failure = e
@@ -102,6 +111,26 @@ class MusicBrainz:
         if self.cache is not None:
             self.cache.put(endpoint, data)
         return data
+
+    def external(self, url):
+        """JSON d'un autre site (Wikidata, Wikipédia) : même User-Agent, mêmes réessais, même cache. La cadence d'une requête par seconde est celle de MusicBrainz, pas la leur."""
+        if self.cache is not None:
+            kept = self.cache.get(url)
+            if kept is not None:
+                return kept
+        body, _ = self._request(url, "application/json", throttle=False)
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise MusicBrainzError(f"reponse illisible : {e}") from e
+        if self.cache is not None:
+            self.cache.put(url, data)
+        return data
+
+    # --------------------------------------------------------------- Artistes
+    def artist(self, mbid):
+        """Artiste complet : type, pays, dates, membres (relations d'artiste), liens (relations d'URL), genres."""
+        return self.get(f"artist/{mbid}?inc=url-rels+artist-rels+genres")
 
     # --------------------------------------------------------------- Sorties
     def search_releases(self, album, artist=None, exact=True, limit=25):
