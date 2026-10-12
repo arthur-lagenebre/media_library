@@ -79,7 +79,7 @@ class TestRecapMusique(unittest.TestCase):
     def test_application_ecrit_sommaire_fiches_catalogue_et_journal(self):
         code, _ = self.lancer("--apply")
         self.assertEqual(code, 0)
-        self.assertEqual(sorted(p.name for p in self.data.iterdir() if p.is_file()), ["catalog.json", "index.html", "recap.log"])
+        self.assertEqual(sorted(p.name for p in self.data.iterdir() if p.is_file()), ["catalog.json", "index.html", "lecteur.html", "recap.log"])
         self.assertEqual(len(list((self.data / "Albums").glob("*.html"))), 3)
         index = (self.data / "index.html").read_text(encoding="utf-8")
         self.assertIn("<title>Musique</title>", index)
@@ -225,6 +225,42 @@ class TestRecapMusique(unittest.TestCase):
         self.lancer("--apply", "--out", str(ailleurs))
         self.assertTrue((ailleurs / "index.html").exists())
         self.assertFalse((self.data / "index.html").exists())
+
+    def test_les_fiches_d_album_jouent_les_pistes_depuis_la_racine(self):
+        self.lancer("--apply")
+        fiche = next((self.data / "Albums").glob("Daft Punk - Discovery-*.html")).read_text(encoding="utf-8")
+        self.assertIn("data-src='../../Daft%20Punk/Discovery/01.flac'", fiche)
+        # Le lien tient : depuis le dossier des fiches, il retombe sur le fichier.
+        self.assertTrue((self.data / "Albums" / "../../Daft Punk/Discovery/01.flac").exists())
+
+    def test_les_liens_suivent_une_sortie_ailleurs(self):
+        ailleurs = self.racine.parent / (self.racine.name + "-out")
+        self.addCleanup(shutil.rmtree, ailleurs, ignore_errors=True)
+        self.lancer("--apply", "--out", str(ailleurs))
+        fiche = next((ailleurs / "Albums").glob("Daft Punk - Discovery-*.html")).read_text(encoding="utf-8")
+        lien = re.search(r"data-src='([^']+)'", fiche).group(1)
+        self.assertTrue((ailleurs / "Albums" / lien.replace("%20", " ")).resolve().exists())
+
+    def test_la_coque_affiche_le_sommaire_a_cote_d_elle(self):
+        self.lancer("--apply")
+        coque = (self.data / "lecteur.html").read_text(encoding="utf-8")
+        self.assertIn("<iframe id='frame' src='index.html'", coque)
+        self.assertIn("<title>Musique</title>", coque)
+
+    def test_la_coque_suit_le_titre_choisi(self):
+        self.lancer("--apply", "--title", "Ma musique")
+        self.assertIn("<title>Ma musique</title>", (self.data / "lecteur.html").read_text(encoding="utf-8"))
+
+    def test_coque_inchangee_au_deuxieme_passage(self):
+        self.lancer("--apply")
+        _, sortie = self.lancer("--apply")
+        self.assertRegex(sortie, r"\[lecteur\] .*lecteur\.html inchange")
+
+    def test_no_player_n_ajoute_aucun_lecteur(self):
+        self.lancer("--apply", "--no-player")
+        for page in (self.data / "Albums").glob("*.html"):
+            self.assertNotIn("<audio", page.read_text(encoding="utf-8"))
+        self.assertFalse((self.data / "lecteur.html").exists())
 
     def test_deuxieme_passage_ne_reecrit_rien_et_reprend_le_catalogue(self):
         self.lancer("--apply")

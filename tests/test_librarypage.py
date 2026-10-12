@@ -255,6 +255,55 @@ class TestFiche(PageTestCase):
         html = self.fiche(self.albums()[0])
         self.assertEqual(re.findall(r"<div class='by'>(.*?)</div>", html), ["Kavinsky"])
 
+    def test_sans_racine_la_fiche_ne_lit_rien(self):
+        html = self.fiche(self.un())
+        for absent in ("<audio", "class='play'", "class='p'", "#bar", "id='all'"):
+            self.assertNotIn(absent, html)
+
+    def lisible(self, album, base="../../"):
+        return librarypage.build_release(album, None, "../index.html", "Musique", None, base)
+
+    def test_un_bouton_par_piste_vers_le_fichier(self):
+        album = self.un()
+        html = self.lisible(album)
+        self.assertEqual(re.findall(r"data-src='([^']+)'", html), ["../../Daft%20Punk/Discovery/01.flac", "../../Daft%20Punk/Discovery/02.flac", "../../Daft%20Punk/Discovery/03.flac"])
+        self.assertEqual(html.count("<audio"), 1)
+        self.assertEqual(re.findall(r"data-title='([^']+)'", html), ["Piste 1", "Piste 2", "Piste 3"])
+
+    def test_tout_lire_et_pistes_precedente_suivante(self):
+        html = self.lisible(self.un())
+        for present in ("id='all'", "id='prev'", "id='next'"):
+            self.assertIn(present, html)
+        self.assertLess(html.index("id='all'"), html.index("<table class='trk'>"))
+
+    def test_album_sans_piste_lisible_sans_lecteur(self):
+        album = self.un()
+        for track in album.tracks:
+            track.error = "en-tete invalide"
+        html = self.lisible(album)
+        for absent in ("id='all'", "<audio", "document.getElementById('player')"):
+            self.assertNotIn(absent, html)
+
+    def test_la_barre_precede_le_script_qui_la_cherche(self):
+        # Un script ne voit que ce qui le précède dans la page : la barre après lui, il cherchait un <audio> qui n'existait pas encore.
+        html = self.lisible(self.un())
+        self.assertLess(html.index("<audio id='player'"), html.index("document.getElementById('player')"))
+
+    def test_chemin_de_piste_encode_et_apostrophe_echappee(self):
+        piste(self.racine / "Artiste" / "L'Oeil #1", "01 - Ça va 100%.flac", number=1, total=1, title="Ça va 100%")
+        html = self.lisible(self.albums()[0], "../")
+        self.assertIn("data-src='../Artiste/L%27Oeil%20%231/01%20-%20%C3%87a%20va%20100%25.flac'", html)
+
+    def test_piste_manquante_et_piste_illisible_sans_bouton(self):
+        html = self.lisible(self.un(pistes=(1, 3), total=3))
+        self.assertEqual(html.count("class='play'"), 2)
+        self.assertIn("<tr class='absent'><td class='p'></td><td class='n'>2</td>", html)
+
+    def test_piste_illisible_ne_se_joue_pas(self):
+        album = self.un()
+        album.tracks[1].error = "en-tete invalide"
+        self.assertEqual(self.lisible(album).count("class='play'"), 2)
+
     def test_lien_musicbrainz_seulement_avec_l_identifiant(self):
         self.assertIn(f"https://musicbrainz.org/release/{MBID}", self.fiche(self.un(mbid=MBID)))
 

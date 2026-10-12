@@ -4,6 +4,8 @@ Le sommaire est un mur de pochettes groupé par artiste - ceux qui ont plusieurs
 
 Comme les fiches des films et des livres, chaque page est un fichier unique - les pochettes y sont encodées - et la page précédente sert de cache : régénérer ne rouvre que les pochettes nouvelles.
 
+Une fiche d'album peut aussi lire ses pistes : chacune porte un bouton qui joue le fichier lui-même, par un lien relatif, dans un lecteur fixé en bas de page qui enchaîne les pistes. Rien n'est copié ni encodé dans la page - elle ne marche donc que là où les fichiers sont joignables depuis elle (disque local, partage réseau, serveur web du NAS).
+
 Tout est pur : ni réseau ni disque, l'appelant fournit les pochettes déjà réduites.
 """
 
@@ -17,7 +19,7 @@ from xml.sax.saxutils import escape
 from libraries.common import favicon, layout
 from libraries.common.filenames import safe_name
 
-from . import artistinfo, library
+from . import artistinfo, library, player
 from .musicbrainz import artist_url, release_url
 
 DIR = "Albums"                 # le dossier des fiches, rangé À CÔTÉ du sommaire
@@ -266,27 +268,37 @@ def _name(name, artist):
     return f"<a href='{esc(artist_href(artist, '../'))}'>{esc(name)}</a>"
 
 
-def _row(track, album_artist):
+def _play_cell(track, media_base):
+    """La cellule du bouton de lecture : vide pour une piste illisible ou absente, et absente de la table quand la fiche ne lit rien (media_base = None)."""
+    if media_base is None:
+        return ""
+    if track is None or track.error:
+        return "<td class='p'></td>"
+    return (f"<td class='p'><button class='play' type='button' aria-label='Lire {esc(track.title)}' "
+            f"data-src='{esc(media_base + quote(track.rel))}' data-title='{esc(track.title)}'>▶</button></td>")
+
+
+def _row(track, album_artist, media_base=None):
     by = track.info.get("artist") or ""
     shown = f"<div class='by'>{esc(by)}</div>" if by and layout.fold(by) != layout.fold(album_artist) else ""
     bad = f"<div class='err'>illisible : {esc(track.error)}</div>" if track.error else ""
-    return (f"<tr><td class='n'>{esc(track.number if track.number is not None else '')}</td>"
+    return (f"<tr>{_play_cell(track, media_base)}<td class='n'>{esc(track.number if track.number is not None else '')}</td>"
             f"<td>{esc(track.title)}{shown}{bad}</td><td class='d'>{esc(clock(track.duration))}</td></tr>")
 
 
-def _absent(number):
-    return f"<tr class='absent'><td class='n'>{number}</td><td>piste manquante</td><td class='d'></td></tr>"
+def _absent(number, media_base=None):
+    return f"<tr class='absent'>{_play_cell(None, media_base)}<td class='n'>{number}</td><td>piste manquante</td><td class='d'></td></tr>"
 
 
-def _disc_table(tracks, lacking, album_artist):
+def _disc_table(tracks, lacking, album_artist, media_base=None):
     """Les pistes d'un disque dans l'ordre, les manquantes grisées à leur place."""
-    rows = [(t.number if t.number is not None else 10 ** 6 + i, _row(t, album_artist)) for i, t in enumerate(tracks)]
-    rows += [(n, _absent(n)) for n in lacking]
+    rows = [(t.number if t.number is not None else 10 ** 6 + i, _row(t, album_artist, media_base)) for i, t in enumerate(tracks)]
+    rows += [(n, _absent(n, media_base)) for n in lacking]
     return "<table class='trk'>" + "".join(html for _, html in sorted(rows, key=lambda r: r[0])) + "</table>"
 
 
-def build_release(release, image, back_href, library_name, artist=None):
-    """Rend la fiche d'un album. 'image' = data-URI de la pochette, ou None ; 'back_href' = lien vers le sommaire ; 'artist' = l'Artist dont la fiche existe, ou None."""
+def build_release(release, image, back_href, library_name, artist=None, media_base=None):
+    """Rend la fiche d'un album. 'image' = data-URI de la pochette, ou None ; 'back_href' = lien vers le sommaire ; 'artist' = l'Artist dont la fiche existe, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pistes se lisent par là), ou None pour une fiche qui ne lit rien."""
     back_href = f"{back_href}#{anchor(release)}"
     gaps = {number: lacking for number, lacking, _ in release.missing()}
     totals = {number: total for number, _, total in release.missing()}
@@ -301,9 +313,11 @@ def build_release(release, image, back_href, library_name, artist=None):
         gap_lines += (f"<div class='gap'>Manque : disque{'s' if len(absent_discs) > 1 else ''} {esc(layout.ranges(absent_discs))} "
                       "<span>(d'après les tags)</span></div>")
 
+    playable = media_base is not None and any(not t.error for t in release.tracks)
+
     tables = "".join(
         (f"<h2>Disque {number}<span class='cnt'>{tracks_label(len(tracks))}</span></h2>" if many else "")
-        + _disc_table(tracks, gaps.get(number, []), release.artist)
+        + _disc_table(tracks, gaps.get(number, []), release.artist, media_base)
         for number, tracks in discs)
     mb = (f"<div class='links'><a class='mb' href='{esc(release_url(release.mbid))}' target='_blank' rel='noopener'>Voir sur MusicBrainz ↗</a></div>"
           if release.mbid else "")
@@ -338,7 +352,7 @@ def build_release(release, image, back_href, library_name, artist=None):
         ".trk .by{color:#9aa0aa;font-size:13px}"
         ".trk .err{color:#ff9aa6;font-size:13px}"
         ".trk tr.absent td{color:#ffb86b;opacity:.55;font-style:italic}"
-        + layout.PATH_CSS +
+        + layout.PATH_CSS + (player.PLAYER_CSS if playable else "") +
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
                         + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
@@ -348,12 +362,14 @@ def build_release(release, image, back_href, library_name, artist=None):
         f"<div class='artist'>{_name(release.artist, artist)}</div>"
         f"<div class='facts'>{esc(_facts(release))}</div>"
         + (f"<div class='genres'>{esc(', '.join(release.genres))}</div>" if release.genres else "")
-        + mb + gap_lines + unsupported
+        + mb + gap_lines + unsupported + (player.ALL_BUTTON if playable else "")
         + "</div></div>"
         + tables
         + layout.paths_block([where])
-        + "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) +
-        "</script></div></body></html>"
+        # La barre précède le script : il la cherche à son exécution, et le navigateur n'a lu que ce qui le précède.
+        + "</div>" + (player.bar() if playable else "")
+        + "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) + (player.PAGE_SCRIPT if playable else "") +
+        "</script></body></html>"
     )
 
 
