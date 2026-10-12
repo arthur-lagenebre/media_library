@@ -76,13 +76,14 @@ class TestSommaire(PageTestCase):
         pages = {r.id for _, releases in sections for r in releases}
         return librarypage.build_index("Musique", sections, {}, pages if kw.get("pages", True) else set())
 
-    def test_une_section_par_artiste_a_plusieurs_albums(self):
+    def test_une_section_par_artiste_meme_avec_un_seul_album(self):
         self.album("Daft Punk", "Homework", annee="1997")
         self.album("Daft Punk", "Discovery")
         self.album("Kavinsky", "Outrun", annee="2013")
         html = self.sommaire()
-        self.assertEqual(re.findall(r"<h2[^>]*>(.*?)<span", html), ["Daft Punk", "Autres artistes"])
+        self.assertEqual(re.findall(r"<h2[^>]*>(.*?)<span", html), ["Daft Punk", "Kavinsky"])
         self.assertLess(html.index("Homework"), html.index("Discovery"))
+        self.assertNotIn("Autres artistes", html)
 
     def test_resume(self):
         self.album("Daft Punk", "Homework", annee="1997")
@@ -115,11 +116,12 @@ class TestSommaire(PageTestCase):
         html = self.sommaire()
         self.assertIn("<div class='y warn'>2001 · 2/6 pistes</div>", html)
 
-    def test_albums_seuls_montrent_leur_artiste_et_se_rangent_par_artiste(self):
+    def test_l_index_alphabetique_vise_le_titre_de_la_section(self):
         self.album("Kavinsky", "Outrun")
+        self.album("Daft Punk", "Discovery")
         html = self.sommaire()
-        self.assertIn("<div class='a'>Kavinsky</div>", html)
-        self.assertIn("data-i='K'", html)
+        self.assertEqual(re.findall(r"<h2[^>]*data-i='(\w)'", html), ["D", "K"])
+        self.assertEqual(html.count("data-i="), 2)          # les pochettes n'en portent pas
 
     def test_recherche_dans_artiste_label_et_genre(self):
         self.album("Daft Punk", "Discovery", genres=("Electronic", "House"), label="Virgin")
@@ -161,18 +163,33 @@ class TestSommaireArtistes(PageTestCase):
         html = self.sommaire()
         self.assertIn(f"<h2 id='s{artiste.id}' data-i='D'><a href='{librarypage.artist_href(artiste)}'>Daft Punk</a>", html)
 
-    def test_l_artiste_d_un_album_seul_mene_a_sa_fiche(self):
+    def test_le_nom_d_un_artiste_d_un_seul_album_mene_a_sa_fiche(self):
         self.album("Kavinsky", "Outrun")
         artiste, = library.artists(self.albums())
-        html = self.sommaire()
-        self.assertIn(f"<a class='a' href='{librarypage.artist_href(artiste)}'>Kavinsky</a>", html)
+        self.assertIn(f"<h2 id='s{artiste.id}' data-i='K'><a href='{librarypage.artist_href(artiste)}'>Kavinsky</a>", self.sommaire())
 
-    def test_le_lien_de_l_album_ne_contient_pas_celui_de_l_artiste(self):
-        self.album("Kavinsky", "Outrun")
-        album = self.albums()[0]
+    def test_les_pochettes_d_un_groupe_reviennent_a_son_nom(self):
+        self.album("Daft Punk", "Homework", annee="1997")
+        self.album("Daft Punk", "Discovery")
+        self.album("Kavinsky", "Outrun", annee="2013")
         html = self.sommaire()
-        self.assertIn(f"<a class='cv' href='{librarypage.href(album)}'><div class='aff'>", html)
-        self.assertIn("Outrun</div></a><a class='a'", html)
+        daft_punk, = [a for a in library.artists(self.albums()) if a.name == "Daft Punk"]
+        ancre = librarypage.artist_anchor(daft_punk)
+        self.assertIn(f"<h2 id='{ancre}'", html)
+        self.assertEqual(html.count(f"data-b='{ancre}'"), 2)
+
+    def test_un_artiste_d_un_seul_album_revient_aussi_a_son_nom(self):
+        self.album("Kavinsky", "Outrun", annee="2013")
+        artiste, = library.artists(self.albums())
+        self.assertIn(f"data-b='{librarypage.artist_anchor(artiste)}'", self.sommaire())
+
+    def test_sans_fiche_d_artiste_la_pochette_est_la_cible_du_retour(self):
+        self.album("Kavinsky", "Outrun", annee="2013")
+        self.assertNotIn("data-b=", self.sommaire(avec_fiches=False))
+
+    def test_le_sommaire_se_cale_au_retour(self):
+        self.album("Kavinsky", "Outrun", annee="2013")
+        self.assertIn("history.replaceState({back:id}", self.sommaire())
 
     def test_sans_fiche_d_artiste_le_nom_reste_du_texte(self):
         self.album("Daft Punk", "Homework", annee="1997")
@@ -180,12 +197,7 @@ class TestSommaireArtistes(PageTestCase):
         self.album("Kavinsky", "Outrun")
         html = self.sommaire(avec_fiches=False)
         self.assertNotIn("href='Artistes/", html)
-        self.assertEqual(re.findall(r"<h2[^>]*>(.*?)<span", html), ["Daft Punk", "Autres artistes"])
-        self.assertIn("<div class='a'>Kavinsky</div>", html)
-
-    def test_section_des_autres_artistes_sans_lien(self):
-        self.album("Kavinsky", "Outrun")
-        self.assertIn("Autres artistes<span", self.sommaire())
+        self.assertEqual(re.findall(r"<h2[^>]*>(.*?)<span", html), ["Daft Punk", "Kavinsky"])
 
 
 class TestFiche(PageTestCase):
@@ -215,9 +227,16 @@ class TestFiche(PageTestCase):
     def test_label_et_numero_de_catalogue(self):
         self.assertIn("Craft Recordings (CR00123)", self.fiche(self.un(label="Craft Recordings", extra=("CATALOGNUMBER=CR00123",))))
 
-    def test_retour_au_sommaire_sur_la_vignette(self):
+    def test_retour_au_sommaire_sur_la_vignette_sans_fiche_d_artiste(self):
         album = self.un()
         self.assertIn(f"href='../index.html#{librarypage.anchor(album)}'", self.fiche(album))
+
+    def test_retour_au_sommaire_sur_le_nom_du_groupe(self):
+        self.album("Daft Punk", "Homework", annee="1997")
+        self.album("Daft Punk", "Discovery")
+        album = self.albums()[0]
+        artiste, = library.artists(self.albums())
+        self.assertIn(f"href='../index.html#{librarypage.artist_anchor(artiste)}'", self.fiche(album, artiste=artiste))
 
     def test_pistes_dans_l_ordre_avec_leur_duree(self):
         html = self.fiche(self.un())
@@ -369,12 +388,12 @@ class TestFicheArtiste(PageTestCase):
         artiste, _, html = self.fiche()
         self.assertIn(f"href='../index.html#s{artiste.id}'", html)
 
-    def test_retour_a_la_pochette_d_un_artiste_seul(self):
+    def test_retour_au_nom_d_un_artiste_d_un_seul_album(self):
         self.album("Kavinsky", "Outrun")
         album = self.albums()[0]
         artiste, = library.artists([album])
         html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", {album.id})
-        self.assertIn(f"href='../index.html#{librarypage.anchor(album)}'", html)
+        self.assertIn(f"href='../index.html#s{artiste.id}'", html)
 
     def test_album_sans_fiche_reste_inerte(self):
         artiste, albums, _ = self.fiche()

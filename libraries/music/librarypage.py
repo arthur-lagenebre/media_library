@@ -1,6 +1,6 @@
 """Pages HTML de la médiathèque musicale : un sommaire de tous les albums, une fiche par album et une fiche par artiste.
 
-Le sommaire est un mur de pochettes groupé par artiste - ceux qui ont plusieurs albums ont leur section, les autres se rangent ensemble à la fin -, avec une zone de recherche, un filtre de genre et un index A-Z, comme celui des films. Chaque pochette mène à la fiche de son album : pochette, artiste, année, label, genres, pistes avec leur durée, et celles qui manquent d'après les tags. Le nom de l'artiste, sur le sommaire comme sur la fiche d'un album, mène à sa fiche : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant.
+Le sommaire est un mur de pochettes groupé par artiste - chacun a sa section, même avec un seul album -, avec une zone de recherche, un filtre de genre et un index A-Z, comme celui des films. Chaque pochette mène à la fiche de son album : pochette, artiste, année, label, genres, pistes avec leur durée, et celles qui manquent d'après les tags. Le nom de l'artiste, sur le sommaire comme sur la fiche d'un album, mène à sa fiche : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant.
 
 Comme les fiches des films et des livres, chaque page est un fichier unique - les pochettes y sont encodées - et la page précédente sert de cache : régénérer ne rouvre que les pochettes nouvelles.
 
@@ -55,8 +55,8 @@ def artist_href(artist, base=""):
 
 
 def artist_anchor(artist):
-    """Où le sommaire range un artiste : sa section, ou la pochette de son album s'il n'en a qu'un."""
-    return f"s{artist.id}" if len(artist.releases) >= library.MIN_ALBUMS else anchor(artist.releases[0])
+    """Où le sommaire range un artiste : le titre de sa section."""
+    return f"s{artist.id}"
 
 
 def anchor(release):
@@ -130,8 +130,7 @@ CSS_BASE = (
     ".al img,.al .noimg{width:100%;height:100%;object-fit:cover;display:block}"
     ".mono{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:34px}"
     ".al .t{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}"
-    ".al .a{display:block;color:#c7ccd4;font-size:13px;line-height:1.3;overflow-wrap:anywhere;text-decoration:none}"
-    "a.a:hover,.artist a:hover,h2 a:hover{color:#7cc4ff;text-decoration:underline}"
+    ".artist a:hover,h2 a:hover{color:#7cc4ff;text-decoration:underline}"
     "h2 a{color:inherit;text-decoration:none}"
     ".al .y{color:#9aa0aa;font-size:13px}"
     ".al .y.warn{color:#ffb86b}"
@@ -139,11 +138,8 @@ CSS_BASE = (
 )
 
 
-def _tile(release, uri, link, artist="", attrs=""):
-    """Une pochette avec son titre. 'link' = adresse de la fiche de l'album, ou '' ; 'artist' = le HTML de la ligne d'artiste, s'il y en a une.
-
-    Le lien de l'album ne couvre que la pochette et le titre : l'artiste a le sien, et un lien ne s'imbrique pas dans un autre.
-    """
+def _tile(release, uri, link, attrs=""):
+    """Une pochette avec son titre. 'link' = adresse de la fiche de l'album, ou '' ; 'attrs' = les attributs de la vignette."""
     warn = " warn" if release.progress() else ""
     facts = " · ".join(p for p in (release.year, _count_label(release)) if p)
     tag, target = ("a", f" href='{esc(link)}'") if link else ("div", "")
@@ -151,17 +147,15 @@ def _tile(release, uri, link, artist="", attrs=""):
             f"<{tag} class='cv'{target}>"
             f"<div class='aff'>{_cover(release.key, uri, release.title)}</div>"
             f"<div class='t'>{esc(release.title)}</div>"
-            f"</{tag}>{artist}"
+            f"</{tag}>"
             f"<div class='y{warn}'>{esc(facts)}</div>"
             "</div>")
 
 
-def _artist_line(release, artists):
-    """La ligne d'artiste sous une pochette du sommaire : un lien vers sa fiche quand elle existe."""
+def _group(release, artists):
+    """Où revenir sur le sommaire après la fiche d'un album : le nom de son groupe, pas sa pochette - sous un en-tête fixe, c'est le titre de la section qu'on veut voir en premier. Rien pour l'artiste sans fiche : on revient à la pochette."""
     artist = artists.get(release.artist_id)
-    if artist is None:
-        return f"<div class='a'>{esc(release.artist)}</div>"
-    return f"<a class='a' href='{esc(artist_href(artist))}'>{esc(release.artist)}</a>"
+    return f" data-b='{artist_anchor(artist)}'" if artist is not None else ""
 
 
 # ----------------------------------------------------------------------------
@@ -176,7 +170,6 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
     names = set()
     genre_counts = {}
     for name, releases in sections:
-        single = name == library.SINGLES            # ses albums se rangent par artiste : c'est eux que l'index A-Z vise, et la pochette dit de qui ils sont
         tiles = []
         for release in releases:
             n_albums += 1
@@ -185,18 +178,16 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
             names.add(layout.fold(release.artist))
             for genre in release.genres:
                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
-            letter = f" data-i='{layout.initial(release.artist)}'" if single else ""
             tiles.append(_tile(
                 release, covers.get(release.id), href(release) if release.id in pages else "",
-                _artist_line(release, artists) if single else "",
-                f" id='{anchor(release)}' data-s='{esc(_search_text(release))}'{letter}{layout.genre_attr(release.genres)}"))
-        shown, letter, ident = esc(name), "", ""
-        if not single:
-            letter = f" data-i='{layout.initial(name)}'"
-            artist = artists.get(releases[0].artist_id)
-            if artist is not None:
-                ident = f" id='{artist_anchor(artist)}'"
-                shown = f"<a href='{esc(artist_href(artist))}'>{shown}</a>"
+                f" id='{anchor(release)}'{_group(release, artists)} data-s='{esc(_search_text(release))}'{layout.genre_attr(release.genres)}"))
+        # C'est le titre de la section que vise l'index A-Z : la pochette ne dit pas de qui elle est.
+        shown, ident = esc(name), ""
+        letter = f" data-i='{layout.initial(name)}'"
+        artist = artists.get(releases[0].artist_id)
+        if artist is not None:
+            ident = f" id='{artist_anchor(artist)}'"
+            shown = f"<a href='{esc(artist_href(artist))}'>{shown}</a>"
         blocks.append(f"<section><h2{ident}{letter}>{shown}<span class='cnt'>{len(releases)} album{'s' if len(releases) != 1 else ''}</span></h2>"
                       f"<div class='grid'>{''.join(tiles)}</div></section>")
 
@@ -237,7 +228,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
         "var ok=(!q||n(c.getAttribute('data-s')).indexOf(q)>=0)&&gok(c);c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!(q||picked())};"
-        + layout.genre_script() + layout.mode_script() + layout.index_script() +
+        + layout.genre_script() + layout.mode_script() + layout.index_script() + RETURN_SCRIPT +
         "</script></div></body></html>"
     )
 
@@ -246,6 +237,22 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
 # Fiche d'un album
 # ----------------------------------------------------------------------------
 # Le retour au sommaire : quand on en vient, c'est l'historique qui revient - le sommaire retrouve sa position -, sinon le lien mène à la vignette.
+# Le retour sur le sommaire : le navigateur y remet la page là où elle était, et c'est presque toujours en travers d'une rangée de pochettes, coupée par l'en-tête fixe. On retient donc, dans l'entrée d'historique du sommaire, le groupe de l'album qu'on ouvre ; au retour - retour du navigateur ou lien « Musique » -, la page se cale sous l'en-tête sur le nom de ce groupe. Sans cette entrée (page rechargée, ouverte directement), rien ne change.
+RETURN_SCRIPT = (
+    "(function(){"
+    "var top=document.querySelector('.top');"
+    "function put(id){var e=document.getElementById(id);if(e)scrollTo(0,e.getBoundingClientRect().top+scrollY-top.offsetHeight-12)}"
+    "document.addEventListener('click',function(ev){"
+    "var a=ev.target.closest&&ev.target.closest('a[href]');if(!a||a.target==='_blank')return;"
+    "var al=a.closest('.al'),h=a.closest('h2'),id=al?al.getAttribute('data-b')||al.id:h?h.id:'';"
+    "if(id){try{history.replaceState({back:id},'')}catch(e){}}});"
+    "function restore(){var s=history.state;if(s&&s.back){put(s.back);try{history.replaceState(null,'')}catch(e){}}}"
+    "if(history.state&&history.state.back){try{history.scrollRestoration='manual'}catch(e){}}"
+    "restore();"
+    "addEventListener('pageshow',function(e){if(e.persisted)restore()});"
+    "})();"
+)
+
 BACK_SCRIPT = (
     "var b=document.querySelector('.back');"
     "b.onclick=function(e){"
@@ -299,7 +306,7 @@ def _disc_table(tracks, lacking, album_artist, media_base=None):
 
 def build_release(release, image, back_href, library_name, artist=None, media_base=None):
     """Rend la fiche d'un album. 'image' = data-URI de la pochette, ou None ; 'back_href' = lien vers le sommaire ; 'artist' = l'Artist dont la fiche existe, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pistes se lisent par là), ou None pour une fiche qui ne lit rien."""
-    back_href = f"{back_href}#{anchor(release)}"
+    back_href = f"{back_href}#{artist_anchor(artist) if artist is not None else anchor(release)}"
     gaps = {number: lacking for number, lacking, _ in release.missing()}
     totals = {number: total for number, _, total in release.missing()}
     discs = release.discs

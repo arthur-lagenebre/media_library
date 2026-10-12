@@ -181,6 +181,8 @@ def index_script():
     Une lettre mène à la première occurrence APRÈS la position courante, et revient au début passé la dernière : la même lettre, pressée de nouveau, parcourt tous ses éléments - ceux d'une saga puis ceux des films seuls, d'une section puis de la suivante. Tant qu'on enchaîne (sans défiler à la main), la lettre part de la ligne du dernier élément visé et non de la position de la page : en bas de page, la cible ne peut pas monter jusqu'en haut, et la position seule la reviserait sans fin. Les éléments masqués par la recherche sont ignorés, et leurs lettres grisées."""
     return (
         "var bar=document.querySelector('.top'),last=null;"
+        # La marge des ancres suit la vraie hauteur de l'en-tête (elle change avec la largeur de la fenêtre) : une valeur fixe la laissait recouvrir la cible.
+        "function pad(){document.documentElement.style.scrollPaddingTop=bar.offsetHeight+12+'px'}pad();addEventListener('resize',pad);"
         "function seen(e){return e.offsetParent!==null}"
         "function go(e){window.scrollTo({top:e.getBoundingClientRect().top+window.scrollY-bar.offsetHeight-12,behavior:'smooth'})}"
         "function az(){var have={};"
