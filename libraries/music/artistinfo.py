@@ -57,7 +57,8 @@ def _span(begin, end, ended):
 
 def host_label(url):
     """'Facebook' pour facebook.com, le nom de domaine à défaut."""
-    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    host = (urlparse(url).hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host        # str.removeprefix n'existe qu'à partir de Python 3.9
     for known, label in HOST_LABELS.items():
         if host == known or host.endswith("." + known):
             return label
