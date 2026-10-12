@@ -110,34 +110,6 @@ Une **zone de recherche** filtre les films par titre (sans accents ni casse) et 
 
 Sous `--no-tag`, les films ne sont lus que pour leurs tags et leur durée, en Python pur : **ni MKVToolNix ni FFmpeg** ne sont nécessaires, et l'identifiant TMDB inscrit dans chaque film est repris sans recherche. La fiche n'est réécrite que si son contenu change, et le journal `metadata.log` se range à côté d'elle quand `--recap-out` la place ailleurs. De quoi la tenir à jour en tâche planifiée sur le NAS qui héberge les films.
 
-#### Mettre la fiche à jour sur un Synology
-
-Dans ce qui suit, `<outils>` est le dossier partagé où ranger le script, `<films>` celui des films, `<utilisateur>` le compte propriétaire du partage et `<nas>` le nom réseau du NAS. Les chemins réels se lisent dans *File Station* (clic droit → *Propriétés*), sous la forme `/volume1/<partage>`.
-
-1. **Copier le dépôt** dans `<outils>`, depuis l'Explorateur Windows par exemple, **avec son `.env`** : c'est lui qui porte la clé TMDB. Le partage `<outils>` doit donc rester privé.
-
-2. **Vérifier Python** : activer SSH (*Panneau de configuration → Terminal et SNMP*), se connecter, et lancer `python3 --version`. Il faut 3.8 ou plus récent ; à défaut, le paquet Python 3 du *Centre de paquets*.
-
-3. **Essayer en simulation**, dans la même session SSH — la fiche n'est pas écrite, seul le journal `metadata.log` l'est, dans `__Data__` :
-
-   ```sh
-   XDG_CACHE_HOME=/volume1/<outils>/cache python3 /volume1/<outils>/media_library/scripts/Movies/Metadata.py --dir /volume1/<films> --no-tag --recap --recap-out /volume1/<films>/__Data__ --no-ask
-   ```
-
-   `XDG_CACHE_HOME` range le cache des réponses TMDB dans `<outils>` : sans lui, il irait dans le dossier personnel de l'utilisateur, qui n'existe que si le service *Accueil de l'utilisateur* est activé. La corbeille du partage (`#recycle`), ses instantanés (`#snapshot`) et les vignettes de DSM (`@eaDir`) sont ignorés.
-
-4. **Créer la tâche**, dans *Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur* :
-
-   | Onglet | Réglage |
-   | --- | --- |
-   | Général | nom `Fiche des films`, utilisateur `<utilisateur>` — pas `root` : une fiche créée par `root` pourrait ne plus être modifiable depuis le partage |
-   | Programmer | tous les jours, la nuit |
-   | Paramètres de tâche | la commande de l'étape 3 **avec `--apply`** à la fin ; cocher l'envoi des détails par e-mail *uniquement quand le script se termine anormalement* |
-
-5. **Lancer la tâche une première fois** (*Exécuter* dans la liste), puis ouvrir `\<nas>\<films>\__Data__\index.html`.
-
-Ensuite, un film copié sur le NAS apparaît dans la fiche au plus tard le lendemain, à sa place dans sa saga. Les associations suspectes (durée incohérente, fiche presque inconnue) y sont marquées `[A VERIFIER]` dans `__Data__\metadata.log`.
-
 ### Séries
 
 Un sous-dossier `Saison N` par saison, les `.mkv` dedans, préfixés par leur numéro d'épisode. `--dir` peut aussi pointer directement sur un dossier de saison.
