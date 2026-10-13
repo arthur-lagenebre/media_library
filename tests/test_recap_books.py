@@ -43,7 +43,7 @@ class TestRecapLivres(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse(self.data.exists())
         self.assertIn("SIMULATION", sortie)
-        self.assertIn("ecrirait", sortie)
+        self.assertIn("écrirait", sortie)
 
     def test_simulation_n_ecrit_que_le_journal_quand_le_dossier_existe(self):
         self.data.mkdir()
@@ -60,8 +60,8 @@ class TestRecapLivres(unittest.TestCase):
 
     def test_bilan_par_section(self):
         _, sortie = self.lancer()
-        self.assertRegex(sortie, r"Manga\s+1 serie\(s\)\s+2 volume\(s\)\s+1 avec fiche")      # __En cours n'est pas compté
-        self.assertRegex(sortie, r"Romans\s+1 serie\(s\)\s+1 volume\(s\)\s+1 avec fiche")
+        self.assertRegex(sortie, r"Manga\s+1 série\(s\)\s+2 volume\(s\)\s+1 avec fiche")      # __En cours n'est pas compté
+        self.assertRegex(sortie, r"Romans\s+1 série\(s\)\s+1 volume\(s\)\s+1 avec fiche")
         self.assertIn("TOTAL : 3/5 livre(s) avec fiche.", sortie)
 
     def test_apply_ecrit_sommaire_pages_catalogue_et_journal(self):
@@ -102,22 +102,22 @@ class TestRecapLivres(unittest.TestCase):
         avant = {p: p.stat().st_mtime_ns for p in self.data.rglob("*") if p.is_file() and p.name != "recap.log"}
         with mock.patch.object(recap.shelf, "read_info", side_effect=AssertionError("livre rouvert")):
             _, sortie = self.lancer("--apply")
-        self.assertIn("5 repris du catalogue, 0 a lire", sortie)
-        self.assertIn("index.html inchange", sortie)
-        self.assertIn("(0 ecrite(s), 4 inchangee(s))", sortie)
+        self.assertIn("5 repris du catalogue, 0 à lire", sortie)
+        self.assertIn("index.html inchangé", sortie)
+        self.assertIn("(0 écrite(s), 4 inchangée(s))", sortie)
         self.assertEqual(avant, {p: p.stat().st_mtime_ns for p in avant})
 
     def test_livre_modifie_est_relu_seul(self):
         self.lancer("--apply")
         make_cbz(self.racine / "Manga" / "Captain Tsubasa" / "Tome 29.cbz", COMICINFO.replace("<Number>28", "<Number>29"), pages=("a.png", "b.png", "c.png"))
         _, sortie = self.lancer("--apply")
-        self.assertIn("1 a lire", sortie)
+        self.assertIn("1 à lire", sortie)
         self.assertIn("TOTAL : 4/5 livre(s) avec fiche.", sortie)
 
     def test_no_cache_rouvre_tout(self):
         self.lancer("--apply")
         _, sortie = self.lancer("--apply", "--no-cache")
-        self.assertIn("0 repris du catalogue, 5 a lire", sortie)
+        self.assertIn("0 repris du catalogue, 5 à lire", sortie)
 
     def test_titre_choisi_puis_repris_sans_l_option(self):
         self.lancer("--apply", "--title", "Ma bibliotheque")
@@ -136,7 +136,7 @@ class TestRecapLivres(unittest.TestCase):
             sortie = io.StringIO()
             with mock.patch.object(sys, "argv", ["Recap.py", "--dir", vide]), redirect_stdout(sortie):
                 self.assertEqual(recap.main(), 0)
-            self.assertIn("Aucun livre trouve", sortie.getvalue())
+            self.assertIn("Aucun livre trouvé", sortie.getvalue())
 
     def test_dossier_introuvable(self):
         with mock.patch.object(sys, "argv", ["Recap.py", "--dir", str(self.racine / "absent")]), self.assertRaises(SystemExit):

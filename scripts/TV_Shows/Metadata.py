@@ -184,7 +184,7 @@ def build_plan(mkv_dir, season, args, opts):
             candidate.notes.append(lecture.note)
         dmin, runtime = lecture.probe.duration_min, candidate.episode.get("runtime")
         if dmin and runtime and abs(dmin - runtime) > 3:
-            candidate.notes.append(f"duree {dmin:.0f}min vs {runtime}min attendues -> a verifier")
+            candidate.notes.append(f"durée {dmin:.0f}min vs {runtime}min attendues -> à vérifier")
     return plan
 
 
@@ -198,7 +198,7 @@ def process_season(mkv_dir, season, args, opts, tmdb):
     report = Report(total=len(plan))
     for c in plan:
         if c.episode is None:
-            print(f"  [NON ASSOCIE] {c.path.name}")
+            print(f"  [NON ASSOCIÉ] {c.path.name}")
             continue
         report.matched += 1
         sn, en = season.get("season_number", 1), c.episode.get("episode_number", 0)
@@ -214,7 +214,7 @@ def process_season(mkv_dir, season, args, opts, tmdb):
             if diffs:
                 report.diffs += 1
             else:
-                print("      [OK] deja conforme")
+                print("      [OK] déjà conforme")
             continue
         if opts.date and target.date:
             print(f"      date segment -> {target.date}")
@@ -222,20 +222,20 @@ def process_season(mkv_dir, season, args, opts, tmdb):
             print(line)
 
     if args.apply and not args.verify:
-        print("  --- ecriture ---")
+        print("  --- écriture ---")
         for c in plan:
             if c.episode is None:
                 continue
             target = episode_target(season, c.episode, args.series_name, opts)
             if args.skip_done and mkv.is_conform(c.info, target, opts, c.tags):
-                print(f"  [SKIP] {c.path.name} (deja a jour)")
+                print(f"  [SKIP] {c.path.name} (déjà à jour)")
                 continue
             code, msg = mkv.write(c.path, c.info, target, opts, tmdb)
             if code:
                 report.failures += 1
-            print(f"  [{'OK' if code == 0 else 'ECHEC'}] {c.path.name}" + (f"  -> {msg}" if code else ""))
+            print(f"  [{'OK' if code == 0 else 'ÉCHEC'}] {c.path.name}" + (f"  -> {msg}" if code else ""))
 
-    print(f"  => {report.matched}/{report.total} associe(s).")
+    print(f"  => {report.matched}/{report.total} associé(s).")
     return report
 
 
@@ -283,7 +283,7 @@ def collect_cast(runs, args, tmdb):
         try:
             casts.append((run.number, tmdb.aggregate_credits(args.tmdb_id, run.number).get("cast", [])))
         except TmdbError as e:
-            print(f"  [recap] casting de la saison {run.number} ignore : {e}")
+            print(f"  [récap] casting de la saison {run.number} ignoré : {e}")
     return casts
 
 
@@ -451,9 +451,9 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
 
 def _write_text(path, text, apply):
     if not apply:
-        return f"ecrirait {Path(path).name}"
+        return f"écrirait {Path(path).name}"
     Path(path).write_text(text, encoding="utf-8")
-    return f"{Path(path).name} ecrit"
+    return f"{Path(path).name} écrit"
 
 
 def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
@@ -469,7 +469,7 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
             print(f"  [saison {run.number}] affiche (EN) : "
                   f"{artwork.write_poster(poster, run.folder, apply, tmdb)}")
         poster = artwork.english_poster(lambda: tmdb.series(args.tmdb_id, artwork.ARTWORK_LANG), show.get("poster_path"))
-        print(f"  [serie] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
+        print(f"  [série] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
 
     if args.recap:
         out = Path(root_dir) / showindex.PAGE_NAME
@@ -486,46 +486,46 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None)
         tally = ", ".join(t for t in (f"{len(stills)} vignette(s)" if stills else "",
                                       f"{len(profiles)} portrait(s)" if profiles else "") if t)
-        print(f"  [serie] {_write_text(out, html, apply)}"
+        print(f"  [série] {_write_text(out, html, apply)}"
               + (f"  ({len(html) / 1_048_576:.1f} Mo, {tally} integre(s))" if tally else ""))
         legacy = Path(root_dir) / "assets"
         if legacy.is_dir():
-            print(f"  [serie] note : le dossier '{legacy.name}' n'est plus utilise "
-                  "(vignettes desormais integrees au HTML) -> tu peux le supprimer")
+            print(f"  [série] note : le dossier '{legacy.name}' n'est plus utilisé "
+                  "(vignettes désormais intégrées au HTML) -> tu peux le supprimer")
 
 
 # ----------------------------------------------------------------------------
 # 4. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Etiquette des .mkv depuis TMDB (donnees en francais via l'API).")
-    ap.add_argument("--dir", required=True, help="Racine de la serie (dossiers 'Saison N') OU un seul dossier de saison")
+    ap = argparse.ArgumentParser(description="Étiquette des .mkv depuis TMDB (données en français via l'API).")
+    ap.add_argument("--dir", required=True, help="Racine de la série (dossiers 'Saison N') OU un seul dossier de saison")
     # --- Source TMDB ---
-    ap.add_argument("--tmdb-id", help="Identifiant TMDB de la serie "
-                    "(par defaut : recherche sur le nom du dossier)")
-    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (defaut : fr-FR)")
-    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des reponses TMDB et le rafraichit")
-    ap.add_argument("--series-name", help="Force le nom de serie (sinon recupere automatiquement de TMDB)")
+    ap.add_argument("--tmdb-id", help="Identifiant TMDB de la série "
+                    "(par défaut : recherche sur le nom du dossier)")
+    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
+    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
+    ap.add_argument("--series-name", help="Force le nom de série (sinon récupère automatiquement de TMDB)")
     # --- Ce qu'on écrit ---
-    ap.add_argument("--apply", action="store_true", help="Applique reellement (defaut : simulation)")
-    ap.add_argument("--verify", action="store_true", help="Verifie seulement l'etat des fichiers (aucune ecriture)")
-    ap.add_argument("--skip-done", action="store_true", help="Saute les fichiers deja conformes")
-    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun episode ; genere seulement folder.jpg / recap (series non-MKV)")
+    ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
+    ap.add_argument("--verify", action="store_true", help="Vérifie seulement l'état des fichiers (aucune écriture)")
+    ap.add_argument("--skip-done", action="store_true", help="Saute les fichiers déjà conformes")
+    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun épisode ; génère seulement folder.jpg / recap (séries non-MKV)")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque pas la jaquette")
     ap.add_argument("--no-date", action="store_true", help="Ne modifie pas la date du segment")
     ap.add_argument("--no-audio-names", action="store_true", help="Ne renomme pas les pistes audio")
     ap.add_argument("--no-sub-names", action="store_true", help="Ne renomme pas les pistes de sous-titres")
-    ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par defaut'")
+    ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par défaut'")
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques de piste")
     # --- Générateurs annexes (option, écrivent des fichiers à côté des .mkv) ---
-    ap.add_argument("--artwork", action="store_true", help="Ecrit folder.jpg (vignette de dossier) en anglais")
-    ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la serie")
-    ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquee / folder.jpg : w300 / w780 / original")
+    ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (vignette de dossier) en anglais")
+    ap.add_argument("--recap", action="store_true", help="Génère une fiche recap HTML de la série")
+    ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquée / folder.jpg : w300 / w780 / original")
     ap.add_argument("--still-size", default="w300",
-                    help="Taille TMDB des vignettes du recap (defaut : w300 ; w400 = plus net "
-                         "sur ecran HiDPI mais fiche plus lourde)")
+                    help="Taille TMDB des vignettes du recap (défaut : w300 ; w400 = plus net "
+                         "sur écran HiDPI mais fiche plus lourde)")
     ap.add_argument("--profile-size", default=PROFILE_SIZE,
-                    help=f"Taille TMDB des portraits du casting (defaut : {PROFILE_SIZE})")
+                    help=f"Taille TMDB des portraits du casting (défaut : {PROFILE_SIZE})")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
     return ap.parse_args()
 
@@ -542,16 +542,16 @@ def main():
     print(f"=== {cli.mode_label(args)} ===")
     args.tmdb_id = lookup.resolve_show_id(tmdb, args.dir, args.tmdb_id)
     if args.tmdb_id is None:
-        sys.exit("Serie non identifiee : relance avec --tmdb-id.")
+        sys.exit("Série non identifiée : relance avec --tmdb-id.")
 
     # Détails de la série via TMDB (nom auto, + poster/synopsis pour les annexes)
     try:
         show = tmdb.series(args.tmdb_id)
     except TmdbError as e:
-        sys.exit(f"Echec de l'appel TMDB (serie) : {e}")
+        sys.exit(f"Échec de l'appel TMDB (série) : {e}")
     args.series_name = args.series_name or show.get("name", "")
 
-    print(f"    serie : {args.series_name}   |   source : TMDB {args.language} (id {args.tmdb_id})\n")
+    print(f"    série : {args.series_name}   |   source : TMDB {args.language} (id {args.tmdb_id})\n")
 
     if args.no_tag and not (args.artwork or args.recap):
         print("Astuce : --no-tag sans --artwork ni --recap ne produit rien. "
@@ -567,17 +567,17 @@ def main():
             try:
                 data = tmdb.season(args.tmdb_id, num)
             except TmdbError as e:
-                print(f"  echec TMDB saison {num} : {e} -> saison ignoree\n")
+                print(f"  échec TMDB saison {num} : {e} -> saison ignorée\n")
                 continue
             if args.no_tag:
-                print("  episodes non modifies (--no-tag)")
+                print("  épisodes non modifiés (--no-tag)")
             else:
                 report += process_season(sub, data, args, opts, tmdb)
             processed.append(season_run(sub, num, data, args))
             print()
         if not args.no_tag:
-            print(f"TOTAL : {report.matched}/{report.total} fichier(s) associe(s) "
-                  f"sur {len(seasons)} saison(s) detectee(s).")
+            print(f"TOTAL : {report.matched}/{report.total} fichier(s) associé(s) "
+                  f"sur {len(seasons)} saison(s) détectée(s).")
         generate_sidecars(args.dir, args.series_name, show, processed, args, tmdb)
     else:
         # --- Saison unique : --dir contient directement les .mkv ---
@@ -586,17 +586,17 @@ def main():
         try:
             data = tmdb.season(args.tmdb_id, num)
         except TmdbError as e:
-            sys.exit(f"Echec de l'appel TMDB (saison {num}) : {e}")
+            sys.exit(f"Échec de l'appel TMDB (saison {num}) : {e}")
         report = Report()
         if args.no_tag:
-            print("  episodes non modifies (--no-tag)")
+            print("  épisodes non modifiés (--no-tag)")
         else:
             report = process_season(args.dir, data, args, opts, tmdb)
         generate_sidecars(args.dir, args.series_name, show, [season_run(Path(args.dir), num, data, args)], args, tmdb)
 
     reste = report.epilogue()
     if reste:
-        print(f"\nA CORRIGER : {reste}.")
+        print(f"\nÀ CORRIGER : {reste}.")
     return report.exit_code
 
 

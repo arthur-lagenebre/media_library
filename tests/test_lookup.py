@@ -67,7 +67,7 @@ class TestChoixDuResultat(unittest.TestCase):
         self.assertIn("id 2661", notes[0])
     def test_titre_eloigne_signale(self):
         _, notes = lookup.pick_result([{"id": 9, "title": "Autre chose"}], "Inception")
-        self.assertTrue(any("eloigne" in n for n in notes))
+        self.assertTrue(any("éloigné" in n for n in notes))
 
     def test_resultat_evident_sans_remarque(self):
         resultats = [{"id": 1, "title": "Inception", "release_date": "2010-07-14"}, {"id": 2, "title": "Inception: The Cobol Job", "release_date": "2010-12-07"}]
@@ -324,12 +324,12 @@ class TestResolutionDeLaSerie(unittest.TestCase):
     def test_aucun_resultat(self):
         identifiant, sortie = self.resoudre(FauxTmdb([]))
         self.assertIsNone(identifiant)
-        self.assertIn("Aucune serie TMDB", sortie)
+        self.assertIn("Aucune série TMDB", sortie)
 
     def test_echec_reseau(self):
         identifiant, sortie = self.resoudre(FauxTmdb(TmdbError("coupure")))
         self.assertIsNone(identifiant)
-        self.assertIn("Echec de la recherche", sortie)
+        self.assertIn("Échec de la recherche", sortie)
 
 
 class TestIdEpingle(unittest.TestCase):
@@ -347,7 +347,7 @@ class TestIdEpingle(unittest.TestCase):
         ident, appels, sortie = self.resoudre("Ma Serie [tmdbid-1396]")
         self.assertEqual(ident, "1396")
         self.assertEqual(appels, [])
-        self.assertIn("epingle", sortie)
+        self.assertIn("épinglé", sortie)
 
     def test_id_repris_depuis_le_dossier_parent(self):
         ident, appels, _ = self.resoudre("Ma Serie [tmdbid-1396]", saison="Saison 2")

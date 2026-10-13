@@ -232,7 +232,7 @@ class TestSousTitresDejaDansLeMp4(unittest.TestCase):
 
     def test_require_ecarte_un_film_qui_n_en_a_nulle_part(self):
         status, detail = self.convert([], subs="require")
-        self.assertEqual(status, "ignore")
+        self.assertEqual(status, "ignoré")
         self.assertIn("--subs require", detail)
 
     def test_un_film_sans_piste_video_est_une_erreur(self):
@@ -240,7 +240,7 @@ class TestSousTitresDejaDansLeMp4(unittest.TestCase):
         with mock.patch.object(conversion, "identify", return_value=(info, "")):
             status, detail = conversion.convert(self.video, options(), check_duration=False)
         self.assertEqual(status, "erreur")
-        self.assertEqual(detail, "aucune piste video")
+        self.assertEqual(detail, "aucune piste vidéo")
 
 
 if __name__ == "__main__":

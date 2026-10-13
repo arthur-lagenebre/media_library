@@ -76,7 +76,7 @@ class TestCleTmdb(unittest.TestCase):
 class TestBanniere(unittest.TestCase):
     def test_libelles(self):
         self.assertEqual(cli.mode_label(types.SimpleNamespace(apply=True, verify=False)), "APPLICATION")
-        self.assertEqual(cli.mode_label(types.SimpleNamespace(apply=True, verify=True)), "VERIFICATION (aucune ecriture)")
+        self.assertEqual(cli.mode_label(types.SimpleNamespace(apply=True, verify=True)), "VÉRIFICATION (aucune écriture)")
         self.assertIn("SIMULATION", cli.mode_label(types.SimpleNamespace(apply=False, verify=False)))
 
 class TestDossier(unittest.TestCase):

@@ -66,7 +66,7 @@ def check_tools(needs_mkvtoolnix=True):
         print("  Installe MKVToolNix : winget install MoritzBunkus.MKVToolNix")
         sys.exit(1)
     if shutil.which("ffprobe") is None:
-        print("ffprobe absent -> debit audio + verif. des durees desactives "
+        print("ffprobe absent -> débit audio + vérif. des durées désactivés "
               "(winget install Gyan.FFmpeg)\n")
         return False
     return True
@@ -480,7 +480,7 @@ def track_preview_lines(info, opts):
     primary = primary_audio_sel(audios) if opts.flags else None
     if opts.audio_names:
         for sel, tr in audios:
-            mark = " (defaut)" if sel == primary else ""
+            mark = " (défaut)" if sel == primary else ""
             lines.append(f"      audio {sel} [{lang(tr)}]{mark} : {current_name(tr) or '(vide)'!r} -> {audio_track_name(tr) or '(vide)'!r}")
     if opts.sub_names:
         for sel, tr, ajouts in subtitle_targets(subs, opts):
@@ -489,7 +489,7 @@ def track_preview_lines(info, opts):
             etat = ",".join(flags) or "aucun"
             if ajouts:
                 venus = [label for key, label in SUB_FLAGS if key in ajouts]
-                etat += " +" + ",".join(venus) + " (d'apres le nom)"
+                etat += " +" + ",".join(venus) + " (d'après le nom)"
             lines.append(f"      st {sel} [{lang(tr)}] drapeaux={etat} : {current_name(tr) or '(vide)'!r} -> {subtitle_track_name(tr, ajouts)!r}")
     return lines
 
@@ -510,8 +510,8 @@ def track_conflicts(info, opts):
                 if cle in ajouts or tr.get("properties", {}).get(cle):
                     continue
                 if motif.search(current_name(tr)):
-                    cause = f"st {deja[0]} porte deja le drapeau" if deja else "--no-flags"
-                    raisons.append(f"st {sel} : le nom l'annonce ({current_name(tr)!r}) mais {cause} -> le nom serait efface")
+                    cause = f"st {deja[0]} porte déjà le drapeau" if deja else "--no-flags"
+                    raisons.append(f"st {sel} : le nom l'annonce ({current_name(tr)!r}) mais {cause} -> le nom serait effacé")
 
     # Deux pistes de même langue et de même nom vise : après coup, plus rien ne les distingue - ni pour un lecteur, ni pour celui qui rouvrira le fichier.
     vises = {}
@@ -524,7 +524,7 @@ def track_conflicts(info, opts):
     for (genre, code, nom), sels in vises.items():
         if len(sels) > 1:
             pistes = " et ".join(f"{genre} {s}" for s in sels)
-            raisons.append(f"{pistes} [{code}] : meme nom vise {nom!r}")
+            raisons.append(f"{pistes} [{code}] : même nom visé {nom!r}")
     return raisons
 
 
@@ -559,7 +559,7 @@ def verify(info, target, opts, tags=None):
     if tags is not None and target.tags_xml:
         attendus = parse_tags(target.tags_xml)
         manquants, en_trop = attendus - tags, tags - attendus
-        detail = (f"{len(manquants)} manquant(s), {len(en_trop)} en trop" if (manquants or en_trop) else f"{len(tags)} present(s)")
+        detail = (f"{len(manquants)} manquant(s), {len(en_trop)} en trop" if (manquants or en_trop) else f"{len(tags)} présent(s)")
         checks.append(("tags", not (manquants or en_trop), detail))
     return checks
 
@@ -622,7 +622,7 @@ def write(path, info, target, opts, tmdb):
                     cmd += ["--delete-attachment", "name:cover.jpg"]
                 cmd += ["--attachment-name", "cover.jpg", "--attachment-mime-type", "image/jpeg", "--add-attachment", "cover.jpg"]
             except TmdbError as e:
-                print(f"      jaquette ignoree ({e})")
+                print(f"      jaquette ignorée ({e})")
 
         try:
             res = run_tool(cmd, cwd=tmp)

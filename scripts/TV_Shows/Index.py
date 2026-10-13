@@ -30,10 +30,10 @@ from libraries.video import showindex  # noqa: E402
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="Sommaire HTML de toutes les series d'une mediatheque, avec un lien vers la fiche de chacune.")
-    ap.add_argument("--dir", required=True, help="Racine de la mediatheque : un sous-dossier par serie")
-    ap.add_argument("--apply", action="store_true", help="Ecrit reellement index.html (defaut : simulation)")
-    ap.add_argument("--title", help="Titre de l'onglet du sommaire (defaut : celui du sommaire existant, sinon 'Series') ; le titre de la page reste 'Series'")
+    ap = argparse.ArgumentParser(description="Sommaire HTML de toutes les séries d'une médiathèque, avec un lien vers la fiche de chacune.")
+    ap.add_argument("--dir", required=True, help="Racine de la médiathèque : un sous-dossier par série")
+    ap.add_argument("--apply", action="store_true", help="Écrit réellement index.html (défaut : simulation)")
+    ap.add_argument("--title", help="Titre de l'onglet du sommaire (défaut : celui du sommaire existant, sinon 'Séries') ; le titre de la page reste 'Séries'")
     return ap.parse_args()
 
 
@@ -45,13 +45,13 @@ def main():
 
     out = root / showindex.INDEX_NAME
     if out.exists() and not showindex.is_ours(out):
-        sys.exit(f"{out} existe et n'a pas ete ecrit par ce script : il n'est pas remplace.")
+        sys.exit(f"{out} existe et n'a pas été écrit par ce script : il n'est pas remplacé.")
     entries = showindex.find_entries(root)
     if not entries:
-        sys.exit(f"Aucune fiche dans {root} : lance d'abord Metadata.py --recap sur chaque serie.")
+        sys.exit(f"Aucune fiche dans {root} : lance d'abord Metadata.py --recap sur chaque série.")
     for entry in sorted(entries, key=lambda e: showindex.sort_key(e.title)):
         print(f"  {entry.title}" + (f" ({entry.year})" if entry.year else "")
-              + ("" if entry.poster else "  [sans affiche : fiche a regenerer]"))
+              + ("" if entry.poster else "  [sans affiche : fiche à régénérer]"))
     print(f"\n{showindex.write(root, args.apply, args.title)}")
     return 0
 

@@ -76,7 +76,7 @@ class TestRenommage(RenameTracksTestCase):
         self.poser()
         tally = self.run_album(self.release)
         self.assertEqual(tally.named, 3)
-        self.assertIn("deja au bon nom", self.output)
+        self.assertIn("déjà au bon nom", self.output)
 
     def test_simulation_ne_renomme_rien(self):
         self.poser(name_pattern="{n} {title}.flac")
@@ -91,7 +91,7 @@ class TestRenommage(RenameTracksTestCase):
         tally = self.run_album(self.release)
         self.assertEqual(self.names(), before)
         self.assertEqual(tally.named, 0)
-        self.assertIn("[NON TRAITE]", self.output)
+        self.assertIn("[NON TRAITÉ]", self.output)
 
     def test_paroles_suivent_leur_piste(self):
         self.poser(name_pattern="{n} {title}.flac")

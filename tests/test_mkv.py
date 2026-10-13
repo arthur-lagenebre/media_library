@@ -177,7 +177,7 @@ class TestPistesAmbigues(unittest.TestCase):
         raisons = self.conflits(piste("subtitles", language="fre", forced_track=True, track_name="forced colored"), piste("subtitles", language="fre", track_name="Français forcé"), piste("subtitles", language="fre", track_name="Français complet"))
         self.assertEqual(len(raisons), 2)
         self.assertIn("st s2 : le nom l'annonce", raisons[0])
-        self.assertIn("st s1 porte deja le drapeau", raisons[0])
+        self.assertIn("st s1 porte déjà le drapeau", raisons[0])
         self.assertIn("st s2 et st s3 [fr]", raisons[1])
         self.assertIn("Full", raisons[1])
 

@@ -71,14 +71,14 @@ class TestRecapAll(unittest.TestCase):
         commandes, code, sortie = self.lancer("--apply", codes={"Dark": 1})
         self.assertEqual(len(commandes), 3)
         self.assertEqual(code, 1)
-        self.assertIn("EN ECHEC : Dark", sortie)
+        self.assertIn("EN ÉCHEC : Dark", sortie)
 
     def test_sommaire_reecrit_s_il_existe(self):
         _, _, sortie = self.lancer("--apply")
         self.assertFalse((self.bib / "index.html").exists())         # jamais créé ici
         (self.bib / "index.html").write_text(showindex.build_html("x", []), encoding="utf-8")
         _, _, sortie = self.lancer("--apply")
-        self.assertIn("index.html ecrit (2 serie(s))", sortie)
+        self.assertIn("index.html écrit (2 série(s))", sortie)
 
 
 if __name__ == "__main__":

@@ -49,12 +49,12 @@ SECONDES_PAR_GO = 10  # --full lit le fichier entier : mesuré sur un partage gi
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Controle la structure des .mkv d'un dossier (recursivement par defaut).")
-    p.add_argument("--dir", required=True, help="dossier a controler")
-    p.add_argument("--full", action="store_true", help="suit toute la chaine, clusters compris (lit chaque fichier en entier : ~10 s par Go)")
-    p.add_argument("--repair", action="store_true", help="remultiplexe les fichiers en defaut et remplace l'original si le resultat est sain")
-    p.add_argument("--no-recursive", action="store_true", help="ne controle que les .mkv poses directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (defaut : verification.log a la racine de --dir)")
+    p = argparse.ArgumentParser(description="Contrôle la structure des .mkv d'un dossier (récursivement par défaut).")
+    p.add_argument("--dir", required=True, help="dossier à contrôler")
+    p.add_argument("--full", action="store_true", help="suit toute la chaîne, clusters compris (lit chaque fichier en entier : ~10 s par Go)")
+    p.add_argument("--repair", action="store_true", help="remultiplexe les fichiers en défaut et remplace l'original si le résultat est sain")
+    p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les .mkv posés directement dans --dir, sans descendre dans les sous-dossiers")
+    p.add_argument("--log", default=None, help="fichier journal (défaut : verification.log à la racine de --dir)")
     return p.parse_args()
 
 
@@ -119,7 +119,7 @@ def check(chemin, complet):
     if info is None:
         return remarque
     if not any(piste.get("type") == "video" for piste in info.get("tracks", [])):
-        return "aucune piste video"
+        return "aucune piste vidéo"
     return ""
 
 
@@ -130,15 +130,15 @@ def repair(chemin, complet):
     """
     neuf = chemin.with_name(chemin.stem + ".neuf.mkv")
     if neuf.exists():
-        return False, f"un fichier {neuf.name} traine deja a cote"
+        return False, f"un fichier {neuf.name} traîne déjà à côté"
     resultat = run_tool(["mkvmerge", "--quiet", "-o", str(neuf), str(chemin)])
     if resultat.returncode >= 2 or not neuf.exists():
         neuf.unlink(missing_ok=True)
-        return False, first_error(resultat) or "mkvmerge n'a rien pu ecrire"
+        return False, first_error(resultat) or "mkvmerge n'a rien pu écrire"
     reste = check(neuf, complet)
     if reste:
         neuf.unlink(missing_ok=True)
-        return False, f"le remux est abime lui aussi ({reste})"
+        return False, f"le remux est abîmé lui aussi ({reste})"
     try:
         os.replace(neuf, chemin)
     except OSError as exc:
@@ -150,25 +150,25 @@ def repair(chemin, complet):
 def write_log(destination, racine, total, defauts, repares, echecs, complet, recursif=True):
     """Journal du passage : ce qui cloche, et ce qu'on en a fait."""
     lignes = [
-        f"Verification du {datetime.now():%d/%m/%Y %H:%M} - {racine}",
-        f"Controle {'complet (chaine entiere)' if complet else 'rapide (points de repere)'}{'' if recursif else ', sans les sous-dossiers'}",
-        f"{total} fichier(s) controle(s), {len(defauts)} en defaut.",
+        f"Vérification du {datetime.now():%d/%m/%Y %H:%M} - {racine}",
+        f"Contrôle {'complet (chaîne entière)' if complet else 'rapide (points de repère)'}{'' if recursif else ', sans les sous-dossiers'}",
+        f"{total} fichier(s) contrôlé(s), {len(defauts)} en défaut.",
         "",
     ]
     if not defauts:
-        lignes.append("Aucun defaut de structure.")
+        lignes.append("Aucun défaut de structure.")
     for chemin, message in defauts:
         nom = filenames.relative_name(chemin, racine)
-        etat = "repare" if nom in repares else ("REPARATION ECHOUEE" if nom in echecs else "non repare")
+        etat = "réparé" if nom in repares else ("RÉPARATION ÉCHOUÉE" if nom in echecs else "non réparé")
         lignes += [nom, f"    {message}", f"    -> {etat}", ""]
     if echecs:
-        lignes += ["", "REPARATIONS ECHOUEES (originaux intacts) :"]
+        lignes += ["", "RÉPARATIONS ÉCHOUÉES (originaux intacts) :"]
         lignes += [f"  {nom}" for nom in echecs]
     try:
         destination.write_text("\n".join(lignes) + "\n", encoding="utf-8")
-        print(f"[log] {destination} ecrit")
+        print(f"[log] {destination} écrit")
     except OSError as exc:
-        print(f"[log] impossible d'ecrire {destination} : {exc.strerror or exc}")
+        print(f"[log] impossible d'écrire {destination} : {exc.strerror or exc}")
 
 
 def main():
@@ -187,8 +187,8 @@ def main():
     if not total:
         sys.exit(f"Aucun .mkv {portee} {racine}")
     octets = sum(f.stat().st_size for f in fichiers)
-    print(f"{total} fichier(s), {readable_size(octets)} {portee} {racine}" + (" (sous-dossiers ignores)" if args.no_recursive else ""))
-    print("Controle " + ("complet : toute la chaine, clusters compris "
+    print(f"{total} fichier(s), {readable_size(octets)} {portee} {racine}" + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
+    print("Contrôle " + ("complet : toute la chaîne, clusters compris "
                          f"(~{readable_time(octets / 1e9 * SECONDES_PAR_GO)} de lecture)"
                          if args.full else
                          "rapide : index, table Cues et queue de fichier"))
@@ -200,31 +200,31 @@ def main():
         message = check(chemin, args.full)
         if message:
             clear_line()
-            print(f"  [DEFAUT] {filenames.relative_name(chemin, racine)}")
+            print(f"  [DÉFAUT] {filenames.relative_name(chemin, racine)}")
             print(f"           {message}")
             defauts.append((chemin, message))
     clear_line()
 
     repares, echecs = [], []
     if args.repair and defauts:
-        print(f"\nReparation de {len(defauts)} fichier(s) : remux, controle du "
-              "resultat, puis remplacement.")
+        print(f"\nRéparation de {len(defauts)} fichier(s) : remux, contrôle du "
+              "résultat, puis remplacement.")
         for n, (chemin, _) in enumerate(defauts, 1):
             nom = filenames.relative_name(chemin, racine)
             print(f"  [{n}/{len(defauts)}] {nom} ...", end="", flush=True)
             reussi, souci = repair(chemin, args.full)
-            print(" repare" if reussi else f" ECHEC : {souci}")
+            print(" réparé" if reussi else f" ÉCHEC : {souci}")
             (repares if reussi else echecs).append(nom)
 
     duree = time.time() - debut
-    print(f"\nTOTAL : {total} fichier(s) controle(s) en {readable_time(duree)}, "
-          f"{len(defauts)} en defaut"
-          + (f", {len(repares)} repare(s), {len(echecs)} echec(s)" if args.repair else "")
+    print(f"\nTOTAL : {total} fichier(s) contrôlé(s) en {readable_time(duree)}, "
+          f"{len(defauts)} en défaut"
+          + (f", {len(repares)} réparé(s), {len(echecs)} échec(s)" if args.repair else "")
           + ".")
     if defauts and not args.repair:
-        print("Relance la meme commande avec --repair pour les remultiplexer.")
+        print("Relance la même commande avec --repair pour les remultiplexer.")
     if not args.full and not defauts:
-        print("Le controle rapide ne juge que l'index et la queue : --full "
+        print("Le contrôle rapide ne juge que l'index et la queue : --full "
               "descend dans les clusters.")
 
     write_log(Path(args.log) if args.log else racine / "verification.log", racine, total, defauts, repares, echecs, args.full, not args.no_recursive)

@@ -52,11 +52,11 @@ def series_command(folder, apply, extra):
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="Regenere la fiche index.html de toutes les series d'une mediatheque (episodes non modifies).",
-                                 epilog="Toute autre option est transmise a Metadata.py.")
-    ap.add_argument("--dir", required=True, help="Racine de la mediatheque : un sous-dossier par serie")
-    ap.add_argument("--apply", action="store_true", help="Ecrit reellement les fiches (defaut : simulation)")
-    ap.add_argument("--only", help="Ne traite que les series dont le nom de dossier contient ce texte")
+    ap = argparse.ArgumentParser(description="Régénère la fiche index.html de toutes les séries d'une médiathèque (épisodes non modifiés).",
+                                 epilog="Toute autre option est transmise à Metadata.py.")
+    ap.add_argument("--dir", required=True, help="Racine de la médiathèque : un sous-dossier par série")
+    ap.add_argument("--apply", action="store_true", help="Écrit réellement les fiches (défaut : simulation)")
+    ap.add_argument("--only", help="Ne traite que les séries dont le nom de dossier contient ce texte")
     return ap.parse_known_args()
 
 
@@ -70,8 +70,8 @@ def main():
     if args.only:
         series = [s for s in series if args.only.casefold() in s.name.casefold()]
     if not series:
-        sys.exit(f"Aucune serie dans {root}" + (f" dont le nom contient '{args.only}'" if args.only else "")
-                 + " : il faut un sous-dossier par serie, avec ses dossiers 'Saison N'.")
+        sys.exit(f"Aucune série dans {root}" + (f" dont le nom contient '{args.only}'" if args.only else "")
+                 + " : il faut un sous-dossier par série, avec ses dossiers 'Saison N'.")
 
     failed = []
     for i, folder in enumerate(series, 1):
@@ -80,12 +80,12 @@ def main():
             failed.append(folder.name)
 
     print(f"\n{len(series) - len(failed)}/{len(series)} fiche(s) "
-          + ("regeneree(s)." if args.apply else "a regenerer (simulation)."))
+          + ("régénérée(s)." if args.apply else "à régénérer (simulation)."))
     index = root / showindex.INDEX_NAME
     if showindex.is_ours(index):
         print(showindex.write(root, args.apply))
     if failed:
-        print("EN ECHEC : " + ", ".join(failed))
+        print("EN ÉCHEC : " + ", ".join(failed))
         return 1
     return 0
 

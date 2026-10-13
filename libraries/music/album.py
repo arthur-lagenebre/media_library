@@ -4,7 +4,7 @@ Un album n'a pas la forme d'un film. Son nom de dossier varie d'une source à l'
 
 Et un album a une forme que le disque permet de vérifier : un nombre de pistes. Parmi les éditions d'un même titre - le CD de 17 pistes, le pressage australien de 16, la réédition de 18 - seules celles qui ont exactement autant de pistes que le dossier a de fichiers sont des candidates. C'est le garde-fou que les films n'ont pas.
 
-Tout est pur, sauf find_albums qui parcourt le disque.
+Tout est pur, sauf find_albums et artist_override qui lisent le disque.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from libraries.common import filenames
 AUDIO_EXTS = {".flac", ".mp3"}            # les formats qu'on sait écrire
 OTHER_AUDIO_EXTS = {".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
 LYRICS_EXTS = {".lrc"}                     # paroles posées à côté d'une piste : elles suivent son nom
+ARTIST_FILE = "artist.txt"                 # le nom d'artiste à garder à la place de celui de MusicBrainz, pour tout ce que le dossier range
 
 # Dossier de disque d'un album en plusieurs CD : "CD1", "CD 2", "Disc 2 - Bonus", "Disque 1".
 DISC_DIR_RE = re.compile(r"^(?:cd|dis[ck]|disque)[\s._-]*0*(\d{1,2})(?:\s*[-–—:]\s+.+)?$", re.IGNORECASE)
@@ -103,6 +104,26 @@ def find_albums(root):
     if root.is_dir():
         scan(root)
     return albums
+
+
+def artist_override(folder, root, forced=""):
+    """Nom d'artiste imposé à un album, ou "".
+
+    `forced` (--artist) d'abord ; sinon le fichier artist.txt le plus proche, de l'album jusqu'à `root` compris - le dossier d'artiste, typiquement. Sa première ligne non vide est le nom : MusicBrainz écrit parfois le même artiste de plusieurs façons d'un album à l'autre, et c'est celle-ci qui est gardée.
+    """
+    if forced and forced.strip():
+        return forced.strip()
+    folder, root = Path(folder), Path(root)
+    chain = [folder, *folder.parents]
+    for place in chain[:chain.index(root) + 1] if root in chain else [folder]:
+        try:
+            lines = (place / ARTIST_FILE).read_text(encoding="utf-8-sig").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        name = next((line.strip() for line in lines if line.strip()), "")
+        if name:
+            return name
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -227,14 +248,14 @@ def choose_release(results, file_count, hints, country="FR", discs=1):
     Seules comptent les éditions qui ont autant de pistes que le dossier a de fichiers. Parmi elles, un album par release group, celui au titre exact d'abord ; deux albums DIFFÉRENTS au même titre qui tiennent tous les deux sont une question, pas une déduction.
     """
     if not results:
-        return Choice(reason="aucun resultat")
+        return Choice(reason="aucun résultat")
     close = [r for r in results if not hints.title or similarity(r.get("title"), hints.title) >= MIN_TITLE]
     fitting = [r for r in close if sum(track_counts(r)) == file_count]
     if not fitting:
         seen = sorted({sum(track_counts(r)) for r in close})
         if not seen:
-            return Choice(reason=f"titres trouves trop eloignes de '{hints.title}' (ex. {describe(results[0])})")
-        return Choice(reason=f"aucune edition de {file_count} piste(s) ; trouve : {', '.join(map(str, seen))} piste(s)")
+            return Choice(reason=f"titres trouvés trop éloignés de '{hints.title}' (ex. {describe(results[0])})")
+        return Choice(reason=f"aucune édition de {file_count} piste(s) ; trouvé : {', '.join(map(str, seen))} piste(s)")
 
     heads = {}
     for release in sorted(fitting, key=lambda r: edition_rank(r, hints.year, country, discs)):
@@ -345,10 +366,10 @@ def entry_notes(entry, track):
     """Remarques sur un fichier placé : un titre ou une durée qui ne collent pas méritent un coup d'œil."""
     notes = []
     if similarity(entry.title, track.get("title")) < MIN_TITLE / 2:
-        notes.append(f"titre du fichier eloigne : {entry.title!r}")
+        notes.append(f"titre du fichier éloigné : {entry.title!r}")
     length = track.get("length") or (track.get("recording") or {}).get("length")
     if entry.duration and length and abs(entry.duration - length / 1000) > MAX_DURATION_GAP:
-        notes.append(f"duree {entry.duration:.0f} s contre {length / 1000:.0f} s attendues")
+        notes.append(f"durée {entry.duration:.0f} s contre {length / 1000:.0f} s attendues")
     return notes
 
 
@@ -370,12 +391,31 @@ def unique(values):
     return out
 
 
-def credit_name(credits, sort=False):
-    """'Daft Punk', 'Kavinsky feat. Havoc' : les noms crédités, liaisons comprises."""
+def names_artist(credit, name):
+    """Vrai si ce crédit désigne l'artiste `name`, quelle que soit la façon dont MusicBrainz l'y écrit.
+
+    Le nom crédité, le nom de la fiche et son nom de tri sont comparés : "H.F. Thiéfaine", "Thiéfaine" et "Hubert Félix Thiéfaine" sont tous la fiche "Hubert-Félix Thiéfaine". Un nom qui contient tous les mots de l'autre suffit ; "Mairet" ne ressemble pas à Thiéfaine.
+    """
+    wanted = set(normalize(name).split())
+    artist = credit.get("artist") or {}
+    for known in (credit.get("name"), artist.get("name"), artist.get("sort-name")):
+        words = set(normalize(known).split())
+        if words and wanted and (words <= wanted or wanted <= words or similarity(known, name) >= MIN_TITLE):
+            return True
+    return False
+
+
+def credit_name(credits, sort=False, artist=""):
+    """'Daft Punk', 'Kavinsky feat. Havoc' : les noms crédités, liaisons comprises.
+
+    `artist` impose son écriture au crédit qui le désigne, les autres crédits gardent la leur : "Thiéfaine / Mairet" devient "Hubert-Félix Thiéfaine / Mairet". Le nom de tri ne bouge pas, c'est celui de la même fiche.
+    """
     parts = []
     for credit in credits:
-        artist = credit.get("artist") or {}
-        name = (artist.get("sort-name") if sort else None) or credit.get("name") or artist.get("name") or ""
+        known = credit.get("artist") or {}
+        name = (known.get("sort-name") if sort else None) or credit.get("name") or known.get("name") or ""
+        if artist and not sort and names_artist(credit, artist):
+            name = artist
         parts.append(name + (credit.get("joinphrase") or ""))
     return "".join(parts)
 
@@ -387,10 +427,10 @@ def genres(group, release, limit=MAX_GENRES):
     return [g["name"][:1].upper() + g["name"][1:] for g in ranked[:limit]]
 
 
-def target_tags(release, group, medium, track, with_genres=True):
+def target_tags(release, group, medium, track, with_genres=True, artist=""):
     """[(clé, valeur)] visés pour une piste.
 
-    Les noms de clés sont ceux de Picard : un fichier étiqueté ici doit se relire à l'identique dans Picard ou dans un lecteur, et un fichier déjà passé par Picard ne doit pas paraître différent.
+    Les noms de clés sont ceux de Picard : un fichier étiqueté ici doit se relire à l'identique dans Picard ou dans un lecteur, et un fichier déjà passé par Picard ne doit pas paraître différent. `artist` remplace l'écriture que MusicBrainz donne de l'artiste (voir artist_override).
     """
     rg = group or release.get("release-group") or {}
     recording = track.get("recording") or {}
@@ -400,7 +440,7 @@ def target_tags(release, group, medium, track, with_genres=True):
     labels = release.get("label-info") or []
     first = rg.get("first-release-date") or ""
     count = str(medium.get("track-count") or len(medium.get("tracks") or []))
-    tags = [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit)), ("ARTISTSORT", credit_name(track_credit, sort=True)), ("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
+    tags = [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True)), ("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
     tags += [("GENRE", g) for g in (genres(rg, release) if with_genres else [])]
     tags += [("RELEASETYPE", t.lower()) for t in unique([rg.get("primary-type")] + list(rg.get("secondary-types") or []))]
     tags += [("RELEASESTATUS", (release.get("status") or "").lower()), ("RELEASECOUNTRY", release.get("country")), ("MEDIA", medium.get("format")), ("BARCODE", release.get("barcode"))]

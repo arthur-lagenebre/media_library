@@ -96,11 +96,11 @@ def plan_library(movies, args, tmdb, ids=None):
             # Celui qui porte déjà le nom en est le propriétaire, quel que soit l'ordre de parcours : c'est un autre qui devra céder.
             claimed[cible] = entry.display
             tally.named += 1
-            print("  deja au bon nom\n")
+            print("  déjà au bon nom\n")
             continue
         jumeau = claimed.setdefault(cible, entry.display)
         if jumeau != entry.display:
-            print(f"  [DOUBLON] vise le meme nom que '{jumeau}' -> ignore\n")
+            print(f"  [DOUBLON] vise le même nom que '{jumeau}' -> ignoré\n")
             continue
         for src, dst in mouvements:
             print(f"  {src.name}\n       -> {dst.name}")
@@ -122,28 +122,28 @@ def rename_library(movies, args, tmdb):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Renomme les dossiers de films au format 'Titre (Annee)' (donnees TMDB).")
-    ap.add_argument("--dir", required=True, help="Dossier de films, parcouru recursivement (dossiers de saga compris)")
-    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (defaut : fr-FR)")
-    ap.add_argument("--apply", action="store_true", help="Renomme reellement (defaut : simulation)")
+    ap = argparse.ArgumentParser(description="Renomme les dossiers de films au format 'Titre (Année)' (données TMDB).")
+    ap.add_argument("--dir", required=True, help="Dossier de films, parcouru récursivement (dossiers de saga compris)")
+    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
+    ap.add_argument("--apply", action="store_true", help="Renomme réellement (défaut : simulation)")
     ap.add_argument("--pin-id", action="store_true", help="Ajoute l'identifiant TMDB au nom ('[tmdbid-438631]')")
-    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des reponses TMDB et le rafraichit")
+    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
     args = ap.parse_args()
 
     cli.setup_console()
     cli.check_dir(args.dir)
     tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="rename_movies/1.0", cache=cache.Cache(read=not args.no_cache))
 
-    mode = cli.mode_label(args, "rien ne sera renomme ; ajoute --apply")
+    mode = cli.mode_label(args, "rien ne sera renommé ; ajoute --apply")
     print(f"=== {mode} ===   source : TMDB {args.language}\n")
 
     movies = naming.find_movies(args.dir)
     if not movies:
-        print(f"Aucun .mkv trouve dans : {args.dir}")
+        print(f"Aucun .mkv trouvé dans : {args.dir}")
         return 0
 
     tally = rename_library(movies, args, tmdb)
-    sous_titres = (f", {tally.subtitles} sous-titre(s) renomme(s)") if tally.subtitles else ""
+    sous_titres = (f", {tally.subtitles} sous-titre(s) renommé(s)") if tally.subtitles else ""
     print(f"TOTAL : {tally.named}/{tally.total} film(s) au bon nom{sous_titres}.")
     return 0
 

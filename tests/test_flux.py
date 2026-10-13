@@ -107,7 +107,7 @@ class TestAnnexesDesFilms(FluxTestCase):
     def test_verify_n_ecrit_aucune_annexe(self):
         _, sortie = self.lancer_films("--artwork", "--verify")
         self.assertFalse((self.film / "folder.jpg").exists())
-        self.assertIn("ecrirait folder.jpg", sortie)
+        self.assertIn("écrirait folder.jpg", sortie)
 
     def test_recap_ecrit_sous_no_tag(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
@@ -125,14 +125,14 @@ class TestAnnexesDesFilms(FluxTestCase):
     def test_doute_signale_sans_validation(self):
         _, sortie = self.lancer_peu_vote()
         self.assertIn("presque inconnue", sortie)
-        self.assertIn("[A VERIFIER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
+        self.assertIn("[À VÉRIFIER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
 
     def test_film_valide_ne_fait_plus_de_doute(self):
         (self.racine / "metadata.ok").write_text("https://www.themoviedb.org/movie/1  # Dune, ok\n", encoding="utf-8")
         _, sortie = self.lancer_peu_vote()
         self.assertNotIn("presque inconnue", sortie)
-        self.assertNotIn("A VERIFIER", (self.racine / "metadata.log").read_text(encoding="utf-8"))
-        self.assertIn("1 film(s) valide(s)", sortie)
+        self.assertNotIn("À VÉRIFIER", (self.racine / "metadata.log").read_text(encoding="utf-8"))
+        self.assertIn("1 film(s) validé(s)", sortie)
 
     def test_validation_lue_a_cote_du_journal(self):
         annexes = self.racine / "__Data__"
@@ -165,15 +165,15 @@ class TestAnnexesDesFilms(FluxTestCase):
         fiche = self.racine / "Fiches" / "1.html"
         avant = fiche.stat().st_mtime_ns
         _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("(0 ecrite(s), 1 inchangee(s))", sortie)
+        self.assertIn("(0 écrite(s), 1 inchangée(s))", sortie)
         self.assertEqual(fiche.stat().st_mtime_ns, avant)
 
     def test_recap_identique_pas_reecrit(self):
         # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
         self.lancer_films("--no-tag", "--recap", "--apply")
         _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("index.html inchange", sortie)
-        self.assertIn("metadata.log inchange", sortie)
+        self.assertIn("index.html inchangé", sortie)
+        self.assertIn("metadata.log inchangé", sortie)
 
     def test_journal_a_cote_de_la_fiche_rangee_ailleurs(self):
         annexes = self.racine / "__Data__"
@@ -238,7 +238,7 @@ class TestAnnexesDesSeries(FluxTestCase):
         tmdb, sortie = self.lancer_serie("--recap")
         self.assertEqual(tmdb.castings, [])
         self.assertFalse((self.racine / "index.html").exists())
-        self.assertIn("ecrirait index.html", sortie)
+        self.assertIn("écrirait index.html", sortie)
 
 
 class TestDoublons(FluxTestCase):

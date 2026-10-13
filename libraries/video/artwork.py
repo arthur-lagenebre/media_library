@@ -25,9 +25,9 @@ def write_poster(poster_path, folder, apply, tmdb, size=POSTER_SIZE):
         return "pas d'affiche TMDB"
     dest = Path(folder) / "folder.jpg"
     if not apply:
-        return f"ecrirait {dest.name}"
+        return f"écrirait {dest.name}"
     try:
         tmdb.save_image(poster_path, size, dest)
-        return "folder.jpg ecrit"
+        return "folder.jpg écrit"
     except (TmdbError, OSError) as e:
-        return f"echec ({e})"
+        return f"échec ({e})"

@@ -97,7 +97,7 @@ class TestRenommage(RenameMoviesTestCase):
         tally, contenu, tmdb = self.lancer()
         self.assertEqual(contenu, ["Dune (2021)"])
         self.assertEqual(tally.named, 1)
-        self.assertIn("deja au bon nom", self.sortie)
+        self.assertIn("déjà au bon nom", self.sortie)
 
     def test_simulation_ne_touche_a_rien(self):
         self.creer_dossiers("dune.2021")
@@ -154,7 +154,7 @@ class TestRenommage(RenameMoviesTestCase):
         tally, contenu, _ = self.lancer(tmdb=Vide())
         self.assertEqual(contenu, ["zzz inconnu"])
         self.assertEqual(tally.named, 0)
-        self.assertIn("NON ASSOCIE", self.sortie)
+        self.assertIn("NON ASSOCIÉ", self.sortie)
 
 
     def test_dossier_de_saga_renomme_les_films_pas_le_dossier(self):

@@ -43,8 +43,8 @@ def read_dotenv(filename=".env"):
     return {}
 
 
-NO_KEY_MESSAGE = ("Aucune cle TMDB. Renseigne la ligne TMDB_KEY=... du fichier .env "
-                  "a la racine du depot (voir .env.example).")
+NO_KEY_MESSAGE = ("Aucune clé TMDB. Renseigne la ligne TMDB_KEY=... du fichier .env "
+                  "à la racine du dépôt (voir .env.example).")
 
 
 def resolve_tmdb_key():
@@ -104,12 +104,12 @@ def ask_choice(nombre, defaut=0):
             return ASK_STOP
         if reponse.isdigit() and 1 <= int(reponse) <= nombre:
             return int(reponse) - 1
-        print(f"      reponse non comprise : un numero de 1 a {nombre}, "
-              "i pour laisser de cote, q pour arreter les questions.")
+        print(f"      réponse non comprise : un numéro de 1 à {nombre}, "
+              "i pour laisser de côté, q pour arrêter les questions.")
 
 
-def mode_label(args, simulation="rien ne sera ecrit ; ajoute --apply pour appliquer"):
+def mode_label(args, simulation="rien ne sera écrit ; ajoute --apply pour appliquer"):
     """Libellé du mode courant, pour la bannière affichee au démarrage."""
     if getattr(args, "verify", False):
-        return "VERIFICATION (aucune ecriture)"
+        return "VÉRIFICATION (aucune écriture)"
     return "APPLICATION" if args.apply else f"SIMULATION ({simulation})"

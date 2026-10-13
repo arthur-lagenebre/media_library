@@ -137,7 +137,7 @@ class TestDegatsVisiblesEnRapide(unittest.TestCase):
         self.assertIn("vide", str(verifier(b"")))
 
     def test_pas_matroska(self):
-        self.assertIn("pas d'entete EBML", str(verifier(b"ceci n'est pas un film")))
+        self.assertIn("pas d'en-tête EBML", str(verifier(b"ceci n'est pas un film")))
 
     def test_troncature(self):
         donnees, _ = construire()

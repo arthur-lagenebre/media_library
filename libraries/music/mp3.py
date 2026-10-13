@@ -162,11 +162,11 @@ def _take(encoding, data):
 def parse_picture(body):
     """Picture d'une trame APIC : codage, type MIME, type d'image, description, image."""
     if len(body) < 4:
-        raise Mp3Error("image tronquee")
+        raise Mp3Error("image tronquée")
     encoding = body[0]
     end = body.find(b"\x00", 1)
     if end < 0 or end + 1 >= len(body):
-        raise Mp3Error("image tronquee")
+        raise Mp3Error("image tronquée")
     mime = body[1:end].decode("latin-1") or "image/jpeg"
     kind = body[end + 1]
     description, data = _take(encoding, body[end + 2:])
@@ -182,12 +182,12 @@ def _frames(data, version):
         if raw_id[0] == 0:                          # le padding commence
             break
         if not FRAME_ID_RE.match(raw_id):
-            raise Mp3Error(f"etiquette ID3 abimee : trame '{raw_id.decode('latin-1', 'replace')}' invalide")
+            raise Mp3Error(f"étiquette ID3 abîmée : trame '{raw_id.decode('latin-1', 'replace')}' invalide")
         size = int.from_bytes(data[position + 4:position + 8], "big") if version == 3 else syncsafe(data[position + 4:position + 8])
         flag1, flag2 = data[position + 8], data[position + 9]
         body = data[position + 10:position + 10 + size]
         if len(body) < size:
-            raise Mp3Error(f"trame {raw_id.decode()} deborde de l'etiquette")
+            raise Mp3Error(f"trame {raw_id.decode()} déborde de l'étiquette")
         position += 10 + size
         frame = _unwrap(raw_id.decode(), body, version, flag1, flag2)
         if frame is not None:
@@ -342,7 +342,7 @@ def read(path):
                 flags, size = head[5], syncsafe(head[6:10])
                 data = f.read(size)
                 if len(data) < size or len(head) < 10:
-                    raise Mp3Error("etiquette ID3 tronquee")
+                    raise Mp3Error("étiquette ID3 tronquée")
                 offset = 10 + size + (10 if version == 4 and flags & 0x10 else 0)
                 if version == 3 and flags & 0x80:                # désynchronisation de toute l'étiquette
                     data = data.replace(b"\xff\x00", b"\xff")
@@ -355,7 +355,7 @@ def read(path):
     except OSError as e:
         raise Mp3Error(f"lecture impossible : {e.strerror or e}") from e
     if not version and seconds is None:
-        raise Mp3Error("ce n'est pas un fichier MP3 (ni etiquette ID3, ni trame audio)")
+        raise Mp3Error("ce n'est pas un fichier MP3 (ni étiquette ID3, ni trame audio)")
     comments, pictures = _comments(frames, version)
     return Metadata(frames, offset, version, comments, pictures, padding, seconds)
 
@@ -430,7 +430,7 @@ def render(meta, comments, pictures, padding):
         out.append(frame.id.encode("ascii") + to_syncsafe(len(frame.body)) + bytes([frame.status, 0]) + frame.body)
     body = b"".join(out) + bytes(padding)
     if len(body) > MAX_TAG:
-        raise Mp3Error("etiquette ID3 trop grosse")
+        raise Mp3Error("étiquette ID3 trop grosse")
     return b"ID3\x04\x00\x00" + to_syncsafe(len(body)) + body
 
 
@@ -447,7 +447,7 @@ def write(path, meta, comments, pictures):
             with open(path, "r+b") as f:
                 f.write(header)
         except OSError as e:
-            raise Mp3Error(f"ecriture impossible : {e.strerror or e}") from e
+            raise Mp3Error(f"écriture impossible : {e.strerror or e}") from e
         return "sur place"
 
     header = render(meta, comments, pictures, DEFAULT_PADDING)
@@ -462,11 +462,11 @@ def write(path, meta, comments, pictures):
             target.flush()
             os.fsync(target.fileno())
         if temporary.stat().st_size != len(header) + size - meta.audio_offset:
-            raise Mp3Error("copie incomplete : l'original est garde")
+            raise Mp3Error("copie incomplète : l'original est gardé")
         os.replace(temporary, path)
         temporary = None
     except OSError as e:
-        raise Mp3Error(f"ecriture impossible : {e.strerror or e}") from e
+        raise Mp3Error(f"écriture impossible : {e.strerror or e}") from e
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

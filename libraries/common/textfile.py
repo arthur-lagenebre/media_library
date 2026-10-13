@@ -54,5 +54,5 @@ def adopt(old, new, apply):
         old.rename(new)
     except OSError:
         return old
-    print(f"  [annexes] {old.name} renomme en {new.name}")
+    print(f"  [annexes] {old.name} renommé en {new.name}")
     return new

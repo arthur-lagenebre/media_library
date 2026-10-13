@@ -52,6 +52,28 @@ class TestDossiers(unittest.TestCase):
         self.poser("Kavinsky/2013 - Outrun/01 - Prelude.flac", "Kavinsky/2022 - Reborn/01 - Pulsar.flac")
         self.assertEqual([a.display for a in album.find_albums(self.racine)], [str(Path("Kavinsky/2013 - Outrun")), str(Path("Kavinsky/2022 - Reborn"))])
 
+    def test_artist_txt_du_dossier_d_artiste(self):
+        self.poser("Thiéfaine/2005 - Scandale/01.flac")
+        (self.racine / "Thiéfaine" / "artist.txt").write_text("\ufeff\n  Hubert-Félix Thiéfaine \n", encoding="utf-8")
+        self.assertEqual(album.artist_override(self.racine / "Thiéfaine" / "2005 - Scandale", self.racine), "Hubert-Félix Thiéfaine")
+
+    def test_artist_txt_le_plus_proche_et_jamais_au_dessus_de_la_racine(self):
+        self.poser("Thiéfaine/2005 - Scandale/01.flac")
+        (self.racine / "artist.txt").write_text("Racine", encoding="utf-8")
+        (self.racine / "Thiéfaine" / "2005 - Scandale" / "artist.txt").write_text("Album", encoding="utf-8")
+        self.assertEqual(album.artist_override(self.racine / "Thiéfaine" / "2005 - Scandale", self.racine), "Album")
+        self.assertEqual(album.artist_override(self.racine / "Thiéfaine", self.racine), "Racine")
+        self.assertEqual(album.artist_override(self.racine / "Thiéfaine", self.racine / "Thiéfaine"), "")
+
+    def test_option_artist_prime_sur_le_fichier(self):
+        self.poser("Thiéfaine/2005 - Scandale/01.flac")
+        (self.racine / "Thiéfaine" / "artist.txt").write_text("Fichier", encoding="utf-8")
+        self.assertEqual(album.artist_override(self.racine / "Thiéfaine" / "2005 - Scandale", self.racine, " Option "), "Option")
+
+    def test_aucun_artist_txt(self):
+        self.poser("Kavinsky/2013 - Outrun/01.flac")
+        self.assertEqual(album.artist_override(self.racine / "Kavinsky" / "2013 - Outrun", self.racine), "")
+
     def test_dossiers_de_disque_reunis(self):
         self.poser("Daft Punk/Alive/CD1/01.flac", "Daft Punk/Alive/CD1/02.flac", "Daft Punk/Alive/CD 2/01.flac")
         (seul,) = album.find_albums(self.racine)
@@ -148,7 +170,7 @@ class TestChoixDeLEdition(unittest.TestCase):
     def test_aucune_edition_au_bon_compte(self):
         choix = self.choisir([sortie("a", "Merciless", 1), sortie("b", "Merciless", 13)], 12)
         self.assertIsNone(choix.release)
-        self.assertIn("aucune edition de 12 piste(s) ; trouve : 1, 13", choix.reason)
+        self.assertIn("aucune édition de 12 piste(s) ; trouvé : 1, 13", choix.reason)
 
     def test_disques_additionnes(self):
         self.assertEqual(self.choisir([sortie("x", "Merciless", [12, 1])], 13).release["id"], "x")
@@ -191,10 +213,10 @@ class TestChoixDeLEdition(unittest.TestCase):
     def test_titres_trop_eloignes(self):
         choix = self.choisir([sortie("x", "Tout autre chose", 12)], 12, "Merciless")
         self.assertIsNone(choix.release)
-        self.assertIn("trop eloignes", choix.reason)
+        self.assertIn("trop éloignés", choix.reason)
 
     def test_aucun_resultat(self):
-        self.assertEqual(self.choisir([], 12).reason, "aucun resultat")
+        self.assertEqual(self.choisir([], 12).reason, "aucun résultat")
 
 
 class TestAppariement(unittest.TestCase):
@@ -249,7 +271,7 @@ class TestAppariement(unittest.TestCase):
 
     def test_duree_qui_ne_colle_pas(self):
         entree = album.entry_for(Path("a.flac"), meta("TITLE=Prelude", duree=120))
-        self.assertIn("duree 120 s contre 200 s", album.entry_notes(entree, piste(1, "Prelude"))[0])
+        self.assertIn("durée 120 s contre 200 s", album.entry_notes(entree, piste(1, "Prelude"))[0])
 
     def test_rien_a_dire(self):
         entree = album.entry_for(Path("a.flac"), meta("TITLE=Prelude", duree=201))
@@ -275,6 +297,24 @@ class TestTagsVises(unittest.TestCase):
         self.assertEqual(self.valeurs(tags, "ARTIST"), ["Kavinsky feat. Havoc"])
         self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky"])
         self.assertEqual(self.valeurs(tags, "MUSICBRAINZ_ARTISTID"), ["art-1", "art-2"])
+
+    def test_artiste_impose_remplace_le_credit_qui_le_designe(self):
+        tags = self.tags(3, artist="Kavinsky (officiel)")
+        self.assertEqual(self.valeurs(tags, "ARTIST"), ["Kavinsky (officiel) feat. Havoc"])
+        self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky (officiel)"])
+        self.assertEqual(self.valeurs(tags, "ARTISTSORT"), ["Kavinsky feat. Havoc"])
+        self.assertEqual(self.valeurs(tags, "MUSICBRAINZ_ARTISTID"), ["art-1", "art-2"])
+
+    def test_artiste_impose_sans_ressemblance_ne_change_rien(self):
+        self.assertEqual(self.tags(3, artist="Daft Punk"), self.tags(3))
+
+    def test_variantes_d_ecriture_d_un_meme_artiste(self):
+        def credit(nom):
+            return {"name": nom, "joinphrase": "", "artist": {"id": "x", "name": "Hubert-Félix Thiéfaine", "sort-name": "Thiéfaine, Hubert-Félix"}}
+        for ecrit in ("H.F. Thiéfaine", "Thiéfaine", "Hubert F Thiéfaine"):
+            self.assertEqual(album.credit_name([credit(ecrit)], artist="Hubert-Félix Thiéfaine"), "Hubert-Félix Thiéfaine")
+        duo = [dict(credit("Thiéfaine"), joinphrase=" / "), {"name": "Mairet", "joinphrase": "", "artist": {"id": "y", "name": "Mairet", "sort-name": "Mairet"}}]
+        self.assertEqual(album.credit_name(duo, artist="Hubert-Félix Thiéfaine"), "Hubert-Félix Thiéfaine / Mairet")
 
     def test_valeurs_multiples_sans_doublon(self):
         tags = self.tags()

@@ -130,7 +130,7 @@ def update_artist_info(artists, path, args):
     if not todo:
         return entries
     names = {a.mbid: a.name for a in artists.values() if a.mbid}
-    print(f"  [artistes] {len(todo)} artiste(s) a demander a MusicBrainz et Wikipedia (environ {max(1, round(len(todo) * 1.5 / 60))} min)")
+    print(f"  [artistes] {len(todo)} artiste(s) à demander à MusicBrainz et Wikipédia (environ {max(1, round(len(todo) * 1.5 / 60))} min)")
     client, failures, fetched = MusicBrainz(), 0, 0
     try:
         for done, mbid in enumerate(todo, 1):
@@ -145,7 +145,7 @@ def update_artist_info(artists, path, args):
                 else:
                     failures += 1
                     if failures >= MAX_FAILURES:
-                        print(f"  [artistes] {MAX_FAILURES} echecs d'affilee : abandon, le reste au prochain passage")
+                        print(f"  [artistes] {MAX_FAILURES} échecs d'affilée : abandon, le reste au prochain passage")
                         break
             if done % PROGRESS_ARTISTS == 0:
                 print(f"  [artistes] {done}/{len(todo)}")
@@ -170,10 +170,10 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name):
                 textfile.write(page, html)
                 written += 1
         except OSError as e:
-            print(f"  [artistes] {page.name} non ecrite : {e}")
+            print(f"  [artistes] {page.name} non écrite : {e}")
             continue
         done[artist.id] = artist
-    print(f"  [artistes] {len(done)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(done) - written} inchangee(s))")
+    print(f"  [artistes] {len(done)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(done) - written} inchangée(s))")
     return done, written
 
 
@@ -181,10 +181,10 @@ def write_shell(path, library_name):
     """Écrit la coque qui garde la lecture en vie d'une fiche à l'autre : le sommaire dans une iframe, au-dessus d'une barre de lecture."""
     html = player.build_shell(library_name, INDEX_NAME)
     if textfile.same(path, html):
-        print(f"  [lecteur] {path} inchange")
+        print(f"  [lecteur] {path} inchangé")
     else:
         textfile.write(path, html)
-        print(f"  [lecteur] {path} ecrit  (ouvrir celle-ci pour naviguer sans couper la musique)")
+        print(f"  [lecteur] {path} écrit  (ouvrir celle-ci pour naviguer sans couper la musique)")
 
 
 def write_pages(sections, out, root, args):
@@ -198,7 +198,7 @@ def write_pages(sections, out, root, args):
     index = out / INDEX_NAME
     library_name = args.title or textfile.title_of(index) or DEFAULT_TITLE
     if not thumbs.available():
-        print("  [pochettes] Pillow absent : les pages montrent un monogramme a la place (pip install pillow)")
+        print("  [pochettes] Pillow absent : les pages montrent un monogramme à la place (pip install pillow)")
 
     every = [r for _, releases in sections for r in releases]
     # Les albums d'artiste inconnu n'ont rien en commun : ils n'ont pas de fiche à eux.
@@ -211,7 +211,7 @@ def write_pages(sections, out, root, args):
         try:
             return release, write_release_page(release, folder, library_name, args.cover_width, artists, base)
         except OSError as e:
-            print(f"  [pages] {librarypage.page_name(release)} non ecrite : {e}")
+            print(f"  [pages] {librarypage.page_name(release)} non écrite : {e}")
             return release, None
 
     covers, pages, written, fresh = {}, set(), 0, 0
@@ -226,16 +226,16 @@ def write_pages(sections, out, root, args):
                     covers[release.id] = thumbs.shrink_uri(image, INDEX_COVER_WIDTH, INDEX_COVER_QUALITY) or image
             if done % 100 == 0:
                 print(f"  [pages] {done}/{len(queue)}")
-    print(f"  [pages] {len(pages)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(pages) - written} inchangee(s)), {fresh} pochette(s) extraite(s)")
+    print(f"  [pages] {len(pages)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s)), {fresh} pochette(s) extraite(s)")
 
     artists, _ = write_artist_pages(artists, entries, covers, pages, out, library_name)
 
     html = librarypage.build_index(library_name, sections, covers, pages, artists)
     if textfile.same(index, html):
-        print(f"  [sommaire] {index} inchange")
+        print(f"  [sommaire] {index} inchangé")
     else:
         textfile.write(index, html)
-        print(f"  [sommaire] {index} ecrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} pochette(s) integree(s))")
+        print(f"  [sommaire] {index} écrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} pochette(s) intégrée(s))")
     if base is not None:
         write_shell(out / player.SHELL_NAME, library_name)
     return written
@@ -249,7 +249,7 @@ def summarize(releases):
     tracks = [t for r in releases for t in r.tracks]
     report = Report(matched=sum(1 for t in tracks if t.info.get("mbid")), total=len(tracks), failures=sum(1 for t in tracks if t.error))
     artists = {layout.fold(r.artist) for r in releases}
-    print(f"  {len(releases)} album(s), {len(artists)} artiste(s), {len(tracks)} piste(s), {report.matched} etiquetee(s)" + (f", {report.failures} illisible(s)" if report.failures else ""))
+    print(f"  {len(releases)} album(s), {len(artists)} artiste(s), {len(tracks)} piste(s), {report.matched} étiquetée(s)" + (f", {report.failures} illisible(s)" if report.failures else ""))
     return report
 
 
@@ -261,10 +261,10 @@ def write_log(path, root, releases, args, report):
     other = [r for r in releases if r.unsupported]
     lines = [f"# Music/Recap.py - {Path(root).resolve()}",
              f"# {datetime.now():%Y-%m-%d %H:%M} - {cli.mode_label(args)}",
-             f"# {report.matched}/{report.total} piste(s) etiquetee(s) par MusicBrainz", ""]
+             f"# {report.matched}/{report.total} piste(s) étiquetée(s) par MusicBrainz", ""]
     if untagged:
-        lines.append(f"# --- {len(untagged)} album(s) pas (entierement) etiquete(s) : lance Metadata.py ---")
-        lines += [f"[NON ETIQUETE] {r.rel or r.folder.name} ({r.tagged}/{len(r.tracks)})" for r in untagged]
+        lines.append(f"# --- {len(untagged)} album(s) pas (entièrement) étiqueté(s) : lance Metadata.py ---")
+        lines += [f"[NON ÉTIQUETÉ] {r.rel or r.folder.name} ({r.tagged}/{len(r.tracks)})" for r in untagged]
         lines.append("")
     if gaps:
         lines.append(f"# --- {len(gaps)} album(s) auxquels il manque des pistes ---")
@@ -283,25 +283,25 @@ def write_log(path, root, releases, args, report):
     try:
         textfile.write(path, "\n".join(lines) + "\n")
     except OSError as e:
-        print(f"[log] {path.name} non ecrit : {e}")
+        print(f"[log] {path.name} non écrit : {e}")
         return
-    print(f"[log] {path.name} ecrit")
+    print(f"[log] {path.name} écrit")
 
 
 # ----------------------------------------------------------------------------
 # 4. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Fiche HTML d'une mediatheque musicale (albums .flac et .mp3 etiquetes).")
-    ap.add_argument("--dir", required=True, help="Mediatheque : un dossier par album, ranges ou non par artiste")
-    ap.add_argument("--out", help=f"Ou ecrire la fiche (defaut : {DATA_DIR} a la racine de --dir)")
-    ap.add_argument("--title", help=f"Titre de la fiche (defaut : celui de la fiche existante, sinon '{DEFAULT_TITLE}')")
-    ap.add_argument("--apply", action="store_true", help="Ecrit reellement la fiche (defaut : simulation)")
+    ap = argparse.ArgumentParser(description="Fiche HTML d'une médiathèque musicale (albums .flac et .mp3 étiquetés).")
+    ap.add_argument("--dir", required=True, help="Médiathèque : un dossier par album, rangés ou non par artiste")
+    ap.add_argument("--out", help=f"Où écrire la fiche (défaut : {DATA_DIR} à la racine de --dir)")
+    ap.add_argument("--title", help=f"Titre de la fiche (défaut : celui de la fiche existante, sinon '{DEFAULT_TITLE}')")
+    ap.add_argument("--apply", action="store_true", help="Écrit réellement la fiche (défaut : simulation)")
     ap.add_argument("--no-cache", action="store_true", help="Rouvre toutes les pistes, sans reprendre le catalogue, et redemande tous les artistes")
-    ap.add_argument("--no-artist-info", action="store_true", help="N'interroge ni MusicBrainz ni Wikipedia : les fiches d'artiste n'ont que ce qu'on savait deja")
-    ap.add_argument("--no-player", action="store_true", help="Les fiches d'album ne lisent pas les pistes (utile si elles sont copiees sans la musique)")
-    ap.add_argument("--cover-width", type=int, default=COVER_WIDTH, help=f"Largeur des pochettes des fiches en pixels (defaut : {COVER_WIDTH})")
-    ap.add_argument("--workers", type=int, default=8, help="Pistes lues en parallele (defaut : 8)")
+    ap.add_argument("--no-artist-info", action="store_true", help="N'interroge ni MusicBrainz ni Wikipédia : les fiches d'artiste n'ont que ce qu'on savait déjà")
+    ap.add_argument("--no-player", action="store_true", help="Les fiches d'album ne lisent pas les pistes (utile si elles sont copiées sans la musique)")
+    ap.add_argument("--cover-width", type=int, default=COVER_WIDTH, help=f"Largeur des pochettes des fiches en pixels (défaut : {COVER_WIDTH})")
+    ap.add_argument("--workers", type=int, default=8, help="Pistes lues en parallèle (défaut : 8)")
     args = ap.parse_args()
     if args.workers < 1 or args.cover_width < 1:
         ap.error("--workers et --cover-width attendent un entier positif")
@@ -313,16 +313,16 @@ def main():
     cli.setup_console()
     root = cli.check_dir(args.dir)
     out = Path(args.out) if args.out else root / DATA_DIR
-    print(f"=== {cli.mode_label(args, 'rien ne sera ecrit que le journal ; ajoute --apply pour ecrire la fiche')} ===   sortie : {out}\n")
+    print(f"=== {cli.mode_label(args, 'rien ne sera écrit que le journal ; ajoute --apply pour écrire la fiche')} ===   sortie : {out}\n")
 
     releases = library.scan(root)
     tracks = [t for r in releases for t in r.tracks]
     if not tracks:
-        print(f"Aucun .flac ni .mp3 trouve dans : {root}")
+        print(f"Aucun .flac ni .mp3 trouvé dans : {root}")
         return 0
 
     todo = tracks if args.no_cache else library.apply_catalog(tracks, library.load_catalog(out / CATALOG_NAME))
-    print(f"{len(tracks)} piste(s), {len(tracks) - len(todo)} reprise(s) du catalogue, {len(todo)} a lire")
+    print(f"{len(tracks)} piste(s), {len(tracks) - len(todo)} reprise(s) du catalogue, {len(todo)} à lire")
     read_infos(todo, args.workers)
 
     print()
@@ -337,16 +337,16 @@ def main():
             textfile.write(out / CATALOG_NAME, catalog)
         write_pages(sections, out, root, args)
     else:
-        print(f"  [fiche] ecrirait {out / INDEX_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
+        print(f"  [fiche] écrirait {out / INDEX_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
         asked = pending(library.artists(releases), artistinfo.load(out / ARTISTS_NAME), args)
         if asked:
-            print(f"  [artistes] interrogerait MusicBrainz et Wikipedia sur {len(asked)} artiste(s)")
+            print(f"  [artistes] interrogerait MusicBrainz et Wikipédia sur {len(asked)} artiste(s)")
     if out.is_dir():
         write_log(out / LOG_NAME, root, releases, args, report)
 
-    print(f"\nTOTAL : {report.matched}/{report.total} piste(s) etiquetee(s) par MusicBrainz.")
+    print(f"\nTOTAL : {report.matched}/{report.total} piste(s) étiquetée(s) par MusicBrainz.")
     if report.failures:
-        print(f"\nA CORRIGER : {report.failures} fichier(s) illisible(s) (voir {LOG_NAME}).")
+        print(f"\nÀ CORRIGER : {report.failures} fichier(s) illisible(s) (voir {LOG_NAME}).")
     return report.exit_code
 
 

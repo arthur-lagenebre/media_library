@@ -92,7 +92,7 @@ class TestTraitementDUnAlbum(AlbumTestCase):
         avant = [f.read_bytes() for f in sorted(self.dossier.iterdir())]
         report, sortie_texte = self.traiter(FauxMusicBrainz(), apply=False)
         self.assertEqual(avant, [f.read_bytes() for f in sorted(self.dossier.iterdir())])
-        self.assertIn("a ecrire :", sortie_texte)
+        self.assertIn("à écrire :", sortie_texte)
         self.assertEqual((report.matched, report.failures), (1, 0))
 
     def test_application_fusionne_avec_l_existant(self):
@@ -110,7 +110,7 @@ class TestTraitementDUnAlbum(AlbumTestCase):
         self.traiter(mb)
         avant = [f.read_bytes() for f in sorted(self.dossier.iterdir())]
         _, sortie_texte = self.traiter(mb)
-        self.assertEqual(sortie_texte.count("deja conforme"), 3)
+        self.assertEqual(sortie_texte.count("déjà conforme"), 3)
         self.assertEqual(avant, [f.read_bytes() for f in sorted(self.dossier.iterdir())])
 
     def test_verification_compte_les_fichiers(self):
@@ -182,7 +182,7 @@ class TestTraitementDUnAlbum(AlbumTestCase):
         avant = [f.read_bytes() for f in sorted(self.dossier.iterdir())]
         report, sortie_texte = self.traiter(FauxMusicBrainz())
         self.assertEqual(report.skipped, 1)
-        self.assertIn("[NON TRAITE]", sortie_texte)
+        self.assertIn("[NON TRAITÉ]", sortie_texte)
         self.assertEqual(avant, [f.read_bytes() for f in sorted(self.dossier.iterdir())])
 
 
@@ -241,7 +241,7 @@ class TestResolution(AlbumTestCase):
         journal = music.Journal()
         with mock.patch.object(music.cli, "can_ask", lambda: False), redirect_stdout(io.StringIO()):
             report = music.resolve_pending([found], journal, arguments(), FauxMusicBrainz())
-        self.assertEqual((report.pending, journal.entries[0][2]), (1, "[A CONFIRMER]"))
+        self.assertEqual((report.pending, journal.entries[0][2]), (1, "[À CONFIRMER]"))
 
 
 class Mp3AlbumTestCase(AlbumTestCase):
@@ -287,7 +287,7 @@ class TestAlbumMp3(Mp3AlbumTestCase):
         self.traiter(mb)
         avant = [f.read_bytes() for f in sorted(self.dossier.iterdir())]
         _, sortie_texte = self.traiter(mb)
-        self.assertEqual(sortie_texte.count("deja conforme"), 3)
+        self.assertEqual(sortie_texte.count("déjà conforme"), 3)
         self.assertEqual(avant, [f.read_bytes() for f in sorted(self.dossier.iterdir())])
 
     def test_verification_compte_les_fichiers(self):

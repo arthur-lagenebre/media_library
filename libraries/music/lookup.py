@@ -22,6 +22,7 @@ class Found:
     metas: dict                                   # {chemin: flac.Metadata ou mp3.Metadata}
     hints: albums.Hints = field(default_factory=albums.Hints)
     choice: albums.Choice | None = None           # quand une question reste à poser
+    artist_name: str = ""                         # l'artiste imposé (--artist, artist.txt) à la place de celui de MusicBrainz
 
 
 def read_album(album):
@@ -66,7 +67,7 @@ def resolve(found, mb, forced=None, country="FR", ask=True, with_genres=True):
     folder, tags = albums.folder_hints(album.folder), albums.tag_hints(list(metas.values()))
     found.hints = albums.Hints(tags.artist or folder.artist, tags.title or folder.title, folder.year or tags.year)
 
-    known = [(forced, "id force par --mbid"), (folder.pinned, "id epingle dans le nom"), (tags.tagged, "id lu dans les fichiers")]
+    known = [(forced, "id forcé par --mbid"), (folder.pinned, "id épinglé dans le nom"), (tags.tagged, "id lu dans les fichiers")]
     mbid, origin = next(((i, o) for i, o in known if i), (None, ""))
     if mbid:
         release, group = fetch_release(mbid, mb, with_genres)
@@ -82,11 +83,11 @@ def resolve(found, mb, forced=None, country="FR", ask=True, with_genres=True):
             print(f"  recherche : '{title}' / '{artist}'" + (f" ({hints.year})" if hints.year else "") + f" -> {albums.describe(choice.release)}")
             break
     if choice.release is None:
-        print(f"  [NON ASSOCIE] {choice.reason}")
+        print(f"  [NON ASSOCIÉ] {choice.reason}")
         return None, None
     if choice.rivals and ask:
         found.choice = choice
-        print(f"  [A CONFIRMER] {len(choice.rivals) + 1} albums de ce titre tiennent -> question en fin de passage")
+        print(f"  [À CONFIRMER] {len(choice.rivals) + 1} albums de ce titre tiennent -> question en fin de passage")
         return None, None
     return fetch_release(choice.release["id"], mb, with_genres)
 
@@ -96,28 +97,28 @@ def confirm(pending):
 
     Comme pour les films, les questions attendent la fin : le script déroule d'abord tout ce qu'il sait faire seul, et n'arbitre qu'ensuite. C'est un générateur, pour que l'album confirmé soit traité avant que la question suivante ne s'affiche.
     """
-    print(f"=== {len(pending)} album(s) a confirmer ===")
+    print(f"=== {len(pending)} album(s) à confirmer ===")
     if not cli.can_ask():
-        print("  Terminal non interactif : ces albums sont laisses de cote.")
-        print("  Relance dans un terminal, epingle l'id dans le nom du dossier, ou passe")
-        print("  --no-ask pour accepter le premier resultat sans demander.\n")
+        print("  Terminal non interactif : ces albums sont laissés de côté.")
+        print("  Relance dans un terminal, épingle l'id dans le nom du dossier, ou passe")
+        print("  --no-ask pour accepter le premier résultat sans demander.\n")
         for found in pending:
-            print(f"  [A CONFIRMER] {found.album.display} -> {albums.describe(found.choice.release)}")
+            print(f"  [À CONFIRMER] {found.album.display} -> {albums.describe(found.choice.release)}")
             yield found, None
         return
 
-    print("  Entree = garder le 1er, i = laisser de cote, q = arreter les questions.\n")
+    print("  Entrée = garder le 1er, i = laisser de côté, q = arrêter les questions.\n")
     stopped = False
     for number, found in enumerate(pending, 1):
         candidates = [found.choice.release] + found.choice.rivals
         print(f"[{number}/{len(pending)}] {found.album.display}   (recherche : '{found.hints.title}')")
         for rank, candidate in enumerate(candidates, 1):
-            print(f"      {rank}) {albums.describe(candidate)}" + ("   (defaut)" if rank == 1 else ""))
+            print(f"      {rank}) {albums.describe(candidate)}" + ("   (défaut)" if rank == 1 else ""))
         answer = cli.ASK_SKIP if stopped else cli.ask_choice(len(candidates))
         if answer == cli.ASK_STOP:
             stopped, answer = True, cli.ASK_SKIP
         if answer == cli.ASK_SKIP:
-            print("      [NON TRAITE] album non confirme\n")
+            print("      [NON TRAITÉ] album non confirmé\n")
             yield found, None
             continue
         chosen = candidates[answer]

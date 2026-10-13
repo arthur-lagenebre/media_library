@@ -70,18 +70,18 @@ def fetch(needed, cached, size, tmdb, label="image", quiet=False):
     todo = sorted((k, p) for k, p in needed.items() if k not in images)
     if not todo:
         if images and not quiet:
-            print(f"  [recap] {len(images)} {label}(s) reprise(s) de la fiche existante")
+            print(f"  [récap] {len(images)} {label}(s) reprise(s) de la fiche existante")
         return images
 
     if not quiet:
-        print(f"  [recap] {len(todo)} {label}(s) a telecharger" + (f", {len(images)} reprise(s) de la fiche existante" if images else ""))
+        print(f"  [récap] {len(todo)} {label}(s) à télécharger" + (f", {len(images)} reprise(s) de la fiche existante" if images else ""))
 
     def grab(item):
         key, path = item
         try:
             raw = tmdb.image(path, size)
         except TmdbError as e:
-            print(f"      {label} ignoree ({path}) : {e}")
+            print(f"      {label} ignorée ({path}) : {e}")
             return key, None
         return key, f"data:{MIME};base64," + base64.b64encode(raw).decode("ascii")
 
