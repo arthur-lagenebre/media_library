@@ -405,6 +405,36 @@ def names_artist(credit, name):
     return False
 
 
+FEAT_JOIN_RE = re.compile(r"\b(?:feat|ft|featuring)\b", re.IGNORECASE)
+
+
+def guest_start(credits, artist):
+    """Indice du premier invité quand l'artiste imposé est crédité "feat." d'autres, sinon None."""
+    if artist:
+        for i, credit in enumerate(credits[:-1]):
+            if names_artist(credit, artist) and FEAT_JOIN_RE.search(credit.get("joinphrase") or ""):
+                return i + 1
+    return None
+
+
+def guest_ids(credits, artist):
+    """Les identifiants des invités que `artist` porte en "feat." sur ce crédit."""
+    start = guest_start(credits, artist)
+    return {(c.get("artist") or {}).get("id") for c in credits[start:]} - {None} if start else set()
+
+
+def without_guests(credits, artist, hidden):
+    """Les crédits sans les invités de `hidden`, quand l'artiste imposé est crédité "feat." d'eux.
+
+    MusicBrainz peut mettre tout un disque en "Ultra Vomit feat. A, B, C" : l'artiste imposé est là pour que ce soit "Ultra Vomit", comme les autres albums. Les invités d'une seule piste, eux, restent.
+    """
+    start = guest_start(credits, artist)
+    if not start:
+        return credits
+    kept = credits[:start] + [c for c in credits[start:] if (c.get("artist") or {}).get("id") not in hidden]
+    return kept[:-1] + [dict(kept[-1], joinphrase="")]
+
+
 def credit_name(credits, sort=False, artist=""):
     """'Daft Punk', 'Kavinsky feat. Havoc' : les noms crédités, liaisons comprises.
 
@@ -436,6 +466,8 @@ def target_tags(release, group, medium, track, with_genres=True, artist=""):
     recording = track.get("recording") or {}
     album_credit = release.get("artist-credit") or []
     track_credit = track.get("artist-credit") or recording.get("artist-credit") or album_credit
+    hidden = guest_ids(album_credit, artist)
+    album_credit, track_credit = without_guests(album_credit, artist, hidden), without_guests(track_credit, artist, hidden)
     media = release.get("media") or []
     labels = release.get("label-info") or []
     first = rg.get("first-release-date") or ""

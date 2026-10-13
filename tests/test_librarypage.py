@@ -274,6 +274,12 @@ class TestFiche(PageTestCase):
         html = self.fiche(self.albums()[0])
         self.assertEqual(re.findall(r"<div class='by'>(.*?)</div>", html), ["Kavinsky"])
 
+    def test_artiste_de_piste_masque_quand_seul_l_invite_change(self):
+        piste(self.racine / "A", "01.flac", number=1, artist="Kavinsky feat. Havoc", albumartist="Kavinsky", title="Protovision")
+        piste(self.racine / "A", "02.flac", number=2, artist="Kavinsky", albumartist="Kavinsky", title="Autre")
+        html = self.fiche(self.albums()[0])
+        self.assertEqual(re.findall(r"<div class='by'>(.*?)</div>", html), [])
+
     def test_sans_racine_la_fiche_ne_lit_rien(self):
         html = self.fiche(self.un())
         for absent in ("<audio", "class='play'", "class='p'", "#bar", "id='all'"):
