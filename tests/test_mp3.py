@@ -191,11 +191,11 @@ class TestLecture(Mp3TestCase):
             mp3.read(self.poser(b"fLaC" + bytes(2000)))
 
     def test_etiquette_tronquee(self):
-        with self.assertRaisesRegex(mp3.Mp3Error, "tronquee"):
+        with self.assertRaisesRegex(mp3.Mp3Error, "tronquée"):
             mp3.read(self.poser(fichier([trame("TIT2", texte(["x"]))])[:20]))
 
     def test_trame_invalide(self):
-        with self.assertRaisesRegex(mp3.Mp3Error, "abimee"):
+        with self.assertRaisesRegex(mp3.Mp3Error, "abîmée"):
             mp3.read(self.poser(fichier([b"t\xe9te" + bytes(20)])))
 
     def test_chemin_absent(self):

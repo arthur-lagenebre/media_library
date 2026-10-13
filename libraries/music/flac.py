@@ -78,7 +78,7 @@ def _unpack(fmt, body, offset):
     try:
         return struct.unpack_from(fmt, body, offset)
     except struct.error as e:
-        raise FlacError("bloc de metadonnees tronque") from e
+        raise FlacError("bloc de métadonnées tronqué") from e
 
 
 def parse_comments(body):
@@ -93,7 +93,7 @@ def parse_comments(body):
         (length,) = _unpack("<I", body, position)
         position += 4
         if position + length > len(body):
-            raise FlacError("commentaire Vorbis deborde de son bloc")
+            raise FlacError("commentaire Vorbis déborde de son bloc")
         line = body[position:position + length].decode("utf-8", "replace")
         position += length
         name, sep, value = line.partition("=")
@@ -113,7 +113,7 @@ def parse_picture(body):
     width, height, depth, colors, length = _unpack(">IIIII", body, position)
     position += 20
     if position + length > len(body):
-        raise FlacError("image deborde de son bloc")
+        raise FlacError("image déborde de son bloc")
     return Picture(kind, mime, body[position:position + length], description, width, height, depth, colors)
 
 
@@ -132,13 +132,13 @@ def read(path):
         with open(path, "rb") as f:
             head = f.read(4)
             if head != MAGIC:
-                cause = " (une etiquette ID3 le precede)" if head[:3] == b"ID3" else ""
+                cause = " (une étiquette ID3 le précède)" if head[:3] == b"ID3" else ""
                 raise FlacError("ce n'est pas un fichier FLAC" + cause)
             blocks, offset, padding = [], 4, 0
             while True:
                 header = f.read(4)
                 if len(header) < 4:
-                    raise FlacError("en-tete de bloc tronque")
+                    raise FlacError("en-tête de bloc tronqué")
                 last, kind, size = header[0] & 0x80, header[0] & 0x7F, int.from_bytes(header[1:], "big")
                 offset += 4 + size
                 if kind == PADDING:
@@ -147,7 +147,7 @@ def read(path):
                 else:
                     body = f.read(size)
                     if len(body) < size:
-                        raise FlacError("bloc de metadonnees tronque")
+                        raise FlacError("bloc de métadonnées tronqué")
                     blocks.append((kind, body))
                 if last:
                     break
@@ -155,7 +155,7 @@ def read(path):
         raise FlacError(f"lecture impossible : {e.strerror or e}") from e
 
     if not blocks or blocks[0][0] != STREAMINFO:
-        raise FlacError("STREAMINFO absent en tete du fichier")
+        raise FlacError("STREAMINFO absent en tête du fichier")
     meta = Metadata(blocks, offset, padding=padding)
     meta.sample_rate, meta.total_samples = parse_streaminfo(blocks[0][1])
     for kind, body in blocks:
@@ -185,7 +185,7 @@ def build_picture(picture):
 
 def _block(kind, body, last):
     if len(body) > MAX_BLOCK:
-        raise FlacError(f"bloc de {len(body)} octets : un bloc FLAC ne depasse pas 16 Mo")
+        raise FlacError(f"bloc de {len(body)} octets : un bloc FLAC ne dépasse pas 16 Mo")
     return bytes([kind | (0x80 if last else 0)]) + len(body).to_bytes(3, "big") + body
 
 
@@ -213,7 +213,7 @@ def write(path, meta, comments, pictures):
             with open(path, "r+b") as f:
                 f.write(header)
         except OSError as e:
-            raise FlacError(f"ecriture impossible : {e.strerror or e}") from e
+            raise FlacError(f"écriture impossible : {e.strerror or e}") from e
         return "sur place"
 
     header = render(meta, comments, pictures, DEFAULT_PADDING)
@@ -229,11 +229,11 @@ def write(path, meta, comments, pictures):
             os.fsync(target.fileno())
         expected = len(header) + size - meta.audio_offset
         if temporary.stat().st_size != expected:
-            raise FlacError("copie incomplete : l'original est garde")
+            raise FlacError("copie incomplète : l'original est gardé")
         os.replace(temporary, path)
         temporary = None
     except OSError as e:
-        raise FlacError(f"ecriture impossible : {e.strerror or e}") from e
+        raise FlacError(f"écriture impossible : {e.strerror or e}") from e
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

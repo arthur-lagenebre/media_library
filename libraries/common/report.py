@@ -32,9 +32,9 @@ class Report:
         if self.diffs:
             restes.append(f"{self.diffs} fichier(s) non conforme(s)")
         if self.skipped:
-            restes.append(f"{self.skipped} non traite(s) pour pistes ambigues")
+            restes.append(f"{self.skipped} non traité(s) pour pistes ambiguës")
         if self.pending:
-            restes.append(f"{self.pending} association(s) a confirmer")
+            restes.append(f"{self.pending} association(s) à confirmer")
         if self.failures:
-            restes.append(f"{self.failures} ecriture(s) en echec")
+            restes.append(f"{self.failures} écriture(s) en échec")
         return " ; ".join(restes)

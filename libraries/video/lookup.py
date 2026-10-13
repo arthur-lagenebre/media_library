@@ -134,10 +134,10 @@ def pick_result(results, query, key="title", date_key="release_date"):
     notes = []
     jumeau = next((m for m in results if m is not best and _norm(m.get(key)) == _norm(best.get(key))), None)
     if jumeau is not None:
-        notes.append(f"titre partage avec {describe(jumeau, key, date_key)} "
-                     "-> verifie l'annee, ou force --tmdb-id")
+        notes.append(f"titre partagé avec {describe(jumeau, key, date_key)} "
+                     "-> vérifie l'année, ou force --tmdb-id")
     if _ratio(query, best.get(key)) < MIN_SIMILARITE:
-        notes.append("titre trouve eloigne de la recherche -> a verifier")
+        notes.append("titre trouvé éloigné de la recherche -> à vérifier")
     return best, notes
 
 
@@ -208,9 +208,9 @@ def find_movie(tmdb, rawname, contexts=(), tag_id=None):
         try:
             film = tmdb.movie(pinned)
         except TmdbError as e:
-            print(f"  id epingle {pinned} inutilisable : {e}")
+            print(f"  id épinglé {pinned} inutilisable : {e}")
             return None, order
-        print(f"  id epingle dans le nom : {describe(film)}")
+        print(f"  id épinglé dans le nom : {describe(film)}")
         return film, order
     if tag_id:
         try:
@@ -224,10 +224,10 @@ def find_movie(tmdb, rawname, contexts=(), tag_id=None):
     try:
         results, query = search_with_context(tmdb, title, year, contexts)
     except TmdbError as e:
-        print(f"  echec recherche TMDB : {e}")
+        print(f"  échec recherche TMDB : {e}")
         return None, order
     if not results:
-        print(f"  [NON ASSOCIE] recherche '{title}'" + (f" ({year})" if year else "") + " -> aucun resultat")
+        print(f"  [NON ASSOCIÉ] recherche '{title}'" + (f" ({year})" if year else "") + " -> aucun résultat")
         return None, order
 
     best, notes = pick_result(results, query)
@@ -264,7 +264,7 @@ def resolve_show_id(tmdb, directory, forced=None):
         return forced
     pinned = pinned_show_id(directory)
     if pinned:
-        print(f"id epingle dans le nom du dossier : {pinned}")
+        print(f"id épinglé dans le nom du dossier : {pinned}")
         return pinned
     title, year = series_query(directory)
     if not title:
@@ -275,10 +275,10 @@ def resolve_show_id(tmdb, directory, forced=None):
         if not results and year:
             results = tmdb.search_tv(title, None)
     except TmdbError as e:
-        print(f"Echec de la recherche TMDB : {e}")
+        print(f"Échec de la recherche TMDB : {e}")
         return None
     if not results:
-        print(f"Aucune serie TMDB pour '{title}'" + (f" ({year})" if year else "") + ".")
+        print(f"Aucune série TMDB pour '{title}'" + (f" ({year})" if year else "") + ".")
         return None
     best, notes = pick_result(results, title, key="name", date_key="first_air_date")
     print(f"recherche : '{title}'" + (f" ({year})" if year else "") + f" -> {describe(best, 'name', 'first_air_date')}")

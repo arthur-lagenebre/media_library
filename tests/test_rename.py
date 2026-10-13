@@ -86,7 +86,7 @@ class TestRenommage(RenameTestCase):
         (tally, fichiers) = self.lancer(seuil=0.95)
         self.assertEqual(fichiers, ["bande annonce.mkv"])
         self.assertEqual((tally.named, tally.total), (0, 1))
-        self.assertIn("[NON ASSOCIE]", self.sortie)
+        self.assertIn("[NON ASSOCIÉ]", self.sortie)
 
     def test_saison_sans_donnees_tmdb(self):
         self.creer("S01E01.mkv")

@@ -107,7 +107,7 @@ class MusicBrainz:
         try:
             data = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise MusicBrainzError(f"reponse MusicBrainz illisible : {e}") from e
+            raise MusicBrainzError(f"réponse MusicBrainz illisible : {e}") from e
         if self.cache is not None:
             self.cache.put(endpoint, data)
         return data
@@ -122,7 +122,7 @@ class MusicBrainz:
         try:
             data = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise MusicBrainzError(f"reponse illisible : {e}") from e
+            raise MusicBrainzError(f"réponse illisible : {e}") from e
         if self.cache is not None:
             self.cache.put(url, data)
         return data
@@ -159,7 +159,7 @@ class MusicBrainz:
         body, headers = self._request(url, "image/*", throttle=False)
         announced = headers.get("Content-Length")
         if announced and str(announced).isdigit() and len(body) != int(announced):
-            raise MusicBrainzError(f"telechargement incomplet ({len(body)}/{announced} octets)")
+            raise MusicBrainzError(f"téléchargement incomplet ({len(body)}/{announced} octets)")
         return body
 
     def cover(self, release_id, release_group_id=None, size="1200"):

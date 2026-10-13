@@ -66,7 +66,7 @@ class Tmdb:
                     return r.read(), r.headers
             except HTTPError as e:            # sous-classe d'URLError : à rattraper avant
                 if e.code in (401, 403):
-                    raise TmdbAuthError(f"cle TMDB refusee par l'API (HTTP {e.code}). Verifie la ligne TMDB_KEY=... de ton fichier .env.") from e
+                    raise TmdbAuthError(f"clé TMDB refusée par l'API (HTTP {e.code}). Vérifie la ligne TMDB_KEY=... de ton fichier .env.") from e
                 if e.code == 404:
                     raise TmdbError("introuvable sur TMDB (HTTP 404)") from e
                 if e.code != 429 and e.code < 500:
@@ -101,7 +101,7 @@ class Tmdb:
         try:
             data = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise TmdbError(f"reponse TMDB illisible : {e}") from e
+            raise TmdbError(f"réponse TMDB illisible : {e}") from e
         if self.cache is not None:
             self.cache.put(cle, data)
         return data
@@ -173,7 +173,7 @@ class Tmdb:
         body, headers = self._request(f"{IMG_BASE}{size}{image_path}", {"User-Agent": self.user_agent})
         announced = headers.get("Content-Length")
         if announced and str(announced).isdigit() and len(body) != int(announced):
-            raise TmdbError(f"telechargement incomplet ({len(body)}/{announced} octets)")
+            raise TmdbError(f"téléchargement incomplet ({len(body)}/{announced} octets)")
         return body
 
     def save_image(self, image_path, size, dest):

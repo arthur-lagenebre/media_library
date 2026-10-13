@@ -138,7 +138,7 @@ def process_file(path, lecture, movie, args, opts, tmdb):
         for lbl, det in diffs:
             print(f"      [DIFF] {lbl} : actuel = {det!r}")
         if not diffs:
-            print("      [OK] deja conforme")
+            print("      [OK] déjà conforme")
         return (1 if diffs else 0), 0
 
     if opts.date and target.date:
@@ -150,10 +150,10 @@ def process_file(path, lecture, movie, args, opts, tmdb):
     if not args.apply:
         return 0, 0
     if args.skip_done and mkv.is_conform(info, target, opts, tags):
-        print("      [SKIP] deja a jour")
+        print("      [SKIP] déjà à jour")
         return 0, 0
     code, msg = mkv.write(path, info, target, opts, tmdb)
-    print(f"      [{'OK' if code == 0 else 'ECHEC'}]" + (f" {msg}" if code else ""))
+    print(f"      [{'OK' if code == 0 else 'ÉCHEC'}]" + (f" {msg}" if code else ""))
     return 0, (1 if code else 0)
 
 
@@ -165,7 +165,7 @@ def report_conflicts(entry, lectures, opts):
     soucis = [(path, mkv.track_conflicts(lectures[path].info, opts)) for path in entry.files]
     if not any(raisons for _, raisons in soucis):
         return False
-    print("      [NON TRAITE] rien n'a ete modifie ; ces pistes demandent une decision :")
+    print("      [NON TRAITÉ] rien n'a été modifié ; ces pistes demandent une décision :")
     for path, raisons in soucis:
         for raison in raisons:
             prefixe = f"{path.name} : " if len(entry.files) > 1 else ""
@@ -262,7 +262,7 @@ def write_log(root_dir, library, args, report):
     vides = [(nom, st) for nom, mid, st in library.journal if not mid]
     largeur = min(max((len(nom) for nom, _, _ in library.journal), default=0), 70)
 
-    lignes = [f"# Metadata.py - {Path(root_dir).resolve()}", f"# {datetime.now():%Y-%m-%d %H:%M} - {cli.mode_label(args)}", f"# {report.matched}/{report.total} film(s) associe(s)", ""]
+    lignes = [f"# Metadata.py - {Path(root_dir).resolve()}", f"# {datetime.now():%Y-%m-%d %H:%M} - {cli.mode_label(args)}", f"# {report.matched}/{report.total} film(s) associé(s)", ""]
     for nom, movie_id, statut in trouves:
         lignes.append(f"{nom:<{largeur}}  {movie_url(movie_id)}" + (f"  {statut}" if statut else ""))
     if vides:
@@ -271,14 +271,14 @@ def write_log(root_dir, library, args, report):
 
     text = "\n".join(lignes) + "\n"
     if textfile.same(out, text, skip_lines=2):
-        print(f"[log] {out.name} inchange")
+        print(f"[log] {out.name} inchangé")
         return
     try:
         textfile.write(out, text)
     except OSError as e:
-        print(f"[log] {out.name} non ecrit : {e}")
+        print(f"[log] {out.name} non écrit : {e}")
         return
-    print(f"[log] {out.name} ecrit ({len(trouves)} lien(s), {len(vides)} sans lien)")
+    print(f"[log] {out.name} écrit ({len(trouves)} lien(s), {len(vides)} sans lien)")
 
 
 # Une durée qui sort de cette fourchette ne s'explique ni par une version longue (Kingdom of Heaven : 144 -> 189 min, x1.31) ni par l'accélération PAL (-4 %) : c'est un autre film. Les cinq erreurs relevées sur une vraie médiathèque en sortaient toutes - Microcosmos pris pour un court métrage de 3 min, Catwoman pour un DC Showcase de 15 min, Destruction finale (95 min) pour un film coréen de 128.
@@ -308,7 +308,7 @@ def identity_doubts(entry, movie, lectures):
     doubts = []
     length, runtime = file_minutes(entry, lectures), movie.get("runtime")
     if length and runtime and abs(length - runtime) >= LENGTH_GAP and not (LENGTH_MIN <= length / runtime <= LENGTH_MAX):
-        doubts.append(f"duree {length:.0f} min, la fiche TMDB en annonce {runtime}")
+        doubts.append(f"durée {length:.0f} min, la fiche TMDB en annonce {runtime}")
     votes = movie.get("vote_count")
     if votes is not None and votes < MIN_VOTES:
         doubts.append(f"fiche TMDB presque inconnue ({votes} vote(s))")
@@ -320,23 +320,23 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
     jumeau = library.seen.setdefault(movie.get("id"), entry.display)
     if jumeau != entry.display:
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
-        print(f"  [DOUBLON] meme film que '{jumeau}' -> les deux seront traites")
+        print(f"  [DOUBLON] même film que '{jumeau}' -> les deux seront traités")
     library.resolved.append(movie)
     root = getattr(args, "dir", "")
     library.paths.setdefault(movie.get("id"), []).extend(layout.relative_path(f, root) for f in entry.files)
     # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
     doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
-        print(f"  /!\\ {' ; '.join(doubts)} -> verifie l'association, ou epingle l'id dans le nom")
+        print(f"  /!\\ {' ; '.join(doubts)} -> vérifie l'association, ou épingle l'id dans le nom")
         library.doubts.append((entry.display, movie, doubts))
     if args.no_tag:
-        print("      film non modifie (--no-tag)")
+        print("      film non modifié (--no-tag)")
         report = Report(matched=1, total=1)
     else:
         report = process_movie(entry, movie, library.lectures, args, opts, tmdb)
     if args.artwork and entry.owns_folder:
         write_artwork(entry, movie, args, tmdb)
-    status = "[NON TRAITE]" if report.skipped else ("[A VERIFIER] " + " ; ".join(doubts) if doubts else "")
+    status = "[NON TRAITÉ]" if report.skipped else ("[À VÉRIFIER] " + " ; ".join(doubts) if doubts else "")
     library.note(entry.display, movie.get("id"), status)
     return report
 
@@ -346,31 +346,31 @@ def resolve_pending(attente, library, args, opts, tmdb):
 
     Les questions attendent la fin pour ne pas hacher le passage : le script déroule d'abord tout ce qu'il sait faire seul, et n'arbitre qu'ensuite.
     """
-    print(f"=== {len(attente)} association(s) a confirmer ===")
+    print(f"=== {len(attente)} association(s) à confirmer ===")
     if not cli.can_ask():
-        print("  Terminal non interactif : ces films sont laisses de cote.")
-        print("  Relance dans un terminal, epingle l'id dans le nom, ou passe")
-        print("  --no-ask pour accepter le premier resultat sans demander.\n")
+        print("  Terminal non interactif : ces films sont laissés de côté.")
+        print("  Relance dans un terminal, épingle l'id dans le nom, ou passe")
+        print("  --no-ask pour accepter le premier résultat sans demander.\n")
         for entry, doute in attente:
-            print(f"  [A CONFIRMER] {entry.display} -> {lookup.describe(doute.candidates[0])}")
-            library.note(entry.display, None, "[A CONFIRMER]")
+            print(f"  [À CONFIRMER] {entry.display} -> {lookup.describe(doute.candidates[0])}")
+            library.note(entry.display, None, "[À CONFIRMER]")
         return Report(matched=len(attente), total=len(attente), pending=len(attente))
 
-    print("  Entree = garder le 1er, i = laisser de cote, q = arreter les questions.\n")
+    print("  Entrée = garder le 1er, i = laisser de côté, q = arrêter les questions.\n")
     report, arrete = Report(), False
     for numero, (entry, doute) in enumerate(attente, 1):
         print(f"[{numero}/{len(attente)}] {entry.display}   (recherche : '{doute.query}')")
         for note in doute.notes:
             print(f"      /!\\ {note}")
         for rang, candidat in enumerate(doute.candidates, 1):
-            print(f"      {rang}) {lookup.describe(candidat)}" + ("   (defaut)" if rang == 1 else ""))
+            print(f"      {rang}) {lookup.describe(candidat)}" + ("   (défaut)" if rang == 1 else ""))
         choix = cli.ASK_SKIP if arrete else cli.ask_choice(len(doute.candidates))
         if choix == cli.ASK_STOP:
             arrete, choix = True, cli.ASK_SKIP
         if choix == cli.ASK_SKIP:
-            print("      [NON TRAITE] association non confirmee\n")
+            print("      [NON TRAITÉ] association non confirmée\n")
             report += Report(matched=1, total=1, pending=1)
-            library.note(entry.display, None, "[A CONFIRMER]")
+            library.note(entry.display, None, "[À CONFIRMER]")
             continue
         candidat = doute.candidates[choix]
         movie = movie_details(candidat["id"], doute.order, args, tmdb)
@@ -390,7 +390,7 @@ def movie_details(movie_id, order, args, tmdb):
     try:
         movie = tmdb.movie(movie_id)
     except TmdbError as e:
-        print(f"  echec details TMDB : {e}\n")
+        print(f"  échec détails TMDB : {e}\n")
         return None
     movie["_order"] = order
 
@@ -511,7 +511,7 @@ def resolve_movie(rawname, args, tmdb, single, contexts=(), tag_id=None, saga=No
     if pinned:
         movie = movie_details(pinned, order, args, tmdb)
         if movie:
-            print(f"  id epingle dans le nom : {lookup.describe(movie)}")
+            print(f"  id épinglé dans le nom : {lookup.describe(movie)}")
         return movie, None
     if tag_id:
         # Le nom passe avant : c'est le seul moyen de corriger un identifiant qu'un passage précédent aurait inscrit de travers.
@@ -522,16 +522,16 @@ def resolve_movie(rawname, args, tmdb, single, contexts=(), tag_id=None, saga=No
     if saga is not None:
         movie = movie_details(saga["id"], order, args, tmdb)
         if movie:
-            print(f"  place par sa saga : {lookup.describe(saga)}")
+            print(f"  placé par sa saga : {lookup.describe(saga)}")
         return movie, None
 
     try:
         results, query = lookup.search_with_context(tmdb, title, year, contexts)
     except TmdbError as e:
-        print(f"  echec recherche TMDB : {e}\n")
+        print(f"  échec recherche TMDB : {e}\n")
         return None, None
     if not results:
-        print(f"  [NON ASSOCIE] recherche '{title}'" + (f" ({year})" if year else "") + " -> aucun resultat\n")
+        print(f"  [NON ASSOCIÉ] recherche '{title}'" + (f" ({year})" if year else "") + " -> aucun résultat\n")
         return None, None
     best, notes = lookup.pick_result(results, query)
     print(f"  recherche : '{query}'" + (f" ({year})" if year else "") + (f" [ordre {order}]" if order else "") + f" -> {lookup.describe(best)}")
@@ -579,7 +579,7 @@ def fetch_collections(movies, tmdb):
         try:
             sagas[ident] = tmdb.collection(ident)
         except TmdbError as e:
-            print(f"  [recap] saga '{info.get('name')}' ignoree : {e}")
+            print(f"  [récap] saga '{info.get('name')}' ignorée : {e}")
     return sagas
 
 
@@ -794,7 +794,7 @@ def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
     try:
         folder.mkdir(exist_ok=True)
     except OSError as e:
-        print(f"  [fiches] dossier {folder} non cree : {e} -> pas de fiche par film")
+        print(f"  [fiches] dossier {folder} non créé : {e} -> pas de fiche par film")
         return set()
     profile_size = getattr(args, "profile_size", filmpage.PROFILE_SIZE)
     back = f"../{out.name}"
@@ -812,10 +812,10 @@ def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
                 textfile.write(page, html)
                 written += 1
         except OSError as e:
-            print(f"  [fiches] {page.name} non ecrite : {e}")
+            print(f"  [fiches] {page.name} non écrite : {e}")
             continue
         pages.add(movie_id)
-    print(f"  [fiches] {len(pages)} fiche(s) dans {folder.name}/ ({written} ecrite(s), {len(pages) - written} inchangee(s))")
+    print(f"  [fiches] {len(pages)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s))")
     return pages
 
 
@@ -826,7 +826,7 @@ def write_recap(root_dir, movies, args, tmdb, paths=None):
     apply = args.apply and not args.verify
     out = recap_path(root_dir, getattr(args, "recap_out", None))
     if not out.parent.is_dir():
-        print(f"  [mediatheque] dossier introuvable pour la fiche : {out.parent} -> fiche non ecrite")
+        print(f"  [médiathèque] dossier introuvable pour la fiche : {out.parent} -> fiche non écrite")
         return
     print("--- annexes ---")
     previous = textfile.adopt(out.with_name(LEGACY_NAME), out, apply) if out.name == RECAP_NAME else out
@@ -837,44 +837,44 @@ def write_recap(root_dir, movies, args, tmdb, paths=None):
     pages = write_film_pages(out, title, movies, args, tmdb, paths) if apply else set()
     html = build_recap_html(title, sections, posters, args.poster_size, pages)
     if not apply:
-        print(f"  [mediatheque] ecrirait {out} et une fiche par film dans {filmpage.DIR}/")
+        print(f"  [médiathèque] écrirait {out} et une fiche par film dans {filmpage.DIR}/")
         return
     # Lancée chaque nuit sur un NAS, la fiche ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
     if textfile.same(out, html):
-        print(f"  [mediatheque] {out} inchange")
+        print(f"  [médiathèque] {out} inchangé")
         return
     textfile.write(out, html)
-    print(f"  [mediatheque] {out} ecrit  "
-          f"({len(html) / 1_048_576:.1f} Mo, {len(posters)} affiche(s) integree(s))")
+    print(f"  [médiathèque] {out} écrit  "
+          f"({len(html) / 1_048_576:.1f} Mo, {len(posters)} affiche(s) intégrée(s))")
 
 
 # ----------------------------------------------------------------------------
 # 4. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Etiquette des films .mkv depuis TMDB (en francais).")
-    ap.add_argument("--dir", required=True, help="Dossier de films, parcouru recursivement (dossiers de saga compris)")
+    ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
+    ap.add_argument("--dir", required=True, help="Dossier de films, parcouru récursivement (dossiers de saga compris)")
     ap.add_argument("--tmdb-id", help="Force l'id TMDB (utile si --dir ne contient qu'un seul film)")
-    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (defaut : fr-FR)")
-    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des reponses TMDB et le rafraichit")
+    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
+    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
     ap.add_argument("--no-saga", action="store_true", help="N'utilise pas les collections TMDB pour replacer les films")
-    ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er resultat TMDB, comme avant")
-    ap.add_argument("--apply", action="store_true", help="Applique reellement (defaut : simulation)")
-    ap.add_argument("--verify", action="store_true", help="Verifie seulement (aucune ecriture)")
-    ap.add_argument("--skip-done", action="store_true", help="Saute les films deja conformes")
+    ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er résultat TMDB, comme avant")
+    ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
+    ap.add_argument("--verify", action="store_true", help="Vérifie seulement (aucune écriture)")
+    ap.add_argument("--skip-done", action="store_true", help="Saute les films déjà conformes")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque pas la jaquette")
     ap.add_argument("--no-date", action="store_true", help="Ne modifie pas la date du segment")
     ap.add_argument("--no-audio-names", action="store_true", help="Ne renomme pas les pistes audio")
     ap.add_argument("--no-sub-names", action="store_true", help="Ne renomme pas les pistes de sous-titres")
-    ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par defaut'")
+    ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par défaut'")
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques")
-    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; genere seulement folder.jpg / recap")
-    ap.add_argument("--artwork", action="store_true", help="Ecrit folder.jpg (affiche EN) par film")
-    ap.add_argument("--recap", action="store_true", help="Genere une fiche recap HTML de la mediatheque (sagas et manquants)")
-    ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (defaut : w185)")
-    ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (defaut : {filmpage.PROFILE_SIZE})")
-    ap.add_argument("--recap-out", help="Ou ecrire la fiche recap : un dossier ou un chemin .html (defaut : index.html a la racine de --dir)")
-    ap.add_argument("--title", help="Titre de la fiche recap (defaut : celui de la fiche existante, sinon 'Films')")
+    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; génère seulement folder.jpg / recap")
+    ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (affiche EN) par film")
+    ap.add_argument("--recap", action="store_true", help="Génère une fiche recap HTML de la médiathèque (sagas et manquants)")
+    ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (défaut : w185)")
+    ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (défaut : {filmpage.PROFILE_SIZE})")
+    ap.add_argument("--recap-out", help="Où écrire la fiche recap : un dossier ou un chemin .html (défaut : index.html à la racine de --dir)")
+    ap.add_argument("--title", help="Titre de la fiche recap (défaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     return ap.parse_args()
 
@@ -891,11 +891,11 @@ def main():
 
     movies = naming.find_movies(args.dir)
     if not movies:
-        print(f"Aucun .mkv trouve dans : {args.dir}")
+        print(f"Aucun .mkv trouvé dans : {args.dir}")
         return
     if args.tmdb_id and len(movies) > 1:
-        print(f"Note : --tmdb-id ne s'applique qu'a un seul film ; {len(movies)} detectes "
-              "-> id ignore, recherche par nom.\n")
+        print(f"Note : --tmdb-id ne s'applique qu'à un seul film ; {len(movies)} détectés "
+              "-> id ignoré, recherche par nom.\n")
     if args.no_tag and not (args.artwork or args.recap):
         print("Astuce : --no-tag sans --artwork ni --recap ne produit rien. "
               "Ajoute --artwork et/ou --recap.\n")
@@ -913,24 +913,24 @@ def main():
 
     corrections = {} if args.no_saga else saga_corrections(movies, lectures, args, tmdb)
     if corrections:
-        print(f"{len(corrections)} film(s) replace(s) par leur saga TMDB.\n")
+        print(f"{len(corrections)} film(s) replacé(s) par leur saga TMDB.\n")
 
     report, library = Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)))
     if library.approved:
-        print(f"{len(library.approved)} film(s) valide(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signales.\n")
+        print(f"{len(library.approved)} film(s) validé(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signalés.\n")
     attente = []
     for entry in movies:
         print(f"--- {entry.display} ---")
         movie, doute = resolve_movie(entry.rawname, args, tmdb, single=len(movies) == 1, contexts=entry.contexts, tag_id=tag_movie_id(entry, lectures), saga=corrections.get(entry.display))
         if doute is not None:
-            print("      [A CONFIRMER] plusieurs versions portent ce titre "
+            print("      [À CONFIRMER] plusieurs versions portent ce titre "
                   "-> question en fin de passage")
             attente.append((entry, doute))
             print()
             continue
         if movie is None:
             report += Report(total=1)
-            library.note(entry.display, None, "[NON ASSOCIE]")
+            library.note(entry.display, None, "[NON ASSOCIÉ]")
             continue
         report += handle_movie(entry, movie, library, args, opts, tmdb)
         print()
@@ -939,9 +939,9 @@ def main():
         report += resolve_pending(attente, library, args, opts, tmdb)
 
     resolved = library.resolved
-    print(f"TOTAL : {report.matched}/{report.total} film(s) associe(s).")
+    print(f"TOTAL : {report.matched}/{report.total} film(s) associé(s).")
     if library.doubts:
-        print(f"\nA VERIFIER : {len(library.doubts)} association(s) suspecte(s)")
+        print(f"\nÀ VÉRIFIER : {len(library.doubts)} association(s) suspecte(s)")
         for name, movie, doubts in library.doubts:
             print(f"  {name} -> {lookup.describe(movie)} : {' ; '.join(doubts)}")
         print()
@@ -950,7 +950,7 @@ def main():
     write_log(args.dir, library, args, report)
     reste = report.epilogue()
     if reste:
-        print(f"\nA CORRIGER : {reste}.")
+        print(f"\nÀ CORRIGER : {reste}.")
     return report.exit_code
 
 

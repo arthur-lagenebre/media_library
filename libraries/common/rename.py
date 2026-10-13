@@ -55,7 +55,7 @@ def apply_renames(planned):
             try:
                 rename_path(src, dst)
             except OSError as e:
-                print(f"  [ECHEC] {src.name} -> {dst.name} : {e}")
+                print(f"  [ÉCHEC] {src.name} -> {dst.name} : {e}")
                 continue
             done.add(origin)
             progress = True
@@ -68,14 +68,14 @@ def apply_renames(planned):
         bloque = next((t for t in blocked if os.path.normcase(str(t[2])) in occupees), None)
         if bloque is None:                # vrais conflits : des fichiers étrangers
             for _, _, dst in blocked:
-                print(f"  [IGNORE] existe deja : {dst.name}")
+                print(f"  [IGNORÉ] existe déjà : {dst.name}")
             break
         _, src, dst = bloque              # cycle : on degage le premier maillon
         try:
             tmp = free_name(src)
             src.rename(tmp)
         except OSError as e:
-            print(f"  [ECHEC] {src.name} -> {dst.name} : {e}")
+            print(f"  [ÉCHEC] {src.name} -> {dst.name} : {e}")
             break
         pending = [(o, tmp if s == src else s, d) for o, s, d in blocked]
     return done

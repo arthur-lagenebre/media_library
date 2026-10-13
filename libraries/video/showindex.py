@@ -253,10 +253,10 @@ def write(root, apply, title=None):
     entries = find_entries(root)
     html = build_html(title or textfile.title_of(out) or DEFAULT_TITLE, entries)
     if textfile.same(out, html):
-        return f"{out.name} inchange ({len(entries)} serie(s))"
+        return f"{out.name} inchangé ({len(entries)} série(s))"
     if not apply:
-        return f"ecrirait {out.name} ({len(entries)} serie(s))"
+        return f"écrirait {out.name} ({len(entries)} série(s))"
     textfile.write(out, html)
     missing = sum(1 for e in entries if not e.poster)
-    return (f"{out.name} ecrit ({len(entries)} serie(s)"
-            + (f", dont {missing} sans affiche : fiche a regenerer" if missing else "") + ")")
+    return (f"{out.name} écrit ({len(entries)} série(s)"
+            + (f", dont {missing} sans affiche : fiche à régénérer" if missing else "") + ")")

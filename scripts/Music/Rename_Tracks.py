@@ -52,8 +52,8 @@ def plan_album(found, release):
     placed, reason = albums.match_tracks(entries, release)
     tally = rename.Tally()
     if reason:
-        print(f"  [NON TRAITE] rien ne sera renomme : {reason}")
-        print(f"      si l'edition n'est pas la bonne, epingle la bonne : ' [mbid-...]' dans le nom du dossier ({release_url(release.get('id'))})")
+        print(f"  [NON TRAITÉ] rien ne sera renommé : {reason}")
+        print(f"      si l'édition n'est pas la bonne, épingle la bonne : ' [mbid-...]' dans le nom du dossier ({release_url(release.get('id'))})")
         return [], tally
 
     several_discs = len(release.get("media") or []) > 1
@@ -82,7 +82,7 @@ def plan_album(found, release):
             tally.subtitles += 1
             print(f"       + {src.name}  ->  {dst.name}")
     if not planned:
-        print("  toutes les pistes sont deja au bon nom")
+        print("  toutes les pistes sont déjà au bon nom")
     return planned, tally
 
 
@@ -106,7 +106,7 @@ def rename_pending(pending, args, mb):
         try:
             release, _ = lookup.fetch_release(chosen["id"], mb, with_genres=False)
         except MusicBrainzError as e:
-            print(f"      echec MusicBrainz : {e}\n")
+            print(f"      échec MusicBrainz : {e}\n")
             continue
         tally += rename_album(found, release, args)
         print()
@@ -117,19 +117,19 @@ def rename_pending(pending, args, mb):
 # Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Renomme les pistes des albums .flac et .mp3 au format '{numero} - {titre}.flac' (donnees MusicBrainz).")
-    ap.add_argument("--dir", required=True, help="Dossier de musique, parcouru recursivement (dossiers d'artiste et de disque compris)")
-    ap.add_argument("--mbid", help="Force l'identifiant MusicBrainz de l'edition (si --dir ne contient qu'un album)")
-    ap.add_argument("--country", default="FR", help="Pays prefere parmi les editions d'un album, code a deux lettres (defaut : FR)")
-    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des reponses MusicBrainz et le rafraichit")
+    ap = argparse.ArgumentParser(description="Renomme les pistes des albums .flac et .mp3 au format '{numéro} - {titre}.flac' (données MusicBrainz).")
+    ap.add_argument("--dir", required=True, help="Dossier de musique, parcouru récursivement (dossiers d'artiste et de disque compris)")
+    ap.add_argument("--mbid", help="Force l'identifiant MusicBrainz de l'édition (si --dir ne contient qu'un album)")
+    ap.add_argument("--country", default="FR", help="Pays préféré parmi les éditions d'un album, code à deux lettres (défaut : FR)")
+    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er album qui tient")
-    ap.add_argument("--apply", action="store_true", help="Renomme reellement (defaut : simulation)")
+    ap.add_argument("--apply", action="store_true", help="Renomme réellement (défaut : simulation)")
     args = ap.parse_args()
     args.country = args.country.upper()
     if args.mbid:
         mbid = albums.parse_mbid(args.mbid)
         if mbid is None:
-            ap.error(f"--mbid attend un identifiant MusicBrainz (8-4-4-4-12 hexadecimaux), pas '{args.mbid}'")
+            ap.error(f"--mbid attend un identifiant MusicBrainz (8-4-4-4-12 hexadécimaux), pas '{args.mbid}'")
         args.mbid = mbid
     return args
 
@@ -139,16 +139,16 @@ def main():
     cli.setup_console()
     cli.check_dir(args.dir)
     mb = MusicBrainz(cache=cache.Cache(read=not args.no_cache, source="musicbrainz"))
-    mode = cli.mode_label(args, "rien ne sera renomme ; ajoute --apply")
-    print(f"=== {mode} ===   source : MusicBrainz, editions {args.country} de preference\n")
+    mode = cli.mode_label(args, "rien ne sera renommé ; ajoute --apply")
+    print(f"=== {mode} ===   source : MusicBrainz, éditions {args.country} de préférence\n")
 
     found_albums = albums.find_albums(args.dir)
     if not found_albums:
-        print(f"Aucun album trouve dans : {args.dir}")
+        print(f"Aucun album trouvé dans : {args.dir}")
         return 0
     writable = [a for a in found_albums if a.files]
     if args.mbid and len(writable) > 1:
-        print(f"Note : --mbid ne s'applique qu'a un seul album ; {len(writable)} detectes -> id ignore, recherche par nom.\n")
+        print(f"Note : --mbid ne s'applique qu'à un seul album ; {len(writable)} détectés -> id ignoré, recherche par nom.\n")
 
     # Le total est compté d'avance : les pistes d'un album non reconnu restent comptées comme mal nommées, sans que chaque échec ait à y penser.
     tally, pending = rename.Tally(total=sum(len(a.files) for a in writable)), []
@@ -156,13 +156,13 @@ def main():
         print(f"--- {album.display} ---")
         if not album.files:
             kinds = ", ".join(sorted({p.suffix.lower() for p in album.unsupported}))
-            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont renommes\n")
+            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont renommés\n")
             continue
         if album.unsupported:
-            print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignore(s) : l'album est compte sans eux")
+            print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignoré(s) : l'album est compté sans eux")
         metas, errors = lookup.read_album(album)
         if errors:
-            print("  [NON TRAITE] fichier(s) illisible(s) :")
+            print("  [NON TRAITÉ] fichier(s) illisible(s) :")
             for error in errors:
                 print(f"      - {error}")
             print()
@@ -172,7 +172,7 @@ def main():
         try:
             release, _ = lookup.resolve(found, mb, forced=args.mbid if len(writable) == 1 else None, country=args.country, ask=not args.no_ask, with_genres=False)
         except MusicBrainzError as e:
-            print(f"  echec MusicBrainz : {e}\n")
+            print(f"  échec MusicBrainz : {e}\n")
             continue
         if found.choice is not None:
             pending.append(found)
@@ -183,7 +183,7 @@ def main():
     if pending:
         tally += rename_pending(pending, args, mb)
 
-    lyrics = (f", {tally.subtitles} fichier(s) de paroles " + ("renomme(s)" if args.apply else "a renommer")) if tally.subtitles else ""
+    lyrics = (f", {tally.subtitles} fichier(s) de paroles " + ("renommé(s)" if args.apply else "à renommer")) if tally.subtitles else ""
     print(f"TOTAL : {tally.named}/{tally.total} piste(s) au bon nom{lyrics}.")
     return 0
 

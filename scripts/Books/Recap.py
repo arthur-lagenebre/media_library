@@ -113,7 +113,7 @@ def write_pages(sections, out, args):
     index = out / INDEX_NAME
     library_name = args.title or textfile.title_of(index) or DEFAULT_TITLE
     if not thumbs.available():
-        print("  [couvertures] Pillow absent : les pages montrent un monogramme a la place (pip install pillow)")
+        print("  [couvertures] Pillow absent : les pages montrent un monogramme à la place (pip install pillow)")
 
     every = [s for _, series_list in sections for s in series_list]
     # Les séries les plus fournies d'abord : sinon la dernière, seule sur un fil, fait attendre tous les autres.
@@ -123,7 +123,7 @@ def write_pages(sections, out, args):
         try:
             return series, write_series_page(series, folder, library_name, args.cover_width)
         except OSError as e:
-            print(f"  [pages] {shelfpage.page_name(series)} non ecrite : {e}")
+            print(f"  [pages] {shelfpage.page_name(series)} non écrite : {e}")
             return series, None
 
     covers, pages, written, fresh = {}, set(), 0, 0
@@ -138,14 +138,14 @@ def write_pages(sections, out, args):
                     covers[series.id] = index_cover(cover)
             if done % 100 == 0:
                 print(f"  [pages] {done}/{len(queue)}")
-    print(f"  [pages] {len(pages)} page(s) dans {folder.name}/ ({written} ecrite(s), {len(pages) - written} inchangee(s)), {fresh} couverture(s) extraite(s)")
+    print(f"  [pages] {len(pages)} page(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s)), {fresh} couverture(s) extraite(s)")
 
     html = shelfpage.build_index(library_name, sections, covers, pages)
     if textfile.same(index, html):
-        print(f"  [sommaire] {index} inchange")
+        print(f"  [sommaire] {index} inchangé")
     else:
         textfile.write(index, html)
-        print(f"  [sommaire] {index} ecrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} couverture(s) integree(s))")
+        print(f"  [sommaire] {index} écrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} couverture(s) intégrée(s))")
     return written
 
 
@@ -160,7 +160,7 @@ def summarize(sections):
         tagged = sum(1 for v in volumes if v.info)
         broken = sum(1 for v in volumes if v.error)
         report += Report(matched=tagged, total=len(volumes), failures=broken)
-        print(f"  {name:<28} {len(series_list):>5} serie(s) {len(volumes):>6} volume(s) {tagged:>6} avec fiche" + (f"  {broken} illisible(s)" if broken else ""))
+        print(f"  {name:<28} {len(series_list):>5} série(s) {len(volumes):>6} volume(s) {tagged:>6} avec fiche" + (f"  {broken} illisible(s)" if broken else ""))
     return report
 
 
@@ -182,24 +182,24 @@ def write_log(path, root, sections, args, report):
     try:
         textfile.write(path, "\n".join(lines) + "\n")
     except OSError as e:
-        print(f"[log] {path.name} non ecrit : {e}")
+        print(f"[log] {path.name} non écrit : {e}")
         return
-    print(f"[log] {path.name} ecrit")
+    print(f"[log] {path.name} écrit")
 
 
 # ----------------------------------------------------------------------------
 # 4. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
-    ap = argparse.ArgumentParser(description="Fiche HTML d'une bibliotheque de livres, BD, comics et mangas.")
-    ap.add_argument("--dir", required=True, help="Bibliotheque : un dossier par section (Manga, BD, Romans...)")
-    ap.add_argument("--out", help=f"Ou ecrire la fiche (defaut : {DATA_DIR} a la racine de --dir)")
-    ap.add_argument("--title", help=f"Titre de la fiche (defaut : celui de la fiche existante, sinon '{DEFAULT_TITLE}')")
-    ap.add_argument("--apply", action="store_true", help="Ecrit reellement la fiche (defaut : simulation)")
-    ap.add_argument("--include-pdf", action="store_true", help="Compte aussi les .pdf (ignores par defaut : ni fiche ni couverture)")
+    ap = argparse.ArgumentParser(description="Fiche HTML d'une bibliothèque de livres, BD, comics et mangas.")
+    ap.add_argument("--dir", required=True, help="Bibliothèque : un dossier par section (Manga, BD, Romans...)")
+    ap.add_argument("--out", help=f"Où écrire la fiche (défaut : {DATA_DIR} à la racine de --dir)")
+    ap.add_argument("--title", help=f"Titre de la fiche (défaut : celui de la fiche existante, sinon '{DEFAULT_TITLE}')")
+    ap.add_argument("--apply", action="store_true", help="Écrit réellement la fiche (défaut : simulation)")
+    ap.add_argument("--include-pdf", action="store_true", help="Compte aussi les .pdf (ignorés par défaut : ni fiche ni couverture)")
     ap.add_argument("--no-cache", action="store_true", help="Rouvre tous les livres, sans reprendre le catalogue")
-    ap.add_argument("--cover-width", type=int, default=thumbs.WIDTH, help=f"Largeur des couvertures en pixels (defaut : {thumbs.WIDTH})")
-    ap.add_argument("--workers", type=int, default=8, help="Livres lus en parallele (defaut : 8)")
+    ap.add_argument("--cover-width", type=int, default=thumbs.WIDTH, help=f"Largeur des couvertures en pixels (défaut : {thumbs.WIDTH})")
+    ap.add_argument("--workers", type=int, default=8, help="Livres lus en parallèle (défaut : 8)")
     args = ap.parse_args()
     if args.workers < 1 or args.cover_width < 1:
         ap.error("--workers et --cover-width attendent un entier positif")
@@ -211,16 +211,16 @@ def main():
     cli.setup_console()
     root = cli.check_dir(args.dir)
     out = Path(args.out) if args.out else root / DATA_DIR
-    print(f"=== {cli.mode_label(args, 'rien ne sera ecrit que le journal ; ajoute --apply pour ecrire la fiche')} ===   sortie : {out}\n")
+    print(f"=== {cli.mode_label(args, 'rien ne sera écrit que le journal ; ajoute --apply pour écrire la fiche')} ===   sortie : {out}\n")
 
     sections = shelf.scan(root, include_pdf=args.include_pdf)
     volumes = [v for _, series_list in sections for s in series_list for v in s.volumes]
     if not volumes:
-        print(f"Aucun livre trouve dans : {root}")
+        print(f"Aucun livre trouvé dans : {root}")
         return 0
 
     todo = volumes if args.no_cache else shelf.apply_catalog(volumes, shelf.load_catalog(out / CATALOG_NAME))
-    print(f"{len(volumes)} livre(s), {len(volumes) - len(todo)} repris du catalogue, {len(todo)} a lire")
+    print(f"{len(volumes)} livre(s), {len(volumes) - len(todo)} repris du catalogue, {len(todo)} à lire")
     read_infos(todo, args.workers)
 
     print()
@@ -234,13 +234,13 @@ def main():
             textfile.write(out / CATALOG_NAME, catalog)
         write_pages(sections, out, args)
     else:
-        print(f"  [fiche] ecrirait {out / INDEX_NAME} et une page par serie dans {shelfpage.DIR}/")
+        print(f"  [fiche] écrirait {out / INDEX_NAME} et une page par série dans {shelfpage.DIR}/")
     if out.is_dir():
         write_log(out / LOG_NAME, root, sections, args, report)
 
     print(f"\nTOTAL : {report.matched}/{report.total} livre(s) avec fiche.")
     if report.failures:
-        print(f"\nA CORRIGER : {report.failures} fichier(s) illisible(s) (voir {LOG_NAME}).")
+        print(f"\nÀ CORRIGER : {report.failures} fichier(s) illisible(s) (voir {LOG_NAME}).")
     return report.exit_code
 
 

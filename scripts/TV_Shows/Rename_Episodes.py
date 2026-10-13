@@ -41,20 +41,20 @@ def plan_season(folder, season, threshold):
     episodes = season.get("episodes", [])
     by_num = {e.get("episode_number"): e for e in episodes}
     if not by_num:
-        print("  aucune donnee d'episode TMDB pour cette saison")
+        print("  aucune donnée d'épisode TMDB pour cette saison")
         return [], rename.Tally()
 
     width = max(2, len(str(max(by_num))))   # même nb de digits pour toute la saison
     files = filenames.files_with_ext(folder, naming.VIDEO_EXTS)
     if not files:
-        print("  aucun fichier video")
+        print("  aucun fichier vidéo")
         return [], rename.Tally()
 
     planned, claimed, tally = [], {}, rename.Tally(total=len(files))
     for f in files:
         ep, _ = naming.match_episode(f.name, episodes, threshold, by_num)
         if ep is None:
-            print(f"  [NON ASSOCIE] {f.name}")
+            print(f"  [NON ASSOCIÉ] {f.name}")
             continue
 
         n = ep.get("episode_number", 0)
@@ -62,7 +62,7 @@ def plan_season(folder, season, threshold):
         dst = f.with_name(stem + f.suffix.lower())
         key = os.path.normcase(dst.name)
         if key in claimed:
-            print(f"  [DOUBLON] {f.name} vise le meme nom que {claimed[key].name} -> ignore")
+            print(f"  [DOUBLON] {f.name} vise le même nom que {claimed[key].name} -> ignoré")
             continue
         claimed[key] = f
 
@@ -98,13 +98,13 @@ def rename_season(folder, season, args):
 # Programme principal
 # ----------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="Renomme les episodes d'une serie au format '{numero} - {nom}.ext' (donnees TMDB).")
-    ap.add_argument("--dir", required=True, help="Racine de la serie (dossiers 'Saison N') OU un dossier de saison")
-    ap.add_argument("--tmdb-id", help="Identifiant TMDB de la serie "
-                    "(par defaut : recherche sur le nom du dossier)")
-    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (defaut : fr-FR)")
-    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des reponses TMDB et le rafraichit")
-    ap.add_argument("--apply", action="store_true", help="Renomme reellement (defaut : simulation)")
+    ap = argparse.ArgumentParser(description="Renomme les épisodes d'une série au format '{numéro} - {nom}.ext' (données TMDB).")
+    ap.add_argument("--dir", required=True, help="Racine de la série (dossiers 'Saison N') OU un dossier de saison")
+    ap.add_argument("--tmdb-id", help="Identifiant TMDB de la série "
+                    "(par défaut : recherche sur le nom du dossier)")
+    ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
+    ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
+    ap.add_argument("--apply", action="store_true", help="Renomme réellement (défaut : simulation)")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
     args = ap.parse_args()
 
@@ -112,11 +112,11 @@ def main():
     cli.check_dir(args.dir)
     tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="rename_ep/1.0", cache=cache.Cache(read=not args.no_cache))
 
-    mode = cli.mode_label(args, "rien ne sera renomme ; ajoute --apply")
+    mode = cli.mode_label(args, "rien ne sera renommé ; ajoute --apply")
     print(f"=== {mode} ===   source : TMDB {args.language}")
     args.tmdb_id = lookup.resolve_show_id(tmdb, args.dir, args.tmdb_id)
     if args.tmdb_id is None:
-        sys.exit("Serie non identifiee : relance avec --tmdb-id.")
+        sys.exit("Série non identifiée : relance avec --tmdb-id.")
     print()
 
     seasons = naming.find_seasons(args.dir)
@@ -127,7 +127,7 @@ def main():
             try:
                 data = tmdb.season(args.tmdb_id, num)
             except TmdbError as e:
-                print(f"  echec TMDB saison {num} : {e} -> saison ignoree\n")
+                print(f"  échec TMDB saison {num} : {e} -> saison ignorée\n")
                 continue
             bilan += rename_season(sub, data, args)
             print()
@@ -138,10 +138,10 @@ def main():
         try:
             data = tmdb.season(args.tmdb_id, num)
         except TmdbError as e:
-            sys.exit(f"Echec de l'appel TMDB (saison {num}) : {e}")
+            sys.exit(f"Échec de l'appel TMDB (saison {num}) : {e}")
         bilan += rename_season(Path(args.dir), data, args)
 
-    sous_titres = (f", {bilan.subtitles} sous-titre(s) " + ("renomme(s)" if args.apply else "a renommer")) if bilan.subtitles else ""
+    sous_titres = (f", {bilan.subtitles} sous-titre(s) " + ("renommé(s)" if args.apply else "à renommer")) if bilan.subtitles else ""
     print(f"TOTAL : {bilan.named}/{bilan.total} fichier(s) au bon nom{sous_titres}.")
 
 

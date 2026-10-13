@@ -45,30 +45,30 @@ LANG_HINTS = {
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Remultiplexe les .avi d'un dossier en .mkv, sans reencodage (recursivement par defaut).")
-    p.add_argument("--dir", required=True, help="dossier a convertir")
-    p.add_argument("--apply", action="store_true", help="convertit reellement (defaut : simulation)")
-    p.add_argument("--lang", default="fre", help="langue des pistes audio, code ISO 639-2 a trois lettres (defaut : fre)")
-    p.add_argument("--sub-lang", default=None, help="langue d'un sous-titre dont le nom ne dit rien (defaut : celle de --lang)")
-    p.add_argument("--subs", choices=("auto", "none", "require"), default="auto", help="auto : embarque les sous-titres poses a cote ; none : les ignore ; require : ne convertit que les films qui en ont (defaut : auto)")
-    p.add_argument("--sub-charset", default="windows-1252", help="encodage de repli des sous-titres texte qui ne sont pas en UTF-8 (defaut : windows-1252)")
-    p.add_argument("--default-audio", action="store_true", help="marque la premiere piste audio comme piste par defaut")
-    p.add_argument("--default-sub", action="store_true", help="marque le premier sous-titre comme piste par defaut")
+    p = argparse.ArgumentParser(description="Remultiplexe les .avi d'un dossier en .mkv, sans réencodage (récursivement par défaut).")
+    p.add_argument("--dir", required=True, help="dossier à convertir")
+    p.add_argument("--apply", action="store_true", help="convertit réellement (défaut : simulation)")
+    p.add_argument("--lang", default="fre", help="langue des pistes audio, code ISO 639-2 à trois lettres (défaut : fre)")
+    p.add_argument("--sub-lang", default=None, help="langue d'un sous-titre dont le nom ne dit rien (défaut : celle de --lang)")
+    p.add_argument("--subs", choices=("auto", "none", "require"), default="auto", help="auto : embarque les sous-titres posés à côté ; none : les ignore ; require : ne convertit que les films qui en ont (défaut : auto)")
+    p.add_argument("--sub-charset", default="windows-1252", help="encodage de repli des sous-titres texte qui ne sont pas en UTF-8 (défaut : windows-1252)")
+    p.add_argument("--default-audio", action="store_true", help="marque la première piste audio comme piste par défaut")
+    p.add_argument("--default-sub", action="store_true", help="marque le premier sous-titre comme piste par défaut")
     p.add_argument("--title", action="store_true", help="inscrit le nom du fichier comme titre du segment")
-    p.add_argument("--output-dir", default=None, help="dossier de sortie, ou les fichiers sont poses a plat (defaut : a cote de la source)")
-    p.add_argument("--overwrite", action="store_true", help="ecrase un .mkv deja present au lieu de passer son tour")
-    p.add_argument("--tolerance", type=float, default=2.0, help="ecart de duree tolere entre la source et le resultat, en secondes (defaut : 2.0)")
-    p.add_argument("--delete-source", action="store_true", help="efface l'.avi une fois la duree du .mkv verifiee (demande ffprobe)")
-    p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .avi poses directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (defaut : conversion.log a la racine de --dir)")
+    p.add_argument("--output-dir", default=None, help="dossier de sortie, où les fichiers sont posés à plat (défaut : à côté de la source)")
+    p.add_argument("--overwrite", action="store_true", help="écrase un .mkv déjà présent au lieu de passer son tour")
+    p.add_argument("--tolerance", type=float, default=2.0, help="écart de durée toléré entre la source et le résultat, en secondes (défaut : 2.0)")
+    p.add_argument("--delete-source", action="store_true", help="efface l'.avi une fois la durée du .mkv vérifiée (demande ffprobe)")
+    p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .avi posés directement dans --dir, sans descendre dans les sous-dossiers")
+    p.add_argument("--log", default=None, help="fichier journal (défaut : conversion.log à la racine de --dir)")
     args = p.parse_args()
     if args.sub_lang is None:
         args.sub_lang = args.lang
     if args.output_dir:
         args.output_dir = Path(args.output_dir)
     if len(args.lang) != 3 or len(args.sub_lang) != 3:
-        print("Attention : mkvmerge attend un code ISO 639-2 a trois lettres (fre, eng, ger...) ; "
-              f"'{args.lang}' / '{args.sub_lang}' risque d'etre refuse.\n")
+        print("Attention : mkvmerge attend un code ISO 639-2 à trois lettres (fre, eng, ger...) ; "
+              f"'{args.lang}' / '{args.sub_lang}' risque d'être refusé.\n")
     return args
 
 
@@ -160,17 +160,17 @@ def convert(video, args, check_duration):
     """
     output = (args.output_dir or video.parent) / (video.stem + ".mkv")
     if output.exists() and not args.overwrite:
-        return "ignore", f"{output.name} existe deja (--overwrite pour l'ecraser)"
+        return "ignoré", f"{output.name} existe déjà (--overwrite pour l'écraser)"
 
     info, problem = identify(video)
     if info is None:
         return "erreur", problem
     if not any(track.get("type") == "video" for track in info.get("tracks", [])):
-        return "erreur", "aucune piste video"
+        return "erreur", "aucune piste vidéo"
 
     subs = find_subtitles(video) if args.subs != "none" else []
     if args.subs == "require" and not subs:
-        return "ignore", "aucun sous-titre a cote (--subs require)"
+        return "ignoré", "aucun sous-titre à côté (--subs require)"
 
     command, attached = build_command(video, output, info, subs, args)
     note = "".join(f", {name} en {language}" + (f" ({charset})" if charset else "")
@@ -182,28 +182,28 @@ def convert(video, args, check_duration):
         args.output_dir.mkdir(parents=True, exist_ok=True)
     result = run_tool(command)
     if result.returncode > MKVMERGE_WARNING or not output.exists():
-        return "erreur", first_error(result) or "mkvmerge n'a rien pu ecrire"
+        return "erreur", first_error(result) or "mkvmerge n'a rien pu écrire"
     if result.returncode == MKVMERGE_WARNING:
         note += ", avertissement mkvmerge"
 
     # Un AVI décrit sa durée dans un index que les copies successives ont pu abîmer :
     # mkvmerge recopie alors moins de film qu'il n'y en a, sans forcément le dire.
     if not check_duration:
-        return "non verifie", f"converti, duree non controlee (ffprobe absent){note}"
+        return "non vérifié", f"converti, durée non contrôlée (ffprobe absent){note}"
     source, produced = probe(video).duration_min, probe(output).duration_min
     if source is None or produced is None:
-        return "non verifie", f"converti, duree indeterminable{note}"
+        return "non vérifié", f"converti, durée indéterminable{note}"
     gap = abs(source - produced) * 60
     if gap > args.tolerance:
-        return "ecart", f"{gap:.1f} s de difference avec la source : {output.name} est suspect, l'original est garde"
+        return "écart", f"{gap:.1f} s de différence avec la source : {output.name} est suspect, l'original est gardé"
 
     if args.delete_source:
         try:
             video.unlink()
-            note += ", source effacee"
+            note += ", source effacée"
         except OSError as exc:
-            note += f", source non effacee : {exc.strerror or exc}"
-    return "converti", f"ecart {gap:.2f} s{note}"
+            note += f", source non effacée : {exc.strerror or exc}"
+    return "converti", f"écart {gap:.2f} s{note}"
 
 
 def write_log(destination, root, entries, args, summary):
@@ -216,14 +216,14 @@ def write_log(destination, root, entries, args, summary):
     ]
     for name, status, detail in entries:
         lines += [name, f"    {status} : {detail}", ""]
-    failed = [name for name, status, _ in entries if status in ("erreur", "ecart")]
+    failed = [name for name, status, _ in entries if status in ("erreur", "écart")]
     if failed:
         lines += ["", "NON CONVERTIS (originaux intacts) :"] + [f"  {name}" for name in failed]
     try:
         destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"[log] {destination} ecrit")
+        print(f"[log] {destination} écrit")
     except OSError as exc:
-        print(f"[log] impossible d'ecrire {destination} : {exc.strerror or exc}")
+        print(f"[log] impossible d'écrire {destination} : {exc.strerror or exc}")
 
 
 def main():
@@ -235,11 +235,11 @@ def main():
                  "  Installe MKVToolNix : winget install MoritzBunkus.MKVToolNix")
     check_duration = shutil.which("ffprobe") is not None
     if args.delete_source and not check_duration:
-        sys.exit("--delete-source n'efface un .avi qu'apres avoir compare la duree du .mkv a la sienne,\n"
+        sys.exit("--delete-source n'efface un .avi qu'après avoir comparé la durée du .mkv à la sienne,\n"
                  "et ffprobe est introuvable dans le PATH : installe FFmpeg (winget install Gyan.FFmpeg)\n"
                  "ou relance sans --delete-source.")
     if not check_duration:
-        print("ffprobe absent -> la duree des fichiers produits ne sera pas controlee "
+        print("ffprobe absent -> la durée des fichiers produits ne sera pas contrôlée "
               "(winget install Gyan.FFmpeg)\n")
 
     files = avi_files(root, recursive=not args.no_recursive)
@@ -248,15 +248,15 @@ def main():
         sys.exit(f"Aucun .avi {scope} {root}")
     print(f"=== {cli.mode_label(args, 'rien ne sera converti ; ajoute --apply')} ===")
     print(f"{len(files)} fichier(s) .avi {scope} {root}"
-          + (" (sous-dossiers ignores)" if args.no_recursive else ""))
-    print("Remultiplexage sans reencodage : l'image et le son sont recopies tels quels.\n")
+          + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
+    print("Remultiplexage sans réencodage : l'image et le son sont recopiés tels quels.\n")
 
     entries, start = [], time.time()
     for n, path in enumerate(files, 1):
         name = filenames.relative_name(path, root)
         print(f"  [{n}/{len(files)}] {name}")
         status, detail = convert(path, args, check_duration)
-        mark = f"[{status.upper()}] " if status in ("erreur", "ecart") else ""
+        mark = f"[{status.upper()}] " if status in ("erreur", "écart") else ""
         print(f"          {mark}{detail}")
         entries.append((name, status, detail))
 
@@ -267,13 +267,13 @@ def main():
     elapsed = time.time() - start
     print(f"\nTOTAL : {len(entries)} fichier(s) en {elapsed / 60:.1f} min - {summary}.")
     if not args.apply:
-        print("Simulation : rien n'a ete ecrit. Ajoute --apply pour convertir.")
+        print("Simulation : rien n'a été écrit. Ajoute --apply pour convertir.")
     elif counts.get("converti") and not args.delete_source:
-        print("Les .avi sont toujours a cote de leurs .mkv : etiquette-les avec "
-              "Movies/Metadata.py, puis efface-les quand le resultat te convient.")
+        print("Les .avi sont toujours à côté de leurs .mkv : étiquette-les avec "
+              "Movies/Metadata.py, puis efface-les quand le résultat te convient.")
 
     write_log(Path(args.log) if args.log else root / "conversion.log", root, entries, args, summary)
-    return 1 if counts.get("erreur") or counts.get("ecart") else 0
+    return 1 if counts.get("erreur") or counts.get("écart") else 0
 
 
 if __name__ == "__main__":

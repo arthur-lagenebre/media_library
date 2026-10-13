@@ -151,7 +151,7 @@ class TestIndexPy(unittest.TestCase):
     def test_une_nouvelle_fiche_entre_dans_le_sommaire(self):
         self.indexer("--apply")
         fiche(self.bib / "Ma Serie", show={**SHOW, "name": "Ma Serie"})
-        self.assertIn("index.html ecrit (2 serie(s))", self.indexer("--apply"))
+        self.assertIn("index.html écrit (2 série(s))", self.indexer("--apply"))
         html = self.index.read_text(encoding="utf-8")
         self.assertIn("href='Ma%20Serie/index.html'", html)
         self.assertIn("href='Dark/index.html'", html)
@@ -159,10 +159,10 @@ class TestIndexPy(unittest.TestCase):
     def test_sommaire_identique_pas_reecrit(self):
         self.indexer("--apply")
         with mock.patch.object(Path, "write_text", side_effect=AssertionError("reecrit")):
-            self.assertIn("index.html inchange", self.indexer("--apply"))
+            self.assertIn("index.html inchangé", self.indexer("--apply"))
 
     def test_simulation_n_ecrit_rien(self):
-        self.assertIn("ecrirait index.html", self.indexer())
+        self.assertIn("écrirait index.html", self.indexer())
         self.assertFalse(self.index.exists())
 
     def test_sommaire_etranger_jamais_touche(self):

@@ -84,7 +84,7 @@ class TestTelechargement(unittest.TestCase):
         tmdb = FauxTmdb(echecs={"/b.jpg"})
         images, sortie = self.fetch({"w300/a.jpg": "/a.jpg", "w300/b.jpg": "/b.jpg"}, {}, tmdb)
         self.assertEqual(list(images), ["w300/a.jpg"])
-        self.assertIn("ignoree", sortie)
+        self.assertIn("ignorée", sortie)
 
 if __name__ == "__main__":
     unittest.main()

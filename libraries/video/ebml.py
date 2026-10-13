@@ -182,20 +182,20 @@ def _segment(f, taille_fichier):
     """
     ident, taille, entete, _ = lire_entete(f, 0)
     if ident != ENTETE_EBML:
-        return 0, 0, Defaut("ce n'est pas un fichier Matroska : pas d'entete EBML", 0)
+        return 0, 0, Defaut("ce n'est pas un fichier Matroska : pas d'en-tête EBML", 0)
     if taille is None or taille < 0:
-        return 0, 0, Defaut("l'entete EBML n'annonce pas de taille lisible", 0)
+        return 0, 0, Defaut("l'en-tête EBML n'annonce pas de taille lisible", 0)
     position = entete + taille
     ident, taille, entete, _ = lire_entete(f, position)
     if ident != SEGMENT:
-        return 0, 0, Defaut("aucun Segment apres l'entete EBML", position)
+        return 0, 0, Defaut("aucun Segment après l'en-tête EBML", position)
     debut = position + entete
     if taille == TAILLE_INCONNUE:
         return debut, taille_fichier, None      # légitime : flux sans taille annoncée
     fin = debut + taille
     if fin != taille_fichier:
         ecart = taille_fichier - fin
-        ou = "en trop apres la fin" if ecart > 0 else "manquants avant la fin"
+        ou = "en trop après la fin" if ecart > 0 else "manquants avant la fin"
         return debut, fin, Defaut(f"le Segment annonce {taille} octets de contenu : {abs(ecart)} octets {ou}", debut)
     return debut, fin, None
 
@@ -206,13 +206,13 @@ def _dans_cluster(corps, base):
     while j < len(corps):
         ident, longueur = lire_vint(corps, j, True)
         if ident is None or ident not in ENFANTS_CLUSTER:
-            return Defaut("contenu de cluster imprevu", base + j)
+            return Defaut("contenu de cluster imprévu", base + j)
         taille, suite = lire_vint(corps, j + longueur, False)
         if taille is None or taille < 0:
             return Defaut("bloc sans taille lisible", base + j)
         fin = j + longueur + suite + taille
         if fin > len(corps):
-            return Defaut(f"un bloc deborde de son cluster de {fin - len(corps)} octets", base + j)
+            return Defaut(f"un bloc déborde de son cluster de {fin - len(corps)} octets", base + j)
         j = fin
     return None
 
@@ -223,16 +223,16 @@ def _chaine(f, depart, fin, taille_fichier, complet):
     while position < fin:
         ident, taille, entete, tampon = lire_entete(f, position)
         if ident is None:
-            return Defaut("element illisible", position)
+            return Defaut("élément illisible", position)
         if ident not in NIVEAU1:
-            return Defaut(f"identifiant {ident:#x} inconnu a ce niveau", position)
+            return Defaut(f"identifiant {ident:#x} inconnu à ce niveau", position)
         if taille is None:
-            return Defaut(f"l'element {NIVEAU1[ident]} n'annonce pas de taille lisible", position)
+            return Defaut(f"l'élément {NIVEAU1[ident]} n'annonce pas de taille lisible", position)
         if taille == TAILLE_INCONNUE:
-            return Defaut(f"l'element {NIVEAU1[ident]} n'annonce pas sa taille", position)
+            return Defaut(f"l'élément {NIVEAU1[ident]} n'annonce pas sa taille", position)
         suivant = position + entete + taille
         if suivant > taille_fichier:
-            return Defaut(f"l'element {NIVEAU1[ident]} deborde de la fin du fichier "
+            return Defaut(f"l'élément {NIVEAU1[ident]} déborde de la fin du fichier "
                           f"de {suivant - taille_fichier} octets", position)
         if complet and ident == CLUSTER:
             # Les octets déjà lus pour l'en-tête mordent sur le contenu : on les garde et on lit la suite d'affilée, sans revenir en arrière.
@@ -243,7 +243,7 @@ def _chaine(f, depart, fin, taille_fichier, complet):
                 return defaut
         position = suivant
     if position != fin:
-        return Defaut(f"le dernier element depasse la fin du Segment de "
+        return Defaut(f"le dernier élément dépasse la fin du Segment de "
                       f"{position - fin} octets", fin)
     return None
 
@@ -258,12 +258,12 @@ def _rapide(f, debut, fin, taille_fichier):
     for _ in range(4):
         ident, taille, entete, _ = lire_entete(f, position)
         if ident is None:
-            return Defaut("element illisible en tete du Segment", position)
+            return Defaut("élément illisible en tête du Segment", position)
         if ident == SEEK_HEAD:
             index = (position + entete, taille)
             break
         if ident not in NIVEAU1 or taille is None or taille < 0:
-            return Defaut("le Segment ne commence pas par un element connu", position)
+            return Defaut("le Segment ne commence pas par un élément connu", position)
         position += entete + taille
     if index is None or not 0 < index[1] < MAX_INDEX:
         return None                       # sans index, la queue reste hors de portée
@@ -278,7 +278,7 @@ def _rapide(f, debut, fin, taille_fichier):
         trouve = lire_entete(f, position)[0]
         if trouve != vise:
             return Defaut(f"l'index annonce {NIVEAU1[vise]} ici, on y trouve "
-                          f"{NIVEAU1.get(trouve, 'des donnees')}", position)
+                          f"{NIVEAU1.get(trouve, 'des données')}", position)
 
     position_cues = next((p for i, p in couples if i == CUES), None)
     if position_cues is None:

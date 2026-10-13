@@ -135,7 +135,7 @@ class TestFilmNonTraite(unittest.TestCase):
     def test_film_ambigu_laisse_intact(self):
         report, sortie = self.process(self.AMBIGU)
         self.assertEqual((report.matched, report.total, report.skipped), (1, 1, 1))
-        self.assertIn("[NON TRAITE]", sortie)
+        self.assertIn("[NON TRAITÉ]", sortie)
         self.assertIn("st s1 et st s2 [en]", sortie)
         self.assertNotIn(" -> ", sortie)          # aucun renommage n a été préparé
 
@@ -154,7 +154,7 @@ class TestFilmNonTraite(unittest.TestCase):
     def test_le_bilan_le_compte_et_le_signale(self):
         report = Report(matched=1, total=1) + Report(matched=1, total=1, skipped=1)
         self.assertEqual((report.total, report.skipped), (2, 1))
-        self.assertIn("1 non traite(s)", report.epilogue())
+        self.assertIn("1 non traité(s)", report.epilogue())
         self.assertEqual(report.exit_code, 1)
 
 class FauxTmdbFilms:
@@ -222,7 +222,7 @@ class TestQuestionsDeFinDePassage(unittest.TestCase):
         report, sortie, tmdb, _ = self.poser([films.cli.ASK_SKIP])
         self.assertEqual(tmdb.details, [])
         self.assertEqual((report.matched, report.pending), (1, 1))
-        self.assertIn("[NON TRAITE]", sortie)
+        self.assertIn("[NON TRAITÉ]", sortie)
 
     def test_arreter_saute_toutes_les_suivantes(self):
         report, _, tmdb, demandes = self.poser([films.cli.ASK_STOP], combien=3)
@@ -477,7 +477,7 @@ class TestCollecteDuCasting(unittest.TestCase):
     def test_une_saison_en_echec_est_sautee(self):
         casts, _, sortie = self.collecter(echecs=(1,))
         self.assertEqual([n for n, _ in casts], [2])
-        self.assertIn("casting de la saison 1 ignore", sortie)
+        self.assertIn("casting de la saison 1 ignoré", sortie)
 
 
 class FauxTmdb:
@@ -519,7 +519,7 @@ class TestRecapFilms(unittest.TestCase):
         with redirect_stdout(sortie):
             sagas = films.fetch_collections([film(11, "Iron Man", IRON)], tmdb)
         self.assertEqual(sagas, {})
-        self.assertIn("ignoree", sortie.getvalue())
+        self.assertIn("ignorée", sortie.getvalue())
 
     def test_saga_incomplete_montre_les_manquants(self):
         sections = films.library_sections([film(11, "Iron Man", IRON)], {1: IRON})
@@ -592,7 +592,7 @@ class TestDoutesSurLAssociation(unittest.TestCase):
 
     def test_court_metrage_pris_pour_le_film(self):
         # Microcosmos (75 min) associé à un court métrage de 3 min qui porte le même nom.
-        self.assertIn("duree 75 min, la fiche TMDB en annonce 3", self.doutes(75, 3)[0])
+        self.assertIn("durée 75 min, la fiche TMDB en annonce 3", self.doutes(75, 3)[0])
 
     def test_film_trop_court_pour_la_fiche(self):
         # Destruction finale (95 min) pris pour le film coréen du même nom (128 min).

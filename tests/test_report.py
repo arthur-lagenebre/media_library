@@ -24,7 +24,7 @@ class TestReport(unittest.TestCase):
     def test_epilogue(self):
         self.assertEqual(Report().epilogue(), "")
         self.assertEqual(Report(diffs=2).epilogue(), "2 fichier(s) non conforme(s)")
-        self.assertEqual(Report(diffs=1, failures=3).epilogue(), "1 fichier(s) non conforme(s) ; 3 ecriture(s) en echec")
+        self.assertEqual(Report(diffs=1, failures=3).epilogue(), "1 fichier(s) non conforme(s) ; 3 écriture(s) en échec")
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ class TestRecapMusique(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse(self.data.exists())
         self.assertIn("SIMULATION", sortie)
-        self.assertIn("ecrirait", sortie)
+        self.assertIn("écrirait", sortie)
 
     def test_simulation_n_ecrit_que_le_journal_quand_le_dossier_existe(self):
         self.lancer()
@@ -72,8 +72,8 @@ class TestRecapMusique(unittest.TestCase):
 
     def test_bilan(self):
         _, sortie = self.lancer()
-        self.assertIn("3 album(s), 2 artiste(s), 5 piste(s), 4 etiquetee(s)", sortie)
-        self.assertIn("TOTAL : 4/5 piste(s) etiquetee(s) par MusicBrainz.", sortie)
+        self.assertIn("3 album(s), 2 artiste(s), 5 piste(s), 4 étiquetée(s)", sortie)
+        self.assertIn("TOTAL : 4/5 piste(s) étiquetée(s) par MusicBrainz.", sortie)
         self.assertNotIn("Ancien", sortie)
 
     def test_application_ecrit_sommaire_fiches_catalogue_et_journal(self):
@@ -132,7 +132,7 @@ class TestRecapMusique(unittest.TestCase):
         self.reseau.appels.clear()
         _, sortie = self.lancer("--apply")
         self.assertEqual(self.reseau.appels, [])
-        self.assertNotIn("a demander", sortie)
+        self.assertNotIn("à demander", sortie)
         self.assertEqual({p: (p.stat().st_mtime_ns, p.read_bytes()) for p in avant}, avant)
 
     def test_reponses_perimees_redemandees(self):
@@ -165,7 +165,7 @@ class TestRecapMusique(unittest.TestCase):
         self.etiqueter_daft_punk()
         _, sortie = self.lancer()
         self.assertEqual(self.reseau.appels, [])
-        self.assertIn("interrogerait MusicBrainz et Wikipedia sur 1 artiste(s)", sortie)
+        self.assertIn("interrogerait MusicBrainz et Wikipédia sur 1 artiste(s)", sortie)
 
     def test_panne_du_reseau_n_efface_rien_et_n_arrete_pas_le_passage(self):
         self.etiqueter_daft_punk()
@@ -181,7 +181,7 @@ class TestRecapMusique(unittest.TestCase):
             self.reseau.reponses[f"artist/00000000-0000-0000-0000-00000000000{n}"] = MusicBrainzError("coupure")
         _, sortie = self.lancer("--apply")
         self.assertEqual(len(self.reseau.appels), 3)
-        self.assertIn("3 echecs d'affilee : abandon", sortie)
+        self.assertIn("3 échecs d'affilée : abandon", sortie)
         self.assertTrue((self.data / "Artistes").is_dir())
 
     def test_fiche_disparue_notee_pour_ne_pas_etre_redemandee(self):
@@ -209,7 +209,7 @@ class TestRecapMusique(unittest.TestCase):
     def test_journal(self):
         self.lancer("--apply")
         journal = (self.data / "recap.log").read_text(encoding="utf-8")
-        self.assertIn("[NON ETIQUETE] Kavinsky/Outrun (0/1)", journal)
+        self.assertIn("[NON ÉTIQUETÉ] Kavinsky/Outrun (0/1)", journal)
         self.assertIn("[MANQUE] Daft Punk/Discovery : disque 1, piste(s) 3 (sur 4)", journal)
         self.assertIn("[NON PRIS EN CHARGE] Kavinsky/Outrun : 02.m4a", journal)
         self.assertNotIn("Homework", journal)
@@ -254,7 +254,7 @@ class TestRecapMusique(unittest.TestCase):
     def test_coque_inchangee_au_deuxieme_passage(self):
         self.lancer("--apply")
         _, sortie = self.lancer("--apply")
-        self.assertRegex(sortie, r"\[lecteur\] .*lecteur\.html inchange")
+        self.assertRegex(sortie, r"\[lecteur\] .*lecteur\.html inchangé")
 
     def test_no_player_n_ajoute_aucun_lecteur(self):
         self.lancer("--apply", "--no-player")
@@ -266,35 +266,35 @@ class TestRecapMusique(unittest.TestCase):
         self.lancer("--apply")
         fichiers = {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in self.data.rglob("*") if p.is_file() and p.name != "recap.log"}
         _, sortie = self.lancer("--apply")
-        self.assertIn("5 piste(s), 5 reprise(s) du catalogue, 0 a lire", sortie)
-        self.assertIn("0 ecrite(s), 3 inchangee(s)", sortie)
-        self.assertIn("[artistes] 2 fiche(s) dans Artistes/ (0 ecrite(s), 2 inchangee(s))", sortie)
-        self.assertIn("inchange", sortie)
+        self.assertIn("5 piste(s), 5 reprise(s) du catalogue, 0 à lire", sortie)
+        self.assertIn("0 écrite(s), 3 inchangée(s)", sortie)
+        self.assertIn("[artistes] 2 fiche(s) dans Artistes/ (0 écrite(s), 2 inchangée(s))", sortie)
+        self.assertIn("inchangé", sortie)
         self.assertEqual({p: (p.stat().st_mtime_ns, p.read_bytes()) for p in fichiers}, fichiers)
 
     def test_piste_modifiee_est_relue(self):
         self.lancer("--apply")
         piste(self.racine / "Daft Punk" / "Discovery", "04.flac", number=4, total=4, title="Un titre plus long qu'avant", mbid=MBID)
         _, sortie = self.lancer("--apply")
-        self.assertIn("4 reprise(s) du catalogue, 1 a lire", sortie)
-        self.assertIn("1 ecrite(s)", sortie)
+        self.assertIn("4 reprise(s) du catalogue, 1 à lire", sortie)
+        self.assertIn("1 écrite(s)", sortie)
 
     def test_no_cache_rouvre_tout(self):
         self.lancer("--apply")
         _, sortie = self.lancer("--apply", "--no-cache")
-        self.assertIn("0 reprise(s) du catalogue, 5 a lire", sortie)
+        self.assertIn("0 reprise(s) du catalogue, 5 à lire", sortie)
 
     def test_catalogue_corrompu_est_ignore(self):
         self.lancer("--apply")
         (self.data / "catalog.json").write_text("{", encoding="utf-8")
         _, sortie = self.lancer("--apply")
-        self.assertIn("0 reprise(s) du catalogue, 5 a lire", sortie)
+        self.assertIn("0 reprise(s) du catalogue, 5 à lire", sortie)
 
     def test_fichier_illisible_code_1_et_journal(self):
         (self.racine / "Daft Punk" / "Discovery" / "03.flac").write_bytes(b"coupe")
         code, sortie = self.lancer("--apply")
         self.assertEqual(code, 1)
-        self.assertIn("A CORRIGER : 1 fichier(s) illisible(s)", sortie)
+        self.assertIn("À CORRIGER : 1 fichier(s) illisible(s)", sortie)
         self.assertIn("[ILLISIBLE] Daft Punk/Discovery/03.flac", (self.data / "recap.log").read_text(encoding="utf-8"))
         self.assertTrue((self.data / "index.html").exists())
 
@@ -329,7 +329,7 @@ class TestRecapMusique(unittest.TestCase):
                   test_mp3.trame("TXXX", test_mp3.txxx("MusicBrainz Album Id", [MBID]))]
         (dossier / "01.mp3").write_bytes(test_mp3.fichier(trames))
         _, sortie = self.lancer("--apply")
-        self.assertIn("4 album(s), 3 artiste(s), 6 piste(s), 5 etiquetee(s)", sortie)
+        self.assertIn("4 album(s), 3 artiste(s), 6 piste(s), 5 étiquetée(s)", sortie)
         fiche = next((self.data / "Albums").glob("Air - Moon Safari-*.html")).read_text(encoding="utf-8")
         self.assertIn("MP3", fiche)
         self.assertIn("La femme d&#39;argent", fiche)
