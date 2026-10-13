@@ -305,6 +305,24 @@ class TestTagsVises(unittest.TestCase):
         self.assertEqual(self.valeurs(tags, "ARTISTSORT"), ["Kavinsky feat. Havoc"])
         self.assertEqual(self.valeurs(tags, "MUSICBRAINZ_ARTISTID"), ["art-1", "art-2"])
 
+    def test_artiste_impose_retire_les_invites_de_tout_l_album(self):
+        def credit(ident, nom, liaison):
+            return {"name": nom, "joinphrase": liaison, "artist": {"id": ident, "name": nom, "sort-name": nom}}
+        tous = [credit("uv", "Ultra Vomit", " feat. "), credit("a", "Andréas", ", "), credit("b", "Rico", "")]
+        sortie = dict(OUTRUN, **{"artist-credit": tous})
+        sortie["media"] = [{"position": 1, "format": "CD", "track-count": 2, "tracks": [
+            piste(1, "Kings", **{"artist-credit": tous}),
+            piste(2, "Mouss", **{"artist-credit": tous[:2] + [credit("b", "Rico", ", "), credit("m", "Mouss de Mass", "")]})]}]
+        def etiquettes(i):
+            return album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][i], artist="Ultra Vomit")
+        self.assertEqual(self.valeurs(etiquettes(0), "ARTIST"), ["Ultra Vomit"])
+        self.assertEqual(self.valeurs(etiquettes(0), "ALBUMARTIST"), ["Ultra Vomit"])
+        self.assertEqual(self.valeurs(etiquettes(0), "MUSICBRAINZ_ALBUMARTISTID"), ["uv"])
+        self.assertEqual(self.valeurs(etiquettes(1), "ARTIST"), ["Ultra Vomit feat. Mouss de Mass"])
+        self.assertEqual(self.valeurs(etiquettes(1), "MUSICBRAINZ_ARTISTID"), ["uv", "m"])
+        sans = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0])
+        self.assertEqual(self.valeurs(sans, "ARTIST"), ["Ultra Vomit feat. Andréas, Rico"])
+
     def test_artiste_impose_sans_ressemblance_ne_change_rien(self):
         self.assertEqual(self.tags(3, artist="Daft Punk"), self.tags(3))
 

@@ -285,9 +285,17 @@ def _play_cell(track, media_base):
             f"data-src='{esc(media_base + quote(track.rel))}' data-title='{esc(track.title)}'>▶</button></td>")
 
 
+FEAT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring)\s+.*$", re.IGNORECASE)
+
+
+def _main_artist(name):
+    """'Ultra Vomit feat. Mouss de Mass' -> 'Ultra Vomit' : l'invité ne fait pas un autre artiste."""
+    return layout.fold(FEAT_RE.sub("", name or ""))
+
+
 def _row(track, album_artist, media_base=None):
     by = track.info.get("artist") or ""
-    shown = f"<div class='by'>{esc(by)}</div>" if by and layout.fold(by) != layout.fold(album_artist) else ""
+    shown = f"<div class='by'>{esc(by)}</div>" if by and _main_artist(by) != _main_artist(album_artist) else ""
     bad = f"<div class='err'>illisible : {esc(track.error)}</div>" if track.error else ""
     return (f"<tr>{_play_cell(track, media_base)}<td class='n'>{esc(track.number if track.number is not None else '')}</td>"
             f"<td>{esc(track.title)}{shown}{bad}</td><td class='d'>{esc(clock(track.duration))}</td></tr>")
