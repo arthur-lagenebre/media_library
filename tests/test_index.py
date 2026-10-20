@@ -85,10 +85,10 @@ class TestLectureDesFiches(unittest.TestCase):
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
         self.assertNotIn("<select", html)
 
-    def test_le_h1_est_toujours_series(self):
+    def test_le_h1_suit_le_titre_choisi(self):
         fiche(self.racine / "Dark")
         html = showindex.build_html("Ma mediatheque", showindex.find_entries(self.racine))
-        self.assertIn("<h1>Séries</h1>", html)
+        self.assertIn("<h1>Ma mediatheque</h1>", html)
         self.assertIn("<title>Ma mediatheque</title>", html)
 
     def test_lien_relatif_encode(self):

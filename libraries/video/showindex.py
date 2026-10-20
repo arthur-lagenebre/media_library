@@ -172,7 +172,7 @@ def sort_key(title):
 def build_html(library_name, entries):
     """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, "The Expanse" à E.
 
-    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. Le h1 est toujours « Séries » ; `library_name` ne titre que l'onglet."""
+    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. `library_name` titre l'onglet et le h1."""
     cards = []
     genres = {}
     for entry in sorted(entries, key=lambda e: sort_key(e.title)):
@@ -216,7 +216,7 @@ def build_html(library_name, entries):
         "overflow:hidden}"
         "</style></head><body>"
         + layout.header(
-            f"<h1>{DEFAULT_TITLE}</h1>"
+            f"<h1>{esc(library_name)}</h1>"
             f"<div class='sub'>{len(entries)} série(s)</div>"
             "<div class='bar'>"
             "<div class='line'>"
