@@ -295,7 +295,7 @@ class TestRecap(unittest.TestCase):
         for morceau in ("<h1>Ma Serie</h1>", "<nav class='tabs'>", "<button class='mode'"):
             self.assertIn(morceau, en_tete)
         self.assertIn(".top{position:sticky;top:0", html)
-        self.assertNotIn("Resume", en_tete)                  # le résumé défile : fixé, il mangerait la page
+        self.assertNotIn("Resume", html[html.index("<body>"):])    # le résumé global reste dans les métas (pour le sommaire) mais n'est plus affiché : chaque saison porte le sien
 
     def test_fiche_pleine_largeur_ou_centree(self):
         html = self.rendre({1})
@@ -308,8 +308,37 @@ class TestRecap(unittest.TestCase):
         self.assertEqual(html.count("class='ep absent'"), 2)
         self.assertIn("<span class='cnt'>1/3</span>", html)
 
+    def test_resume_de_la_saison_en_tete_de_son_onglet(self):
+        run = series.SeasonRun(Path("."), 1, {**self.SAISON, "overview": "Resume <saison>"}, {1})
+        html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")
+        self.assertIn("<div class='so'>Resume &lt;saison&gt;</div><div class='ep", html)
+        self.assertNotIn("<div class='so'>", self.rendre({1}))          # pas de résumé, pas de bloc
+
+    def test_resume_de_la_serie_quand_la_saison_n_en_a_pas(self):
+        # Une mini-série : TMDB ne résume que la série.
+        class Tmdb:
+            def season(self, show, number, language):
+                raise AssertionError("le résumé de la série suffit")
+        vide, plein = series.SeasonRun(Path("."), 1, {"overview": ""}), series.SeasonRun(Path("."), 2, {"overview": "Saison"})
+        series.fill_season_overviews([vide, plein], {"id": 9, "overview": "Serie"}, Tmdb())
+        self.assertEqual((vide.data["overview"], plein.data["overview"]), ("Serie", "Saison"))
+
+    def test_resume_anglais_en_dernier_recours(self):
+        class Tmdb:
+            def season(self, show, number, language):
+                return {"overview": f"{language} {show}/{number}"}
+        vide = series.SeasonRun(Path("."), 1, {})
+        series.fill_season_overviews([vide], {"id": 9}, Tmdb())
+        self.assertEqual(vide.data["overview"], "en-US 9/1")
+
     def test_lien_vers_la_page_tmdb_de_la_serie(self):
         self.assertIn("href='https://www.themoviedb.org/tv/1234'", self.rendre({1}))
+
+    def test_lien_tmdb_entre_le_titre_et_les_onglets(self):
+        html = self.rendre({1})
+        self.assertLess(html.index("<h1>Ma Serie</h1>"), html.index("class='tmdb'"))
+        self.assertLess(html.index("class='tmdb'"), html.index("<nav class='tabs'>"))
+        self.assertLess(html.index("class='tmdb'"), html.index("</header>"))
 
     def test_chemin_du_fichier_sous_l_episode(self):
         run = series.SeasonRun(Path("."), 1, self.SAISON, {1}, {1: ["Saison 1/Ma Serie S01E01.mkv"]})

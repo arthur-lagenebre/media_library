@@ -375,8 +375,9 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
                 + f"<div class='o'>{esc(ep.get('overview'))}</div>"
                 + layout.paths_block(run.paths.get(ep.get("episode_number")))
                 + "</div></div>")
+        resume = f"<div class='so'>{esc(run.data['overview'])}</div>" if run.data.get("overview") else ""
         panels.append(f"<section class='season' data-s='{run.number}'"
-                      f"{'' if i == 0 else ' hidden'}>{''.join(cards)}</section>")
+                      f"{'' if i == 0 else ' hidden'}>{resume}{''.join(cards)}</section>")
 
     if casting:
         tabs.append("<button class='tab' data-s='cast'>Casting</button>")
@@ -394,7 +395,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
         ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
-        "h1{margin:0}.sub{color:#9aa0aa;margin-bottom:22px}"
+        "h1{margin:0}.lnk{margin-top:4px}"
         + layout.CSS +
         ".tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}"
         ".tab{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
@@ -409,6 +410,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "background-color:#21232b;background-size:cover;background-position:center 30%;"
         "background-repeat:no-repeat}"
         + "".join(embed.shared_rule(cle, uri) for cle, uri in partagees.items()) +
+        ".so{color:#c7ccd4;font-size:15px;padding:6px 0 16px;border-bottom:1px solid #21232b}"
         ".ep.absent{opacity:.42}"
         ".miss{margin-left:8px;padding:1px 7px;border-radius:999px;font-size:11px;"
         "text-transform:uppercase;letter-spacing:.04em;background:#3a2a2e;color:#ff9aa6;"
@@ -433,10 +435,8 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         + cast.noface_rule() +
         "</style></head><body>"
         + layout.header(f"<div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
-                        f"<nav class='tabs'>{''.join(tabs)}</nav>") +
-        f"<div class='sub'>{esc(show.get('overview', ''))}"
-        + (f"<div style='margin-top:8px'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "") +
-        "</div>"
+                        + (f"<div class='lnk'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "")
+                        + f"<nav class='tabs'>{''.join(tabs)}</nav>") +
         f"{''.join(panels)}"
         "<script>"
         "document.querySelectorAll('.tab').forEach(function(b){"
@@ -454,6 +454,13 @@ def _write_text(path, text, apply):
         return f"écrirait {Path(path).name}"
     Path(path).write_text(text, encoding="utf-8")
     return f"{Path(path).name} écrit"
+
+
+def fill_season_overviews(runs, show, tmdb):
+    """Complète le résumé des saisons que TMDB n'a pas en français (une mini-série n'en a souvent pas) : le résumé de la série d'abord, à défaut la version anglaise de la saison."""
+    for run in runs:
+        if not run.data.get("overview"):
+            run.data["overview"] = show.get("overview") or tmdb.season(show["id"], run.number, artwork.ARTWORK_LANG).get("overview") or ""
 
 
 def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
@@ -477,6 +484,8 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         previous = textfile.adopt(Path(root_dir) / showindex.LEGACY_NAME, out, apply)
         known = {**embed.read_embedded(previous), **showindex.recap_poster(previous)}
         # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
+        if apply:
+            fill_season_overviews(processed, show, tmdb)
         stills = (embed.fetch(collect_stills(processed, show, args.still_size), known, args.still_size, tmdb, label="vignette") if apply else {})
         casting = cast.split(collect_cast(processed, args, tmdb)) if apply else cast.Casting()
         profiles = (embed.fetch(collect_profiles(casting, args.profile_size), known, args.profile_size, tmdb, label="portrait") if apply else {})
