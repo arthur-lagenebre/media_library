@@ -373,3 +373,14 @@ python -m unittest discover -s tests -t .
 Ils tournent aussi sur chaque push et chaque PR (Windows et Linux, Python 3.8 et 3.13) via [GitHub Actions](.github/workflows/tests.yml).
 
 Ils couvrent la partie qui casse en silence — analyse des noms, tags produits, comparaison à l'état visé, erreurs TMDB, cas tordus du renommage — sans réseau ni outil externe.
+
+## Licence et données
+
+Le code est publié sous licence [MIT](LICENSE).
+
+Les données qu'il écrit dans les fichiers et dans les fiches HTML ont leurs propres conditions :
+
+- This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org). Les titres, synopsis, affiches et portraits des films et des séries viennent de TMDB.
+- Les métadonnées musicales viennent de [MusicBrainz](https://musicbrainz.org), les pochettes de [Cover Art Archive](https://coverartarchive.org) (chacune garde la licence que son auteur lui a donnée).
+- Les résumés d'artistes viennent de Wikipédia, sous licence CC BY-SA ; chaque fiche en cite la source.
+- MKVToolNix et FFmpeg sont lancés comme programmes séparés, jamais intégrés au code : leurs licences ne s'appliquent pas à ce dépôt.
