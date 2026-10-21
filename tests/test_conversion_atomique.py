@@ -189,6 +189,60 @@ class ConversionAtomique:
         self.assertEqual(status, "converti")
         self.assertEqual(sorted(p.name for p in out.iterdir()), ["Le Film.mkv"])
 
+    # ------------------------------------------------------------ avant de lancer mkvmerge
+    def convert_avec(self, identification, mux=None, **overrides):
+        mux = mux or MkvmergeSimule()
+        sonde = types.SimpleNamespace(duration_min=100.0)
+        with mock.patch.object(self.module, "identify", return_value=identification), mock.patch.object(self.module, "run_tool", mux), mock.patch.object(self.module, "probe", return_value=sonde):
+            return self.module.convert(self.video, options(**overrides), True), mux
+
+    def test_fichier_illisible_par_mkvmerge(self):
+        (status, detail), mux = self.convert_avec((None, "lecture impossible par mkvmerge (code 2)"))
+        self.assertEqual((status, detail), ("erreur", "lecture impossible par mkvmerge (code 2)"))
+        self.assertEqual(mux.commands, [])
+        self.assertEqual(self.folder_content(), [self.video.name])
+
+    def test_fichier_sans_piste_video(self):
+        (status, detail), mux = self.convert_avec(({"tracks": [{"id": 1, "type": "audio", "properties": {}}]}, ""))
+        self.assertEqual((status, detail), ("erreur", "aucune piste vidéo"))
+        self.assertEqual(mux.commands, [])
+
+    def test_subs_require_sans_sous_titre_passe_son_tour(self):
+        (status, detail), mux = self.convert_avec((INFO, ""), subs="require")
+        self.assertEqual(status, "ignoré")
+        self.assertIn("--subs require", detail)
+        self.assertEqual(mux.commands, [])
+
+    def test_subs_none_ignore_ceux_qui_sont_a_cote(self):
+        (self.folder / "Le Film.fr.srt").write_text("1", encoding="utf-8")
+        (status, _), mux = self.convert_avec((INFO, ""), subs="none")
+        self.assertEqual(status, "converti")
+        self.assertNotIn("Le Film.fr.srt", " ".join(mux.commands[0]))
+
+    def test_sous_titre_a_cote_embarque_avec_sa_langue_et_son_encodage(self):
+        (self.folder / "Le Film.en.srt").write_bytes("Déjà vu".encode("cp1252"))
+        (status, detail), mux = self.convert_avec((INFO, ""))
+        self.assertEqual(status, "converti")
+        self.assertIn("Le Film.en.srt en eng (windows-1252)", detail)
+
+    def test_source_non_effacable_n_annule_pas_la_conversion(self):
+        vrai = Path.unlink
+
+        def refuse(chemin, *args, **kwargs):
+            if chemin.suffix == f".{self.extension}":
+                raise PermissionError(13, "Accès refusé")
+            return vrai(chemin, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", refuse):
+            status, detail = self.convert(MkvmergeSimule(), delete_source=True)
+        self.assertEqual(status, "converti")
+        self.assertIn("source non effacée : Accès refusé", detail)
+        self.assertTrue(self.final.is_file())
+        self.assertTrue(self.video.is_file())
+
+    def test_encodage_d_un_sous_titre_illisible_retombe_sur_le_repli(self):
+        self.assertEqual(self.module.detect_charset(self.folder / "absent.srt", "windows-1252"), "windows-1252")
+
     # ------------------------------------------------------------ durée non contrôlable
     def test_sans_ffprobe_converti_mais_non_verifie_et_source_gardee(self):
         status, detail = self.convert(MkvmergeSimule(), check_duration=False, delete_source=True)
