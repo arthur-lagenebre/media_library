@@ -87,6 +87,7 @@ def plan_library(movies, args, tmdb, ids=None):
         tag_id = next((ids[f] for f in entry.files if ids.get(f)), None)
         film, order = lookup.find_movie(tmdb, entry.rawname, entry.contexts, tag_id)
         if film is None:
+            tally.unresolved += 1
             print()
             continue
 
@@ -145,7 +146,9 @@ def main():
     tally = rename_library(movies, args, tmdb)
     sous_titres = (f", {tally.subtitles} sous-titre(s) renommé(s)") if tally.subtitles else ""
     print(f"TOTAL : {tally.named}/{tally.total} film(s) au bon nom{sous_titres}.")
-    return 0
+    if tally.unresolved:
+        print(f"\nÀ CORRIGER : {tally.unresolved} film(s) sans fiche (non associé(s) ou TMDB injoignable).")
+    return 1 if tally.unresolved else 0
 
 
 if __name__ == "__main__":

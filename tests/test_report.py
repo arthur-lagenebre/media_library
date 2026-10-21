@@ -20,11 +20,16 @@ class TestReport(unittest.TestCase):
         # --verify doit pouvoir servir dans un script.
         self.assertEqual(Report(diffs=1).exit_code, 1)
         self.assertEqual(Report(failures=1).exit_code, 1)
+        self.assertEqual(Report(unresolved=1).exit_code, 1)       # un service injoignable ne ressemble pas à un succès
 
     def test_epilogue(self):
         self.assertEqual(Report().epilogue(), "")
         self.assertEqual(Report(diffs=2).epilogue(), "2 fichier(s) non conforme(s)")
         self.assertEqual(Report(diffs=1, failures=3).epilogue(), "1 fichier(s) non conforme(s) ; 3 écriture(s) en échec")
+        self.assertEqual(Report(unresolved=2).epilogue(), "2 sans fiche (non associé(s) ou service injoignable)")
+
+    def test_les_sans_fiche_s_additionnent(self):
+        self.assertEqual((Report(unresolved=1) + Report(total=1, unresolved=2)).unresolved, 3)
 
 
 if __name__ == "__main__":

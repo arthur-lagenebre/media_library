@@ -42,7 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
 from libraries.video import ebml, naming  # noqa: E402
-from libraries.video.mkv import first_error, identify, run_tool  # noqa: E402
+from libraries.video.mkv import first_error, identify, partial_path, run_tool  # noqa: E402
 
 LARGEUR = 100         # ligne de progression : de quoi tenir dans un terminal étroit
 SECONDES_PAR_GO = 10  # --full lit le fichier entier : mesuré sur un partage gigabit, qui rend ~110 Mo/s
@@ -128,22 +128,21 @@ def repair(chemin, complet):
 
     L'original n'est touche qu'a la toute fin, et seulement si le remux ressort sain : tant que le remplacement n'a pas eu lieu, un échec ne coûte qu'un fichier temporaire. mkvmerge rend 1 pour un simple avertissement - il a écrit quand même - et 2 ou plus quand il n'a rien pu produire.
     """
-    neuf = chemin.with_name(chemin.stem + ".neuf.mkv")
-    if neuf.exists():
-        return False, f"un fichier {neuf.name} traîne déjà à côté"
-    resultat = run_tool(["mkvmerge", "--quiet", "-o", str(neuf), str(chemin)])
-    if resultat.returncode >= 2 or not neuf.exists():
-        neuf.unlink(missing_ok=True)
-        return False, first_error(resultat) or "mkvmerge n'a rien pu écrire"
-    reste = check(neuf, complet)
-    if reste:
-        neuf.unlink(missing_ok=True)
-        return False, f"le remux est abîmé lui aussi ({reste})"
+    neuf = partial_path(chemin)
     try:
-        os.replace(neuf, chemin)
-    except OSError as exc:
-        neuf.unlink(missing_ok=True)
-        return False, f"remplacement impossible : {exc.strerror or exc}"
+        neuf.unlink(missing_ok=True)          # reste d'un passage interrompu : il ne doit pas passer pour le remux de celui-ci
+        resultat = run_tool(["mkvmerge", "--quiet", "-o", str(neuf), str(chemin)])
+        if resultat.returncode >= 2 or not neuf.exists():
+            return False, first_error(resultat) or "mkvmerge n'a rien pu écrire"
+        reste = check(neuf, complet)
+        if reste:
+            return False, f"le remux est abîmé lui aussi ({reste})"
+        try:
+            os.replace(neuf, chemin)
+        except OSError as exc:
+            return False, f"remplacement impossible : {exc.strerror or exc}"
+    finally:
+        neuf.unlink(missing_ok=True)          # déjà renommé : rien à faire ; sinon (échec, Ctrl-C) rien ne doit traîner
     return True, ""
 
 

@@ -224,6 +224,19 @@ class TestQuestionsDeFinDePassage(unittest.TestCase):
         self.assertEqual((report.matched, report.pending), (1, 1))
         self.assertIn("[NON TRAITÉ]", sortie)
 
+    def test_fiche_inaccessible_apres_la_reponse_reste_a_corriger(self):
+        # La réponse est donnée, mais TMDB ne rend pas la fiche choisie : le film n'est ni traité ni « à confirmer », il est sans fiche.
+        class EnPanne(FauxTmdbFilms):
+            def movie(self, movie_id, language=None):
+                raise TmdbError("HTTP 503")
+
+        library = films.Library([], {}, {})
+        with mock.patch.object(films.cli, "can_ask", lambda: True), mock.patch.object(films.cli, "ask_choice", lambda nombre, defaut=0: 0), redirect_stdout(io.StringIO()) as sortie:
+            report = films.resolve_pending(self.attente(), library, self.args, OPTS, EnPanne())
+        self.assertEqual((report.total, report.unresolved, report.pending), (1, 1, 0))
+        self.assertEqual(report.exit_code, 1)
+        self.assertIn("échec détails TMDB", sortie.getvalue())
+
     def test_arreter_saute_toutes_les_suivantes(self):
         report, _, tmdb, demandes = self.poser([films.cli.ASK_STOP], combien=3)
         self.assertEqual(len(demandes), 1)              # une seule question posée

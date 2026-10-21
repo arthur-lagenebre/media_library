@@ -1,10 +1,12 @@
 """Lecture du .env et résolution de la clé TMDB."""
 
+import io
 import os
 import sys
 import tempfile
 import types
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -96,6 +98,70 @@ class TestDossier(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 cli.check_dir(fichier)
         self.assertIn("pas un fichier", str(ctx.exception))
+
+
+class TestQuestions(unittest.TestCase):
+    """Les questions de fin de passage : une réponse incomprise repose la question, jamais ne décide."""
+
+    def demander(self, reponses, nombre=3, defaut=0):
+        with mock.patch("builtins.input", side_effect=reponses) as saisie, redirect_stdout(io.StringIO()) as sortie:
+            choix = cli.ask_choice(nombre, defaut)
+        return choix, saisie.call_count, sortie.getvalue()
+
+    def test_entree_garde_le_defaut(self):
+        self.assertEqual(self.demander([""])[0], 0)
+        self.assertEqual(self.demander(["  "], defaut=2)[0], 2)
+
+    def test_un_numero_choisit_sa_proposition(self):
+        self.assertEqual(self.demander(["2"])[0], 1)
+        self.assertEqual(self.demander(["3"])[0], 2)
+
+    def test_i_laisse_de_cote(self):
+        self.assertEqual(self.demander(["i"])[0], cli.ASK_SKIP)
+        self.assertEqual(self.demander(["IGNORER"])[0], cli.ASK_SKIP)
+
+    def test_q_arrete_les_questions(self):
+        for reponse in ("q", "Quitter", "arreter"):
+            self.assertEqual(self.demander([reponse])[0], cli.ASK_STOP)
+
+    def test_une_reponse_incomprise_repose_la_question(self):
+        choix, appels, sortie = self.demander(["peut-etre", "0", "4", "-1", "2"])
+        self.assertEqual((choix, appels), (1, 5))
+        self.assertIn("un numéro de 1 à 3", sortie)
+
+    def test_entree_fermee_arrete_les_questions(self):
+        self.assertEqual(self.demander([EOFError()])[0], cli.ASK_STOP)
+
+    def test_ctrl_c_arrete_les_questions(self):
+        self.assertEqual(self.demander([KeyboardInterrupt()])[0], cli.ASK_STOP)
+
+
+class TestPeutOnDemander(unittest.TestCase):
+    def avec(self, stdin, stdout):
+        with mock.patch.object(cli.sys, "stdin", stdin), mock.patch.object(cli.sys, "stdout", stdout):
+            return cli.can_ask()
+
+    @staticmethod
+    def flux(tty):
+        return types.SimpleNamespace(isatty=lambda: tty)
+
+    def test_terminal_complet(self):
+        self.assertTrue(self.avec(self.flux(True), self.flux(True)))
+
+    def test_entree_redirigee(self):
+        self.assertFalse(self.avec(self.flux(False), self.flux(True)))
+
+    def test_sortie_redirigee(self):
+        self.assertFalse(self.avec(self.flux(True), self.flux(False)))
+
+    def test_pas_d_entree_du_tout(self):
+        self.assertFalse(self.avec(None, self.flux(True)))
+
+    def test_flux_ferme(self):
+        def ferme():
+            raise ValueError("I/O operation on closed file")
+        self.assertFalse(self.avec(types.SimpleNamespace(isatty=ferme), self.flux(True)))
+
 
 if __name__ == "__main__":
     unittest.main()
