@@ -171,6 +171,17 @@ class TestPochettes(ClientTestCase):
         data, _, _ = self.call([http_error(404), http_error(404)], methode="cover", args=("rel", "grp"))
         self.assertIsNone(data)
 
+    def test_une_panne_reseau_n_est_pas_une_absence_de_pochette(self):
+        # Le diagnostic se faisait sur le texte de l'erreur : un « 404 » dans un message réseau faisait passer la panne pour « pas de pochette ».
+        pannes = [URLError("hôte cover-404.example injoignable")] * 4
+        with self.assertRaises(MusicBrainzError) as ctx:
+            self.call(pannes, methode="cover", args=("rel", "grp"))
+        self.assertIsNone(ctx.exception.code)
+
+    def test_une_erreur_serveur_n_est_pas_une_absence_de_pochette(self):
+        with self.assertRaises(MusicBrainzError):
+            self.call([http_error(500)] * 4, methode="cover", args=("rel", "grp"))
+
     def test_taille_originale(self):
         _, reqs, _ = self.call([FakeResponse(b"JPEG")], methode="cover", args=("rel", None, "original"))
         self.assertTrue(reqs[0].full_url.endswith("/release/rel/front"))

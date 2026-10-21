@@ -302,7 +302,7 @@ Les sous-titres posés à côté sont embarqués au passage, et leur **encodage 
 
 La **durée** du `.mkv` produit est comparée à celle de la source (`--tolerance`, 2 s par défaut) : c'est ce qui attrape un index AVI qui ment ou un flux mal recopié, que `mkvmerge` ne signale pas toujours. `--delete-source` n'efface l'original qu'après ce contrôle — et réclame donc `ffprobe`. Le `.mkv` s'écrit d'abord sous un nom provisoire (`Film.mkv.part`) et ne prend son nom qu'une fois ce contrôle passé : un échec de `mkvmerge`, un écart de durée ou un Ctrl-C ne laissent aucun `.mkv` tronqué, que le passage suivant aurait pris pour un film déjà converti — et `--overwrite` ne détruit l'ancien qu'au moment de le remplacer. Un `conversion.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier non converti.
 
-`--lang` donne la langue des pistes audio (`fre` par défaut, code ISO 639-2 à trois lettres), `--default-audio` et `--default-sub` posent les drapeaux « piste par défaut », `--title` inscrit le nom du fichier comme titre du segment, et `--output-dir` écrit ailleurs qu'à côté de la source. Le `.mkv` obtenu est prêt pour [Metadata.py](scripts/Movies/Metadata.py), qui y écrira le reste.
+`--lang` donne la langue des pistes audio (`fre` par défaut, code ISO 639-2 à trois lettres), `--default-audio` et `--default-sub` posent les drapeaux « piste par défaut », `--title` inscrit le nom du fichier comme titre du segment, et `--output-dir` écrit ailleurs qu'à côté de la source. `--overwrite` remplace un `.mkv` déjà présent (sans lui, le fichier est passé), `--sub-charset` fixe l'encodage de repli des sous-titres qui ne sont pas en UTF-8 (`windows-1252` par défaut) et `--log` place le journal ailleurs qu'à la racine de `--dir`. Le `.mkv` obtenu est prêt pour [Metadata.py](scripts/Movies/Metadata.py), qui y écrira le reste.
 
 ### Convertir les MP4
 
@@ -333,7 +333,7 @@ python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --no-recursive # cet
 
 `--dir` est parcouru **récursivement**, comme partout ailleurs. `--no-recursive` s'en tient aux `.mkv` posés directement dedans : de quoi contrôler l'étage d'une médiathèque — les films rangés à plat — sans relire les dossiers de films qu'elle contient, ni les repasser après coup un par un.
 
-`--repair` remultiplexe les fichiers en défaut : `mkvmerge` réécrit le film proprement à côté (sous le nom provisoire `Film.mkv.part`, effacé quoi qu'il arrive), le résultat est contrôlé à son tour, et l'original n'est remplacé que s'il ressort sain — identifiant TMDB, jaquette, titre du segment, noms de pistes et statistiques sont conservés. Au moindre échec l'original reste en place. Un `verification.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier abîmé.
+`--repair` remultiplexe les fichiers en défaut : `mkvmerge` réécrit le film proprement à côté (sous le nom provisoire `Film.mkv.part`, effacé quoi qu'il arrive), le résultat est contrôlé à son tour, et l'original n'est remplacé que s'il ressort sain — identifiant TMDB, jaquette, titre du segment, noms de pistes et statistiques sont conservés. Au moindre échec l'original reste en place. Un `verification.log` est écrit à la racine de `--dir` (ou là où `--log` le place), et le script sort en **code 1** s'il reste un fichier abîmé.
 
 ### Options communes
 
@@ -343,7 +343,7 @@ Les `Metadata.py` sortent en **code 1** s'il reste quelque chose à corriger —
 
 Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAPPDATA%\media_library\tmdb` et `…\musicbrainz` (`~/.cache/media_library/…` ailleurs) — jamais à côté de la médiathèque. Repasser sur une grosse collection ne refait donc pas tous les appels : mesuré sur 8 requêtes, 416 ms contre 56 ms. `--no-cache` ignore ce qui est en cache et le rafraîchit ; supprimer le dossier est sans conséquence, il se reconstruit tout seul.
 
-`--skip-done` saute ce qui est déjà conforme, `--language` change la langue TMDB (défaut `fr-FR` ; c'est elle qui détermine le pays de la date de sortie retenue pour les films), et les `--no-*` (`--no-cover`, `--no-date`, `--no-audio-names`, `--no-sub-names`, `--no-flags`, `--no-stats`) désactivent chacun une catégorie d'écriture. `--help` liste le reste.
+`--skip-done` saute ce qui est déjà conforme, `--language` change la langue TMDB (défaut `fr-FR` ; c'est elle qui détermine le pays de la date de sortie retenue pour les films), et les `--no-*` (`--no-cover`, `--no-date`, `--no-audio-names`, `--no-sub-names`, `--no-flags`, `--no-stats`) désactivent chacun une catégorie d'écriture. Pour les séries, `--match-threshold` (de 0 à 1, `0.55` par défaut) règle le score minimal d'une association par titre — `Metadata.py` comme `Rename_Episodes.py` — et `--series-name` impose le nom de la série. La taille des images TMDB se règle par `--image-size` (jaquette), `--still-size` (vignettes d'épisodes), `--profile-size` (portraits du casting) et, pour les films, `--poster-size` (affiches du récap). `--help` liste le reste.
 
 ## Pistes à explorer
 

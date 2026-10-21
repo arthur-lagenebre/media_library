@@ -175,6 +175,6 @@ class MusicBrainz:
             try:
                 return self._image(url)
             except MusicBrainzError as e:
-                if "404" not in str(e):
+                if e.code != 404:         # le code, pas le texte : « 404 » peut figurer dans n'importe quel message réseau
                     raise
         return None
