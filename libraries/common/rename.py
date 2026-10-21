@@ -90,9 +90,10 @@ class Tally:
     named: int = 0          # vidéos déjà au bon nom ou renommées
     total: int = 0          # vidéos vues
     subtitles: int = 0      # sous-titres (ou paroles) renommés avec leur fichier
+    unresolved: int = 0     # lots laissés tels quels faute de pouvoir les associer (album inconnu, service injoignable...)
 
     def __add__(self, other):
-        return Tally(self.named + other.named, self.total + other.total, self.subtitles + other.subtitles)
+        return Tally(self.named + other.named, self.total + other.total, self.subtitles + other.subtitles, self.unresolved + other.unresolved)
 
 
 def sidecar_renames(video, new_stem, extensions):

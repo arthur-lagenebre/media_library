@@ -192,7 +192,7 @@ def resolve_pending(pending, journal, args, mb):
             release, group = lookup.fetch_release(chosen["id"], mb, with_genres=not args.no_genres)
         except MusicBrainzError as e:
             print(f"      échec MusicBrainz : {e}\n")
-            report += Report(total=1)
+            report += Report(total=1, unresolved=1)
             journal.note(found.album.display, None, "[ÉCHEC MUSICBRAINZ]")
             continue
         report += handle(found, release, group, journal, args, mb)
@@ -286,13 +286,13 @@ def main():
             release, group = lookup.resolve(found, mb, forced=args.mbid if len(writable) == 1 else None, country=args.country, ask=not args.no_ask, with_genres=not args.no_genres)
         except MusicBrainzError as e:
             print(f"  échec MusicBrainz : {e}\n")
-            report += Report(total=1)
+            report += Report(total=1, unresolved=1)
             journal.note(album.display, None, "[ÉCHEC MUSICBRAINZ]")
             continue
         if found.choice is not None:
             pending.append(found)
         elif release is None:
-            report += Report(total=1)
+            report += Report(total=1, unresolved=1)
             journal.note(album.display, None, "[NON ASSOCIÉ]")
         else:
             report += handle(found, release, group, journal, args, mb)

@@ -52,6 +52,7 @@ def plan_album(found, release):
     placed, reason = albums.match_tracks(entries, release)
     tally = rename.Tally()
     if reason:
+        tally.unresolved = 1
         print(f"  [NON TRAITÉ] rien ne sera renommé : {reason}")
         print(f"      si l'édition n'est pas la bonne, épingle la bonne : ' [mbid-...]' dans le nom du dossier ({release_url(release.get('id'))})")
         return [], tally
@@ -102,11 +103,13 @@ def rename_pending(pending, args, mb):
     tally = rename.Tally()
     for found, chosen in lookup.confirm(pending):
         if chosen is None:
+            tally.unresolved += 1
             continue
         try:
             release, _ = lookup.fetch_release(chosen["id"], mb, with_genres=False)
         except MusicBrainzError as e:
             print(f"      échec MusicBrainz : {e}\n")
+            tally.unresolved += 1
             continue
         tally += rename_album(found, release, args)
         print()
@@ -166,6 +169,7 @@ def main():
             for error in errors:
                 print(f"      - {error}")
             print()
+            tally.unresolved += 1
             continue
 
         found = lookup.Found(album, metas)
@@ -173,10 +177,13 @@ def main():
             release, _ = lookup.resolve(found, mb, forced=args.mbid if len(writable) == 1 else None, country=args.country, ask=not args.no_ask, with_genres=False)
         except MusicBrainzError as e:
             print(f"  échec MusicBrainz : {e}\n")
+            tally.unresolved += 1
             continue
         if found.choice is not None:
             pending.append(found)
-        elif release is not None:
+        elif release is None:
+            tally.unresolved += 1
+        else:
             tally += rename_album(found, release, args)
         print()
 
@@ -185,7 +192,9 @@ def main():
 
     lyrics = (f", {tally.subtitles} fichier(s) de paroles " + ("renommé(s)" if args.apply else "à renommer")) if tally.subtitles else ""
     print(f"TOTAL : {tally.named}/{tally.total} piste(s) au bon nom{lyrics}.")
-    return 0
+    if tally.unresolved:
+        print(f"\nÀ CORRIGER : {tally.unresolved} album(s) non traité(s) (non reconnu(s), illisible(s), à confirmer ou MusicBrainz injoignable).")
+    return 1 if tally.unresolved else 0
 
 
 if __name__ == "__main__":

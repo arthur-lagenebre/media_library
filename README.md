@@ -339,7 +339,7 @@ python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --no-recursive # cet
 
 `--verify` et `--skip-done` comparent aussi **les tags écrits** (synopsis, casting, genres, dates) à ce que TMDB donne aujourd'hui : un fichier étiqueté par une version plus ancienne, ou dont les tags ont été perdus, est signalé au lieu d'être déclaré conforme. Cette relecture coûte un appel à `mkvextract` par fichier, donc elle n'a lieu qu'avec ces deux options.
 
-Les `Metadata.py` sortent en **code 1** s'il reste quelque chose à corriger — fichiers non conformes en `--verify`, écritures en échec en `--apply` — et le résument en dernière ligne, de quoi les enchaîner dans un script.
+Les `Metadata.py` sortent en **code 1** s'il reste quelque chose à corriger — fichiers non conformes en `--verify`, écritures en échec en `--apply` — et le résument en dernière ligne, de quoi les enchaîner dans un script. Côté musique, `Music/Metadata.py` et `Music/Rename_Tracks.py` comptent aussi pour **à corriger** un album qu'ils n'ont pas pu associer, ou pour lequel MusicBrainz n'a pas répondu : sans cela, une panne réseau pendant la tâche planifiée du NAS passerait pour un succès. Des pistes qu'il reste à renommer, en simulation, n'en sont pas.
 
 Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAPPDATA%\media_library\tmdb` et `…\musicbrainz` (`~/.cache/media_library/…` ailleurs) — jamais à côté de la médiathèque. Repasser sur une grosse collection ne refait donc pas tous les appels : mesuré sur 8 requêtes, 416 ms contre 56 ms. `--no-cache` ignore ce qui est en cache et le rafraîchit ; supprimer le dossier est sans conséquence, il se reconstruit tout seul.
 

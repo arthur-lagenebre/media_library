@@ -18,13 +18,14 @@ class Report:
     failures: int = 0       # écritures en échec
     skipped: int = 0        # laissés de côté : pistes ambiguës, décision humaine
     pending: int = 0        # associations restées à confirmer
+    unresolved: int = 0     # éléments sans fiche : non associés, ou service injoignable (rien n'a pu être fait)
 
     def __add__(self, other):
-        return Report(self.matched + other.matched, self.total + other.total, self.diffs + other.diffs, self.failures + other.failures, self.skipped + other.skipped, self.pending + other.pending)
+        return Report(self.matched + other.matched, self.total + other.total, self.diffs + other.diffs, self.failures + other.failures, self.skipped + other.skipped, self.pending + other.pending, self.unresolved + other.unresolved)
 
     @property
     def exit_code(self):
-        return 1 if (self.diffs or self.failures or self.skipped or self.pending) else 0
+        return 1 if (self.diffs or self.failures or self.skipped or self.pending or self.unresolved) else 0
 
     def epilogue(self):
         """Ligne finale à afficher quand quelque chose n'est pas passé."""
@@ -35,6 +36,8 @@ class Report:
             restes.append(f"{self.skipped} non traité(s) pour pistes ambiguës")
         if self.pending:
             restes.append(f"{self.pending} association(s) à confirmer")
+        if self.unresolved:
+            restes.append(f"{self.unresolved} sans fiche (non associé(s) ou service injoignable)")
         if self.failures:
             restes.append(f"{self.failures} écriture(s) en échec")
         return " ; ".join(restes)
