@@ -375,7 +375,7 @@ def resolve_pending(attente, library, args, opts, tmdb):
         candidat = doute.candidates[choix]
         movie = movie_details(candidat["id"], doute.order, args, tmdb)
         if movie is None:
-            report += Report(total=1)
+            report += Report(total=1, unresolved=1)
             continue
         print(f"      -> {lookup.describe(candidat)}")
         print(f"      pour ne plus avoir la question : ajoute "
@@ -929,7 +929,7 @@ def main():
             print()
             continue
         if movie is None:
-            report += Report(total=1)
+            report += Report(total=1, unresolved=1)
             library.note(entry.display, None, "[NON ASSOCIÉ]")
             continue
         report += handle_movie(entry, movie, library, args, opts, tmdb)

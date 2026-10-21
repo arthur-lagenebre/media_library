@@ -128,6 +128,7 @@ def main():
                 data = tmdb.season(args.tmdb_id, num)
             except TmdbError as e:
                 print(f"  échec TMDB saison {num} : {e} -> saison ignorée\n")
+                bilan.unresolved += 1
                 continue
             bilan += rename_season(sub, data, args)
             print()
@@ -143,10 +144,13 @@ def main():
 
     sous_titres = (f", {bilan.subtitles} sous-titre(s) " + ("renommé(s)" if args.apply else "à renommer")) if bilan.subtitles else ""
     print(f"TOTAL : {bilan.named}/{bilan.total} fichier(s) au bon nom{sous_titres}.")
+    if bilan.unresolved:
+        print(f"\nÀ CORRIGER : {bilan.unresolved} saison(s) ignorée(s) (TMDB injoignable).")
+    return 1 if bilan.unresolved else 0
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except TmdbAuthError as e:
         sys.exit(f"TMDB : {e}")

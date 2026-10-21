@@ -577,6 +577,7 @@ def main():
                 data = tmdb.season(args.tmdb_id, num)
             except TmdbError as e:
                 print(f"  échec TMDB saison {num} : {e} -> saison ignorée\n")
+                report += Report(unresolved=1)
                 continue
             if args.no_tag:
                 print("  épisodes non modifiés (--no-tag)")
