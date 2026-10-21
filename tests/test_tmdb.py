@@ -4,12 +4,14 @@ Aucun appel réseau : urlopen est remplacé par un double qui rejoue une file de
 """
 
 import io
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError, URLError
+from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cache
@@ -204,6 +206,162 @@ class TestCacheDesReponses(ClientTestCase):
         client, requetes = self.client([FakeResponse(b'{"id": 1}')], None)
         self.assertEqual(client.get("movie/1"), {"id": 1})
         self.assertEqual(len(requetes), 1)
+
+
+class TestAttentes(unittest.TestCase):
+    """Combien de temps on laisse à TMDB avant de réessayer."""
+
+    def attentes(self, reponses, **kwargs):
+        pauses = []
+        client = Tmdb("0123456789abcdef", **kwargs)
+
+        def fake_urlopen(request, timeout=None):
+            item = reponses.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        with mock.patch.object(tmdb_mod, "urlopen", fake_urlopen), mock.patch.object(tmdb_mod.time, "sleep", pauses.append):
+            try:
+                client.get("movie/1")
+            except TmdbError:
+                pass
+        return pauses
+
+    def test_le_delai_demande_par_tmdb_est_respecte(self):
+        self.assertEqual(self.attentes([http_error(429, {"Retry-After": "7"}), FakeResponse(b"{}")]), [7])
+
+    def test_le_delai_demande_est_plafonne(self):
+        self.assertEqual(self.attentes([http_error(429, {"Retry-After": "3600"}), FakeResponse(b"{}")]), [tmdb_mod.MAX_RETRY_WAIT])
+
+    def test_un_delai_incomprehensible_retombe_sur_l_attente_exponentielle(self):
+        (pause,) = self.attentes([http_error(503, {"Retry-After": "bientôt"}), FakeResponse(b"{}")])
+        self.assertTrue(1 <= pause <= 1.5)       # 2 ** 0, plus un bruit d'au plus 0,5 s
+
+    def test_sans_delai_demande_l_attente_double_a_chaque_essai(self):
+        premiere, seconde = self.attentes([URLError("coupure"), URLError("coupure"), FakeResponse(b"{}")], attempts=3)
+        self.assertTrue(1 <= premiere <= 1.5)
+        self.assertTrue(2 <= seconde <= 2.5)
+
+    def test_derniere_tentative_sans_attente(self):
+        self.assertEqual(len(self.attentes([URLError("coupure")] * 3, attempts=3)), 2)
+
+    def test_panne_serveur_reessayee(self):
+        self.assertEqual(len(self.attentes([http_error(500), http_error(502), FakeResponse(b"{}")], attempts=3)), 2)
+
+    def test_retry_after_absent(self):
+        self.assertIsNone(Tmdb._retry_after(None))
+        self.assertIsNone(Tmdb._retry_after({}))
+
+
+class TestErreursDefinitives(ClientTestCase):
+    def test_autre_erreur_client_non_reessayee(self):
+        reponses = [http_error(422), FakeResponse(b"{}")]
+        with self.assertRaisesRegex(TmdbError, "HTTP 422"):
+            self.call(reponses)
+        self.assertEqual(len(reponses), 1)
+
+    def test_acces_interdit_arrete_tout_comme_une_cle_refusee(self):
+        with self.assertRaises(TmdbAuthError):
+            self.call([http_error(403)])
+
+    def test_une_cle_refusee_ne_se_confond_pas_avec_une_erreur_ponctuelle(self):
+        # Les scripts rattrapent TmdbError élément par élément : si la clé invalide en héritait, elle donnerait une cascade de « saison ignorée ».
+        self.assertFalse(issubclass(TmdbAuthError, TmdbError))
+
+
+class TestPointsDAcces(ClientTestCase):
+    """Chaque méthode vise le bon chemin, avec ce qu'il faut pour la fiche qu'on en tire."""
+
+    def url(self, methode, *args, reponse=b'{"results": []}', **kwargs):
+        _, reqs = self.call([FakeResponse(reponse)], methode=methode, args=args, **kwargs)
+        return unquote(reqs[0].full_url)
+
+    def test_recherche_de_film(self):
+        self.assertIn("search/movie?query=Les Quatre Fantastiques&", self.url("search_movie", "Les Quatre Fantastiques"))
+
+    def test_recherche_de_film_avec_annee(self):
+        self.assertIn("&year=2021&", self.url("search_movie", "Dune", 2021))
+
+    def test_recherche_de_film_sans_annee(self):
+        self.assertNotIn("year=", self.url("search_movie", "Dune"))
+
+    def test_recherche_de_saga(self):
+        self.assertIn("search/collection?query=Iron Man&", self.url("search_collection", "Iron Man"))
+
+    def test_recherche_sans_resultat_rend_une_liste_vide(self):
+        resultats, _ = self.call([FakeResponse(b"{}")], methode="search_movie", args=("x",))
+        self.assertEqual(resultats, [])
+
+    def test_film_avec_ses_credits(self):
+        self.assertIn("movie/438631?append_to_response=credits&", self.url("movie", 438631, reponse=b"{}"))
+
+    def test_composition_d_une_saga(self):
+        self.assertIn("/collection/131292?", self.url("collection", 131292, reponse=b"{}"))
+
+    def test_saison(self):
+        self.assertIn("/tv/42/season/3?", self.url("season", 42, 3, reponse=b"{}"))
+
+    def test_serie(self):
+        self.assertIn("/tv/42?", self.url("series", 42, reponse=b"{}"))
+
+
+class TestDateDeSortieNationale(ClientTestCase):
+    """Le champ release_date du film est la sortie d'origine : la sortie française vient de /release_dates."""
+
+    def date(self, resultats, region="FR"):
+        corps = json.dumps({"results": resultats}).encode()
+        date, _ = self.call([FakeResponse(corps)], methode="local_release_date", args=(1, region))
+        return date
+
+    @staticmethod
+    def pays(code, *sorties):
+        return {"iso_3166_1": code, "release_dates": [{"type": t, "release_date": d} for t, d in sorties]}
+
+    def test_la_sortie_en_salles_prime_sur_le_numerique(self):
+        self.assertEqual(self.date([self.pays("FR", (4, "2021-12-01T00:00:00.000Z"), (3, "2021-09-15T00:00:00.000Z"))]), "2021-09-15")
+
+    def test_a_type_egal_la_plus_ancienne(self):
+        # Sinon une ressortie en salles prendrait le pas sur la sortie initiale.
+        self.assertEqual(self.date([self.pays("FR", (3, "2023-06-01T00:00:00.000Z"), (3, "2021-09-15T00:00:00.000Z"))]), "2021-09-15")
+
+    def test_repli_sur_un_type_moins_prefere(self):
+        self.assertEqual(self.date([self.pays("FR", (5, "2022-02-01T00:00:00.000Z"))]), "2022-02-01")
+
+    def test_la_bonne_region_seule_compte(self):
+        self.assertEqual(self.date([self.pays("US", (3, "2021-10-22T00:00:00.000Z")), self.pays("FR", (3, "2021-09-15T00:00:00.000Z"))]), "2021-09-15")
+
+    def test_region_absente(self):
+        self.assertIsNone(self.date([self.pays("US", (3, "2021-10-22T00:00:00.000Z"))]))
+
+    def test_date_vide_ignoree(self):
+        self.assertIsNone(self.date([self.pays("FR", (3, ""))]))
+
+    def test_type_inconnu_ignore(self):
+        self.assertIsNone(self.date([self.pays("FR", (9, "2021-09-15T00:00:00.000Z"))]))
+
+    def test_aucune_sortie_listee(self):
+        self.assertIsNone(self.date([]))
+
+    def test_panne_de_tmdb_rend_none_sans_planter(self):
+        # Ce n'est qu'une date : le film se traite avec celle d'origine.
+        date, _ = self.call([http_error(404)], methode="local_release_date", args=(1, "FR"))
+        self.assertIsNone(date)
+
+
+class TestEcritureDImage(ClientTestCase):
+    def test_l_image_est_ecrite_sur_le_disque(self):
+        with tempfile.TemporaryDirectory() as d:
+            destination = Path(d) / "cover.jpg"
+            self.call([FakeResponse(b"JPEG", {"Content-Length": "4"})], methode="save_image", args=("/a.jpg", "w500", destination))
+            self.assertEqual(destination.read_bytes(), b"JPEG")
+
+    def test_une_image_tronquee_n_est_pas_ecrite(self):
+        with tempfile.TemporaryDirectory() as d:
+            destination = Path(d) / "cover.jpg"
+            with self.assertRaises(TmdbError):
+                self.call([FakeResponse(b"JP", {"Content-Length": "4"})], methode="save_image", args=("/a.jpg", "w500", destination))
+            self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":
