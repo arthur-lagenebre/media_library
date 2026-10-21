@@ -32,6 +32,17 @@ def run_tool(cmd, **kwargs):
     return subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", **kwargs)
 
 
+PARTIAL_SUFFIX = ".part"
+
+
+def partial_path(path):
+    """Nom sous lequel un .mkv s'écrit avant d'avoir été contrôlé : `Film.mkv` -> `Film.mkv.part`.
+
+    mkvmerge écrit directement là où on le lui dit : une coupure, un échec ou un résultat suspect laisseraient un `Film.mkv` tronqué que les passages suivants prendraient pour un film (ou pour une conversion déjà faite). Sous ce nom-là aucun script ne le voit ; le fichier ne prend son vrai nom qu'une fois jugé sain.
+    """
+    return path.with_name(path.name + PARTIAL_SUFFIX)
+
+
 def first_error(result):
     """Première ligne d'erreur d'un outil externe, pour ne pas noyer le bilan.
 

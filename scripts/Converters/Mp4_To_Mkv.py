@@ -24,6 +24,7 @@ Dépendances EXTERNES : mkvmerge (MKVToolNix), et ffprobe (FFmpeg) pour le contr
 """
 
 import argparse
+import os
 import shutil
 import sys
 import time
@@ -33,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
 from libraries.video import naming  # noqa: E402
-from libraries.video.mkv import first_error, identify, probe, run_tool  # noqa: E402
+from libraries.video.mkv import first_error, identify, partial_path, probe, run_tool  # noqa: E402
 
 TEXT_SUB_EXT = {".srt", ".ass", ".ssa"}   # sous-titres texte : eux seuls ont un encodage
 SUB_EXT = TEXT_SUB_EXT | {".idx"}         # un .sub n'est pas cité : mkvmerge le prend avec son .idx
@@ -192,9 +193,9 @@ def convert(video, args, check_duration):
 
     Rien n'est affiché ici : c'est l'appelant qui imprime, et le journal reprend mot pour mot ce que le terminal a montré.
     """
-    output = (args.output_dir or video.parent) / (video.stem + ".mkv")
-    if output.exists() and not args.overwrite:
-        return "ignoré", f"{output.name} existe déjà (--overwrite pour l'écraser)"
+    final = (args.output_dir or video.parent) / (video.stem + ".mkv")
+    if final.exists() and not args.overwrite:
+        return "ignoré", f"{final.name} existe déjà (--overwrite pour l'écraser)"
 
     info, problem = identify(video)
     if info is None:
@@ -207,7 +208,9 @@ def convert(video, args, check_duration):
     if args.subs == "require" and not subs and not embedded:
         return "ignoré", "aucun sous-titre, ni dedans ni à côté (--subs require)"
 
-    command, attached, kept = build_command(video, output, info, subs, args)
+    # mkvmerge écrit sous un nom provisoire : le .mkv ne prend son nom qu'une fois jugé sain.
+    partial = partial_path(final)
+    command, attached, kept = build_command(video, partial if args.apply else final, info, subs, args)
     note = "".join(f", {name} en {language}" + (f" ({charset})" if charset else "")
                    for name, language, charset in attached)
     if embedded:
@@ -219,23 +222,34 @@ def convert(video, args, check_duration):
 
     if args.output_dir:
         args.output_dir.mkdir(parents=True, exist_ok=True)
-    result = run_tool(command)
-    if result.returncode > MKVMERGE_WARNING or not output.exists():
-        return "erreur", first_error(result) or "mkvmerge n'a rien pu écrire"
-    if result.returncode == MKVMERGE_WARNING:
-        note += ", avertissement mkvmerge"
+    try:
+        partial.unlink(missing_ok=True)       # reste d'un passage interrompu : il ne doit pas passer pour la sortie de celui-ci
+        result = run_tool(command)
+        if result.returncode > MKVMERGE_WARNING or not partial.exists():
+            return "erreur", first_error(result) or "mkvmerge n'a rien pu écrire"
+        if result.returncode == MKVMERGE_WARNING:
+            note += ", avertissement mkvmerge"
 
-    # Le moov d'un .mp4 dit la durée sans se tromper, mais un fichier coupé en cours de
-    # copie n'en a pas : mkvmerge remultiplexe alors ce qu'il trouve, sans toujours le dire.
-    if not check_duration:
-        return "non vérifié", f"converti, durée non contrôlée (ffprobe absent){note}"
-    source, produced = probe(video).duration_min, probe(output).duration_min
-    if source is None or produced is None:
-        return "non vérifié", f"converti, durée indéterminable{note}"
-    gap = abs(source - produced) * 60
-    if gap > args.tolerance:
-        return "écart", f"{gap:.1f} s de différence avec la source : {output.name} est suspect, l'original est gardé"
+        # Le moov d'un .mp4 dit la durée sans se tromper, mais un fichier coupé en cours de
+        # copie n'en a pas : mkvmerge remultiplexe alors ce qu'il trouve, sans toujours le dire.
+        unverified = "" if check_duration else "durée non contrôlée (ffprobe absent)"
+        if check_duration:
+            source, produced = probe(video).duration_min, probe(partial).duration_min
+            if source is None or produced is None:
+                unverified = "durée indéterminable"
+            else:
+                gap = abs(source - produced) * 60
+                if gap > args.tolerance:
+                    return "écart", f"{gap:.1f} s de différence avec la source : {final.name} n'a pas été écrit, l'original est gardé"
+        try:
+            os.replace(partial, final)
+        except OSError as exc:
+            return "erreur", f"{final.name} n'a pas pu être écrit : {exc.strerror or exc}"
+    finally:
+        partial.unlink(missing_ok=True)       # déjà renommé : rien à faire ; sinon (échec, écart, Ctrl-C) rien ne doit traîner
 
+    if unverified:
+        return "non vérifié", f"converti, {unverified}{note}"
     if args.delete_source:
         try:
             video.unlink()

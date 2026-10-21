@@ -300,7 +300,7 @@ python scripts\Converters\Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source
 
 Les sous-titres posés à côté sont embarqués au passage, et leur **encodage est mesuré fichier par fichier** : `mkvmerge` suppose de l'UTF-8, alors qu'un `.srt` d'époque est en général en `windows-1252` — et le malentendu ne se voit qu'aux accents cassés, souvent une fois l'original effacé. La langue est lue dans le suffixe du nom (`Film.fr.srt` → `fre`), `--sub-lang` tranche pour ceux qui n'en ont pas, et un `.sub` est laissé à son `.idx`, qui l'embarque déjà. `--subs none` les ignore, `--subs require` ne convertit que les films qui en ont.
 
-La **durée** du `.mkv` produit est comparée à celle de la source (`--tolerance`, 2 s par défaut) : c'est ce qui attrape un index AVI qui ment ou un flux mal recopié, que `mkvmerge` ne signale pas toujours. `--delete-source` n'efface l'original qu'après ce contrôle — et réclame donc `ffprobe`. Un `conversion.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier non converti.
+La **durée** du `.mkv` produit est comparée à celle de la source (`--tolerance`, 2 s par défaut) : c'est ce qui attrape un index AVI qui ment ou un flux mal recopié, que `mkvmerge` ne signale pas toujours. `--delete-source` n'efface l'original qu'après ce contrôle — et réclame donc `ffprobe`. Le `.mkv` s'écrit d'abord sous un nom provisoire (`Film.mkv.part`) et ne prend son nom qu'une fois ce contrôle passé : un échec de `mkvmerge`, un écart de durée ou un Ctrl-C ne laissent aucun `.mkv` tronqué, que le passage suivant aurait pris pour un film déjà converti — et `--overwrite` ne détruit l'ancien qu'au moment de le remplacer. Un `conversion.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier non converti.
 
 `--lang` donne la langue des pistes audio (`fre` par défaut, code ISO 639-2 à trois lettres), `--default-audio` et `--default-sub` posent les drapeaux « piste par défaut », `--title` inscrit le nom du fichier comme titre du segment, et `--output-dir` écrit ailleurs qu'à côté de la source. Le `.mkv` obtenu est prêt pour [Metadata.py](scripts/Movies/Metadata.py), qui y écrira le reste.
 
@@ -333,7 +333,7 @@ python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --no-recursive # cet
 
 `--dir` est parcouru **récursivement**, comme partout ailleurs. `--no-recursive` s'en tient aux `.mkv` posés directement dedans : de quoi contrôler l'étage d'une médiathèque — les films rangés à plat — sans relire les dossiers de films qu'elle contient, ni les repasser après coup un par un.
 
-`--repair` remultiplexe les fichiers en défaut : `mkvmerge` réécrit le film proprement à côté, le résultat est contrôlé à son tour, et l'original n'est remplacé que s'il ressort sain — identifiant TMDB, jaquette, titre du segment, noms de pistes et statistiques sont conservés. Au moindre échec l'original reste en place. Un `verification.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier abîmé.
+`--repair` remultiplexe les fichiers en défaut : `mkvmerge` réécrit le film proprement à côté (sous le nom provisoire `Film.mkv.part`, effacé quoi qu'il arrive), le résultat est contrôlé à son tour, et l'original n'est remplacé que s'il ressort sain — identifiant TMDB, jaquette, titre du segment, noms de pistes et statistiques sont conservés. Au moindre échec l'original reste en place. Un `verification.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier abîmé.
 
 ### Options communes
 
