@@ -19,8 +19,9 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
 | [scripts/Books/Recap.py](scripts/Books/Recap.py) | Fiche HTML d'une bibliothèque de livres, BD, comics et mangas, lue dans les fiches intégrées aux `.cbz` et `.epub` : une page par série, couvertures, auteurs, tomes manquants ; rien n'est écrit dans les livres |
 | [scripts/Maintenance/Verify_Files.py](scripts/Maintenance/Verify_Files.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
-| [scripts/Converters/Avi_To_Mkv.py](scripts/Converters/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
-| [scripts/Converters/Mp4_To_Mkv.py](scripts/Converters/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
+| [scripts/Converters/Video/Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
+| [scripts/Converters/Video/Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
+| [scripts/Converters/Music/Wav_To_Flac.py](scripts/Converters/Music/Wav_To_Flac.py) | Encode les `.wav` en `.flac`, sans perte et vérifié : le son décodé des deux fichiers doit avoir la même empreinte |
 
 Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine ; le reste est interne :
 
@@ -30,7 +31,7 @@ scripts/TV_Shows/      la même chose pour les séries
 scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, et leur fiche HTML
 scripts/Books/         fiche HTML des livres, BD, comics et mangas
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
-scripts/Converters/    changement de conteneur, avant tout étiquetage
+scripts/Converters/    conversions qui précèdent l'étiquetage : Video/ (conteneur .mkv) et Music/ (.wav en .flac)
 libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage
 libraries/video/       tout ce qui touche aux films et aux séries
 libraries/music/       tout ce qui touche à la musique
@@ -44,7 +45,7 @@ tests/                 les tests
 
 - Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
-- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4`
+- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son
 - [Pillow](https://pypi.org/project/pillow/) (`pip install pillow`) — facultatif : réduit les couvertures de `Books/Recap.py` et les pochettes de `Music/Recap.py`. Sans lui, les pages montrent un monogramme à la place.
 
 ```powershell
@@ -290,12 +291,12 @@ Le dépôt entier doit être copié sur le NAS (`libraries/` et `scripts/Books/R
 
 ### Convertir les AVI
 
-Un `.avi` ne sait rien porter : ni jaquette, ni synopsis, ni identifiant TMDB. Tant qu'un film reste dans ce conteneur, `Metadata.py` n'a nulle part où écrire — [Avi_To_Mkv.py](scripts/Converters/Avi_To_Mkv.py) fait donc la passe qui précède l'étiquetage. Rien n'est réencodé : les pistes sont recopiées telles quelles, à la vitesse du disque, et l'image comme le son ressortent identiques.
+Un `.avi` ne sait rien porter : ni jaquette, ni synopsis, ni identifiant TMDB. Tant qu'un film reste dans ce conteneur, `Metadata.py` n'a nulle part où écrire — [Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) fait donc la passe qui précède l'étiquetage. Rien n'est réencodé : les pistes sont recopiées telles quelles, à la vitesse du disque, et l'image comme le son ressortent identiques.
 
 ```powershell
-python scripts\Converters\Avi_To_Mkv.py --dir "D:\Films"                          # simulation
-python scripts\Converters\Avi_To_Mkv.py --dir "D:\Films" --apply                  # convertit
-python scripts\Converters\Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi vérifié
+python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films"                          # simulation
+python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films" --apply                  # convertit
+python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi vérifié
 ```
 
 Les sous-titres posés à côté sont embarqués au passage, et leur **encodage est mesuré fichier par fichier** : `mkvmerge` suppose de l'UTF-8, alors qu'un `.srt` d'époque est en général en `windows-1252` — et le malentendu ne se voit qu'aux accents cassés, souvent une fois l'original effacé. La langue est lue dans le suffixe du nom (`Film.fr.srt` → `fre`), `--sub-lang` tranche pour ceux qui n'en ont pas, et un `.sub` est laissé à son `.idx`, qui l'embarque déjà. `--subs none` les ignore, `--subs require` ne convertit que les films qui en ont.
@@ -306,17 +307,33 @@ La **durée** du `.mkv` produit est comparée à celle de la source (`--toleranc
 
 ### Convertir les MP4
 
-Même passe pour les `.mp4`, avec [Mp4_To_Mkv.py](scripts/Converters/Mp4_To_Mkv.py). Un `.mp4` sait porter une jaquette et quelques tags, mais à la mode iTunes : `Metadata.py` écrit des tags **Matroska**, et n'a donc nulle part où les poser tant que le film reste dans ce conteneur. Rien n'est réencodé non plus — les chapitres suivent, la jaquette et les tags iTunes sont laissés derrière, puisque `Metadata.py` les réécrit ensuite depuis TMDB.
+Même passe pour les `.mp4`, avec [Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py). Un `.mp4` sait porter une jaquette et quelques tags, mais à la mode iTunes : `Metadata.py` écrit des tags **Matroska**, et n'a donc nulle part où les poser tant que le film reste dans ce conteneur. Rien n'est réencodé non plus — les chapitres suivent, la jaquette et les tags iTunes sont laissés derrière, puisque `Metadata.py` les réécrit ensuite depuis TMDB.
 
 ```powershell
-python scripts\Converters\Mp4_To_Mkv.py --dir "D:\Films"                          # simulation
-python scripts\Converters\Mp4_To_Mkv.py --dir "D:\Films" --apply                  # convertit
-python scripts\Converters\Mp4_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface le .mp4 vérifié
+python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films"                          # simulation
+python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply                  # convertit
+python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface le .mp4 vérifié
 ```
 
 Une différence de fond avec les `.avi` : un `.mp4` **déclare souvent la langue de ses pistes**, là où un `.avi` n'en dit jamais rien. Elle est donc gardée telle quelle, et `--lang` ne sert qu'aux pistes qui n'en ont pas (`und`) — sans quoi un rip anglais correctement étiqueté ressortirait en français. `--force-lang` réétiquette tout, pour un fichier qui se trompe, et le bilan de chaque conversion dit quelles langues ont été conservées.
 
 Les sous-titres **déjà dans le `.mp4`** (tx3g) sont recopiés par `mkvmerge` sans qu'on ait rien à demander, et comptent pour `--subs require` ; ceux posés à côté sont traités exactement comme pour un `.avi`, encodage mesuré fichier par fichier. Le reste est identique — contrôle de durée (`--tolerance`), `--delete-source` après vérification, code de sortie **1** s'il reste un fichier non converti — et le journal s'appelle `conversion_mp4.log`, pour ne pas écraser celui des `.avi` quand les deux passes visent le même dossier. Seule l'extension `.mp4` est prise : un `.m4v` est le même conteneur sous un autre nom, mais le renommer se voit, alors que l'embarquer en silence ne se verrait pas.
+
+### Convertir les WAV en FLAC
+
+Un `.wav` ne sait presque rien porter : ni pochette, ni identifiant MusicBrainz, des tags que la plupart des lecteurs ignorent — et il pèse en général près du double du même son en FLAC. [Music/Metadata.py](scripts/Music/Metadata.py) n'a donc nulle part où écrire tant qu'une piste reste dans ce conteneur : [Wav_To_Flac.py](scripts/Converters/Music/Wav_To_Flac.py) fait la passe qui précède l'étiquetage.
+
+```powershell
+python scripts\Converters\Music\Wav_To_Flac.py --dir "D:\Musique"                          # simulation
+python scripts\Converters\Music\Wav_To_Flac.py --dir "D:\Musique" --apply                  # convertit
+python scripts\Converters\Music\Wav_To_Flac.py --dir "D:\Musique" --apply --delete-source  # + efface le .wav vérifié
+```
+
+**FLAC plutôt que MP3** : c'est le seul des deux qui rende exactement le son d'origine. Un `.wav` sort d'un CD ou d'une captation, et il n'en existe souvent plus qu'une copie : l'encoder en MP3 jetterait pour toujours ce que l'oreille ne remarque pas aujourd'hui, alors qu'un `.flac` se transcode en MP3 le jour où il en faut un. `Metadata.py`, `Rename_Tracks.py` et `Recap.py` lisent les deux de la même façon.
+
+« Sans perte » est **vérifié, pas supposé** : le son décodé du `.wav` et celui du `.flac` produit sont comparés par empreinte (MD5 des échantillons), et le `.flac` n'existe qu'à cette condition. `--delete-source` n'efface l'original qu'ensuite. Seuls les `.wav` en **entiers 16 ou 24 bits** sont pris : `ffmpeg` arrondirait en silence un `.wav` en virgule flottante ou en 32 bits, qui est donc laissé tel quel avec la raison au bilan. Comme pour les films, le `.flac` s'écrit d'abord sous un nom provisoire (`Piste.flac.part`) : un échec, une empreinte différente ou un Ctrl-C ne laissent aucun `.flac` tronqué, que le passage suivant aurait pris pour une conversion déjà faite.
+
+Les tags du `.wav` (titre, artiste, album, année, numéro de piste…) suivent quand il en a ; `Metadata.py` les remplace ensuite depuis MusicBrainz, et ajoute la pochette. `--compression` (de 0 à 12, 8 par défaut) ne change que la taille et le temps de calcul, jamais le son. `--output-dir`, `--overwrite`, `--no-recursive` et `--log` fonctionnent comme pour les films. Un `conversion_flac.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier non converti.
 
 ### Vérifier les fichiers
 

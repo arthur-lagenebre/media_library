@@ -47,7 +47,8 @@ class TestDependances(unittest.TestCase):
                     self.assertEqual(imported_domains(path) & forbidden, set())
 
     def test_les_scripts_de_musique_n_importent_pas_la_video(self):
-        for path in sorted((ROOT / "scripts" / "Music").glob("*.py")):
+        dossiers = [ROOT / "scripts" / "Music", ROOT / "scripts" / "Converters" / "Music"]
+        for path in sorted(p for dossier in dossiers for p in dossier.glob("*.py")):
             with self.subTest(path.relative_to(ROOT).as_posix()):
                 self.assertNotIn("video", imported_domains(path))
 

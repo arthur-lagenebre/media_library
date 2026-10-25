@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 r"""
-Avi_To_Mkv.py - Remultiplexe les .avi en .mkv, sans réencodage, sous-titres compris.
+Mp4_To_Mkv.py - Remultiplexe les .mp4 en .mkv, sans réencodage, sous-titres compris.
 
-Un .avi ne sait rien porter : ni jaquette, ni synopsis, ni identifiant TMDB. Tant qu'un film reste dans ce conteneur, Metadata.py n'a nulle part où écrire, et le fichier ne peut pas être autonome. C'est donc la passe qui précède l'étiquetage : elle change le conteneur, et rien d'autre.
+Un .mp4 sait porter une jaquette et quelques tags, mais à la mode iTunes : Metadata.py écrit des tags Matroska, et n'a donc nulle part où les poser tant que le film reste dans ce conteneur. C'est la passe qui précède l'étiquetage : elle change le conteneur, et rien d'autre.
 
-Rien n'est réencodé - les pistes sont recopiées telles quelles, à la vitesse du disque - donc l'image et le son ressortent identiques. Ce qui change, c'est ce que le fichier saura raconter ensuite.
+Rien n'est réencodé - les pistes sont recopiées telles quelles, à la vitesse du disque - donc l'image et le son ressortent identiques. Les chapitres suivent ; la jaquette et les tags iTunes, non : Metadata.py les réécrit ensuite, depuis TMDB.
 
-Les sous-titres posés à côté sont embarqués au passage, et leur encodage est mesuré fichier par fichier : mkvmerge suppose de l'UTF-8, alors qu'un .srt d'époque est en général en windows-1252, et le malentendu ne se voit qu'aux accents cassés, souvent une fois l'original effacé. La langue est lue dans le suffixe du nom ("Film.fr.srt"), et un .sub est laissé à son .idx, qui l'embarque déjà.
+Ce qui distingue ce passage de celui des .avi tient en une chose : un .mp4 déclare souvent la langue de ses pistes. Elle est alors gardée, et --lang ne sert qu'à celles qui n'en ont pas ("und") ; --force-lang réétiquette tout, pour un fichier qui se trompe. Un .avi, lui, ne dit jamais rien de ses langues, et il faut bien les lui donner.
 
-La durée du .mkv produit est comparée à celle de la source : c'est ce qui attrape un index AVI qui ment ou un flux mal recopié, que mkvmerge ne signale pas toujours. --delete-source n'efface l'original qu'après ce contrôle, et réclame donc ffprobe.
+Les sous-titres posés à côté sont embarqués au passage, et leur encodage est mesuré fichier par fichier : mkvmerge suppose de l'UTF-8, alors qu'un .srt d'époque est en général en windows-1252, et le malentendu ne se voit qu'aux accents cassés, souvent une fois l'original effacé. La langue est lue dans le suffixe du nom ("Film.fr.srt"), et un .sub est laissé à son .idx, qui l'embarque déjà. Ceux qui sont déjà DANS le mp4 (tx3g) sont recopiés sans qu'on ait rien à demander, et comptent pour --subs require.
+
+La durée du .mkv produit est comparée à celle de la source : le moov d'un .mp4 ne ment pas comme un index AVI, mais il peut manquer, ou n'avoir jamais été écrit sur un fichier coupé en cours de copie - mkvmerge remultiplexe alors ce qu'il trouve, sans toujours s'en plaindre. --delete-source n'efface l'original qu'après ce contrôle, et réclame donc ffprobe.
 
 Usage :
-  python Avi_To_Mkv.py --dir "D:\Films"                          # simulation
-  python Avi_To_Mkv.py --dir "D:\Films" --apply                  # convertit
-  python Avi_To_Mkv.py --dir "D:\Films" --apply --lang eng --sub-lang fre
-  python Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi verifie
+  python Mp4_To_Mkv.py --dir "D:\Films"                          # simulation
+  python Mp4_To_Mkv.py --dir "D:\Films" --apply                  # convertit
+  python Mp4_To_Mkv.py --dir "D:\Films" --apply --lang eng --sub-lang fre
+  python Mp4_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface le .mp4 verifie
 
-Options : --apply --lang --sub-lang --subs --sub-charset --default-audio --default-sub --title --output-dir --overwrite --tolerance --delete-source --no-recursive --log (défaut : conversion.log à la racine de --dir)
+Options : --apply --lang --force-lang --sub-lang --subs --sub-charset --default-audio --default-sub --title --output-dir --overwrite --tolerance --delete-source --no-recursive --log (défaut : conversion_mp4.log à la racine de --dir)
 
 Dépendances EXTERNES : mkvmerge (MKVToolNix), et ffprobe (FFmpeg) pour le contrôle des durées. Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -29,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
 from libraries.video import naming  # noqa: E402
 from libraries.video.mkv import first_error, identify, partial_path, probe, run_tool  # noqa: E402
@@ -37,6 +39,7 @@ from libraries.video.mkv import first_error, identify, partial_path, probe, run_
 TEXT_SUB_EXT = {".srt", ".ass", ".ssa"}   # sous-titres texte : eux seuls ont un encodage
 SUB_EXT = TEXT_SUB_EXT | {".idx"}         # un .sub n'est pas cité : mkvmerge le prend avec son .idx
 MKVMERGE_WARNING = 1                      # mkvmerge : 1 = il a écrit malgré une remarque, 2+ = il n'a rien produit
+NO_LANGUAGE = {"", "und"}                 # ce que mkvmerge répond d'une piste qui ne dit pas sa langue
 
 # Suffixe de nom de fichier -> code ISO 639-2/B, le seul que mkvmerge accepte en --language.
 LANG_HINTS = {
@@ -46,22 +49,23 @@ LANG_HINTS = {
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Remultiplexe les .avi d'un dossier en .mkv, sans réencodage (récursivement par défaut).")
+    p = argparse.ArgumentParser(description="Remultiplexe les .mp4 d'un dossier en .mkv, sans réencodage (récursivement par défaut).")
     p.add_argument("--dir", required=True, help="dossier à convertir")
     p.add_argument("--apply", action="store_true", help="convertit réellement (défaut : simulation)")
-    p.add_argument("--lang", default="fre", help="langue des pistes audio, code ISO 639-2 à trois lettres (défaut : fre)")
+    p.add_argument("--lang", default="fre", help="langue des pistes audio qui n'en déclarent aucune, code ISO 639-2 à trois lettres (défaut : fre)")
+    p.add_argument("--force-lang", action="store_true", help="impose --lang à toutes les pistes audio, y compris celles qui déclarent déjà une langue")
     p.add_argument("--sub-lang", default=None, help="langue d'un sous-titre dont le nom ne dit rien (défaut : celle de --lang)")
-    p.add_argument("--subs", choices=("auto", "none", "require"), default="auto", help="auto : embarque les sous-titres posés à côté ; none : les ignore ; require : ne convertit que les films qui en ont (défaut : auto)")
+    p.add_argument("--subs", choices=("auto", "none", "require"), default="auto", help="auto : embarque les sous-titres posés à côté ; none : les ignore ; require : ne convertit que les films qui en ont, dedans ou à côté (défaut : auto)")
     p.add_argument("--sub-charset", default="windows-1252", help="encodage de repli des sous-titres texte qui ne sont pas en UTF-8 (défaut : windows-1252)")
     p.add_argument("--default-audio", action="store_true", help="marque la première piste audio comme piste par défaut")
-    p.add_argument("--default-sub", action="store_true", help="marque le premier sous-titre comme piste par défaut")
+    p.add_argument("--default-sub", action="store_true", help="marque le premier sous-titre posé à côté comme piste par défaut")
     p.add_argument("--title", action="store_true", help="inscrit le nom du fichier comme titre du segment")
     p.add_argument("--output-dir", default=None, help="dossier de sortie, où les fichiers sont posés à plat (défaut : à côté de la source)")
     p.add_argument("--overwrite", action="store_true", help="écrase un .mkv déjà présent au lieu de passer son tour")
     p.add_argument("--tolerance", type=float, default=2.0, help="écart de durée toléré entre la source et le résultat, en secondes (défaut : 2.0)")
-    p.add_argument("--delete-source", action="store_true", help="efface l'.avi une fois la durée du .mkv vérifiée (demande ffprobe)")
-    p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .avi posés directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : conversion.log à la racine de --dir)")
+    p.add_argument("--delete-source", action="store_true", help="efface le .mp4 une fois la durée du .mkv vérifiée (demande ffprobe)")
+    p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .mp4 posés directement dans --dir, sans descendre dans les sous-dossiers")
+    p.add_argument("--log", default=None, help="fichier journal (défaut : conversion_mp4.log à la racine de --dir)")
     args = p.parse_args()
     if args.sub_lang is None:
         args.sub_lang = args.lang
@@ -73,13 +77,13 @@ def parse_args():
     return args
 
 
-def avi_files(root, recursive=True):
-    """Les .avi sous root : ceux posés à la racine d'abord, puis dossier par dossier.
+def mp4_files(root, recursive=True):
+    """Les .mp4 sous root : ceux posés à la racine d'abord, puis dossier par dossier.
 
-    Le même ordre que Verify_Files, pour qu'un passage se relise pareil d'un script à l'autre. L'extension est comparée en minuscules plutôt que filtrée par glob : les rips d'époque écrivent volontiers ".AVI", et sous Linux le glob ne les verrait pas.
+    Le même ordre que Verify_Files, pour qu'un passage se relise pareil d'un script à l'autre. L'extension est comparée en minuscules plutôt que filtrée par glob : un fichier sorti d'un caméscope ou d'un vieux téléphone écrit volontiers ".MP4", et sous Linux le glob ne le verrait pas.
     """
     found = root.rglob("*") if recursive else root.glob("*")
-    files = (f for f in found if f.is_file() and f.suffix.lower() == ".avi")
+    files = (f for f in found if f.is_file() and f.suffix.lower() == ".mp4")
     return sorted(files, key=lambda p: (p.parent != root, str(p.parent).lower(), p.name.lower()))
 
 
@@ -118,16 +122,46 @@ def find_subtitles(video):
             if f.stem == video.stem or f.stem.startswith(video.stem + ".")]
 
 
-def build_command(video, output, info, subs, args):
-    """(commande mkvmerge, [(nom, langue, encodage)]) pour un fichier.
+def tracks_of(info, kind):
+    """Les pistes d'un type donné, dans l'ordre où mkvmerge les a lues."""
+    return [t for t in (info or {}).get("tracks", []) if t.get("type") == kind]
 
-    Une option mkvmerge s'applique au fichier qui la SUIT : chaque bloc de langue et d'encodage doit donc précéder son sous-titre. Les identifiants de piste sont ceux de 'mkvmerge -J', et non ceux de ffprobe, qui numérote autrement ; côté sous-titres il n'y a qu'une piste par fichier, donc toujours 0.
+
+def track_language(track):
+    """Langue déclarée par une piste, ou "" quand elle n'en déclare pas.
+
+    mkvmerge répond "und" pour une piste muette sur ce point, ce qui revient au même qu'un champ absent : les deux sont rendus ici comme une absence, pour qu'un seul test suffise ensuite.
+    """
+    language = (track.get("properties") or {}).get("language") or ""
+    return "" if language in NO_LANGUAGE else language
+
+
+def audio_languages(info, args):
+    """([(id, langue à écrire)], [langues gardées]) pour les pistes audio.
+
+    C'est là que ce script se sépare de son voisin Avi_To_Mkv : un .mp4 déclare souvent la langue de ses pistes, et un rip anglais correctement étiqueté ressortirait en français si on écrasait tout au passage. On n'écrit donc que sur les pistes qui ne disent rien - à moins que --force-lang ne tranche, pour un fichier qui se trompe.
+    """
+    to_write, kept = [], []
+    for track in tracks_of(info, "audio"):
+        language = track_language(track)
+        if language and not args.force_lang:
+            kept.append(language)
+        else:
+            to_write.append((track["id"], args.lang))
+    return to_write, kept
+
+
+def build_command(video, output, info, subs, args):
+    """(commande mkvmerge, [(nom, langue, encodage)], [langues gardées]) pour un fichier.
+
+    Une option mkvmerge s'applique au fichier qui la SUIT : chaque bloc de langue et d'encodage doit donc précéder son sous-titre. Les identifiants de piste sont ceux de 'mkvmerge -J', et non ceux de ffprobe, qui numérote autrement ; côté sous-titres posés à côté il n'y a qu'une piste par fichier, donc toujours 0.
     """
     command = ["mkvmerge", "--output", str(output)]
 
-    audio_ids = [t["id"] for t in info.get("tracks", []) if t.get("type") == "audio"]
-    for track_id in audio_ids:
-        command += ["--language", f"{track_id}:{args.lang}"]
+    to_write, kept = audio_languages(info, args)
+    for track_id, language in to_write:
+        command += ["--language", f"{track_id}:{language}"]
+    audio_ids = [t["id"] for t in tracks_of(info, "audio")]
     if audio_ids and args.default_audio:
         command += ["--default-track-flag", f"{audio_ids[0]}:yes"]
     if args.title:
@@ -146,7 +180,7 @@ def build_command(video, output, info, subs, args):
         command.append(str(sub))
         attached.append((sub.name, language, charset))
 
-    return command, attached
+    return command, attached, kept
 
 
 def display_command(command):
@@ -166,18 +200,23 @@ def convert(video, args, check_duration):
     info, problem = identify(video)
     if info is None:
         return "erreur", problem
-    if not any(track.get("type") == "video" for track in info.get("tracks", [])):
+    if not tracks_of(info, "video"):
         return "erreur", "aucune piste vidéo"
 
     subs = find_subtitles(video) if args.subs != "none" else []
-    if args.subs == "require" and not subs:
-        return "ignoré", "aucun sous-titre à côté (--subs require)"
+    embedded = tracks_of(info, "subtitles")
+    if args.subs == "require" and not subs and not embedded:
+        return "ignoré", "aucun sous-titre, ni dedans ni à côté (--subs require)"
 
     # mkvmerge écrit sous un nom provisoire : le .mkv ne prend son nom qu'une fois jugé sain.
     partial = partial_path(final)
-    command, attached = build_command(video, partial if args.apply else final, info, subs, args)
+    command, attached, kept = build_command(video, partial if args.apply else final, info, subs, args)
     note = "".join(f", {name} en {language}" + (f" ({charset})" if charset else "")
                    for name, language, charset in attached)
+    if embedded:
+        note += f", {len(embedded)} sous-titre(s) déjà dans le mp4"
+    if kept:
+        note += ", langue(s) d'origine gardée(s) : " + ", ".join(sorted(set(kept)))
     if not args.apply:
         return "simule", display_command(command)
 
@@ -191,8 +230,8 @@ def convert(video, args, check_duration):
         if result.returncode == MKVMERGE_WARNING:
             note += ", avertissement mkvmerge"
 
-        # Un AVI décrit sa durée dans un index que les copies successives ont pu abîmer :
-        # mkvmerge recopie alors moins de film qu'il n'y en a, sans forcément le dire.
+        # Le moov d'un .mp4 dit la durée sans se tromper, mais un fichier coupé en cours de
+        # copie n'en a pas : mkvmerge remultiplexe alors ce qu'il trouve, sans toujours le dire.
         unverified = "" if check_duration else "durée non contrôlée (ffprobe absent)"
         if check_duration:
             source, produced = probe(video).duration_min, probe(partial).duration_min
@@ -225,7 +264,7 @@ def write_log(destination, root, entries, args, summary):
     lines = [
         f"Conversion du {datetime.now():%d/%m/%Y %H:%M} - {root}",
         cli.mode_label(args, "aucune conversion") + ("" if not args.no_recursive else ", sans les sous-dossiers"),
-        f"{len(entries)} fichier(s) .avi - {summary}",
+        f"{len(entries)} fichier(s) .mp4 - {summary}",
         "",
     ]
     for name, status, detail in entries:
@@ -249,21 +288,23 @@ def main():
                  "  Installe MKVToolNix : winget install MoritzBunkus.MKVToolNix")
     check_duration = shutil.which("ffprobe") is not None
     if args.delete_source and not check_duration:
-        sys.exit("--delete-source n'efface un .avi qu'après avoir comparé la durée du .mkv à la sienne,\n"
+        sys.exit("--delete-source n'efface un .mp4 qu'après avoir comparé la durée du .mkv à la sienne,\n"
                  "et ffprobe est introuvable dans le PATH : installe FFmpeg (winget install Gyan.FFmpeg)\n"
                  "ou relance sans --delete-source.")
     if not check_duration:
         print("ffprobe absent -> la durée des fichiers produits ne sera pas contrôlée "
               "(winget install Gyan.FFmpeg)\n")
 
-    files = avi_files(root, recursive=not args.no_recursive)
+    files = mp4_files(root, recursive=not args.no_recursive)
     scope = "dans" if args.no_recursive else "sous"
     if not files:
-        sys.exit(f"Aucun .avi {scope} {root}")
+        sys.exit(f"Aucun .mp4 {scope} {root}")
     print(f"=== {cli.mode_label(args, 'rien ne sera converti ; ajoute --apply')} ===")
-    print(f"{len(files)} fichier(s) .avi {scope} {root}"
+    print(f"{len(files)} fichier(s) .mp4 {scope} {root}"
           + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
-    print("Remultiplexage sans réencodage : l'image et le son sont recopiés tels quels.\n")
+    print("Remultiplexage sans réencodage : l'image et le son sont recopiés tels quels.")
+    print("Les pistes qui déclarent déjà leur langue la gardent"
+          + (" - sauf ici, où --force-lang l'impose.\n" if args.force_lang else " (--force-lang pour l'imposer).\n"))
 
     entries, start = [], time.time()
     for n, path in enumerate(files, 1):
@@ -283,10 +324,10 @@ def main():
     if not args.apply:
         print("Simulation : rien n'a été écrit. Ajoute --apply pour convertir.")
     elif counts.get("converti") and not args.delete_source:
-        print("Les .avi sont toujours à côté de leurs .mkv : étiquette-les avec "
+        print("Les .mp4 sont toujours à côté de leurs .mkv : étiquette-les avec "
               "Movies/Metadata.py, puis efface-les quand le résultat te convient.")
 
-    write_log(Path(args.log) if args.log else root / "conversion.log", root, entries, args, summary)
+    write_log(Path(args.log) if args.log else root / "conversion_mp4.log", root, entries, args, summary)
     return 1 if counts.get("erreur") or counts.get("écart") else 0
 
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.Converters import Avi_To_Mkv, Mp4_To_Mkv
+from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
 from scripts.Maintenance import Verify_Files
 from tests.test_conversion_atomique import INFO, MkvmergeSimule
 
