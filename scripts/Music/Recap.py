@@ -157,14 +157,14 @@ def update_artist_info(artists, path, args):
     return entries
 
 
-def write_artist_pages(artists, entries, covers, pages, out, library_name):
-    """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites)."""
+def write_artist_pages(artists, entries, covers, pages, out, library_name, base=None):
+    """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. 'base' = media_base de ce dossier (le même que celui des fiches d'albums), pour que les pochettes lisent leur album. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites)."""
     folder = out / librarypage.ARTIST_DIR
     folder.mkdir(parents=True, exist_ok=True)
     done, written = {}, 0
     for artist in artists.values():
         page = folder / librarypage.artist_page_name(artist)
-        html = librarypage.build_artist(artist, covers, f"../{INDEX_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"))
+        html = librarypage.build_artist(artist, covers, f"../{INDEX_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base)
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -228,9 +228,11 @@ def write_pages(sections, out, root, args):
                 print(f"  [pages] {done}/{len(queue)}")
     print(f"  [pages] {len(pages)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s)), {fresh} pochette(s) extraite(s)")
 
-    artists, _ = write_artist_pages(artists, entries, covers, pages, out, library_name)
+    artists, _ = write_artist_pages(artists, entries, covers, pages, out, library_name, base)
 
-    html = librarypage.build_index(library_name, sections, covers, pages, artists)
+    # Le sommaire est à la racine de la sortie, pas dans un dossier : son chemin vers les fichiers n'est pas celui des fiches.
+    index_base = None if args.no_player else media_base(out, root)
+    html = librarypage.build_index(library_name, sections, covers, pages, artists, index_base)
     if textfile.same(index, html):
         print(f"  [sommaire] {index} inchangé")
     else:

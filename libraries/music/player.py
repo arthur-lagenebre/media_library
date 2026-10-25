@@ -31,6 +31,12 @@ BAR_CSS = (
     "#bar audio{flex:1;min-width:0;height:36px}"
 )
 
+# La barre fixée en bas de page, et la place qu'elle prend une fois visible.
+FIXED_BAR_CSS = (
+    "#bar{position:fixed;left:0;right:0;bottom:0;z-index:5}"
+    "body.playing .page{padding-bottom:70px}"
+)
+
 # Sur une fiche : les boutons de piste, "Tout lire", et la barre fixée en bas.
 PLAYER_CSS = (
     BAR_CSS
@@ -40,8 +46,64 @@ PLAYER_CSS = (
     ".trk tr.now td{color:#7cc4ff}.trk tr.now .play{background:#7cc4ff;color:#14151a}"
     "#all{margin-top:16px;padding:9px 18px;border:0;border-radius:20px;background:#7cc4ff;color:#14151a;font:600 14px system-ui,sans-serif;cursor:pointer}"
     "#all:hover{background:#a6d8ff}"
-    "#bar{position:fixed;left:0;right:0;bottom:0;z-index:5}"
-    "body.playing .page{padding-bottom:70px}"
+    + FIXED_BAR_CSS
+)
+
+# Sur le sommaire et la fiche d'un artiste : le bouton posé au milieu de chaque pochette, et la barre fixée en bas. Le bouton n'est pas dans le lien de la pochette (un bouton dans un lien n'est pas valide) mais par-dessus, dans un calque qui laisse passer les clics : un clic sur le bouton lit l'album, un clic à côté, toujours sur la pochette, ouvre sa fiche.
+TILE_CSS = (
+    BAR_CSS
+    + ".al{position:relative}"
+    ".ovl{position:absolute;top:0;left:0;right:0;aspect-ratio:1;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:transform .15s}"
+    ".ov{pointer-events:auto;width:56px;height:56px;padding:0 0 0 4px;border:0;border-radius:50%;background:rgba(20,21,26,.78);color:#fff;font-size:20px;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,transform .15s}"
+    ".ov.on{padding:0;opacity:1}"
+    "a.cv:hover~.ovl .ov,a.cv:focus-visible~.ovl .ov,.ov:hover,.ov:focus-visible{opacity:1}"
+    ".ov:hover,.ov:focus-visible{background:#7cc4ff;color:#14151a;transform:scale(1.08);outline:0}"
+    # La pochette se soulève au survol, le bouton avec elle - et reste soulevée quand c'est lui qu'on survole.
+    "a.cv:hover~.ovl,a.cv:focus-visible~.ovl,.ovl:has(.ov:hover),.ovl:has(.ov:focus-visible){transform:translateY(-3px)}"
+    ".al:has(.ov:hover) .aff,.al:has(.ov:focus-visible) .aff{transform:translateY(-3px);box-shadow:0 0 0 2px #7cc4ff}"
+    "@media(hover:none){.ov{opacity:1}}"
+    + FIXED_BAR_CSS
+)
+
+# Le script de ces pages. Les pistes de chaque album sont dans l'attribut data-t de son bouton, lues seulement au clic. Comme la fiche, il envoie l'album à la coque quand il est dans son iframe, et sinon joue lui-même dans la barre ; le bouton de l'album en cours devient une pause.
+TILE_SCRIPT = (
+    "(function(){"
+    "var framed=window.parent!==window,curBtn=null,curSrcs=[],nowSrc='',nowPaused=true,queue=[],cur=-1,a,bar,song,prev,next;"
+    "function shown(){if(!curBtn)return;var on=!nowPaused&&curSrcs.indexOf(nowSrc)>=0;"
+    "curBtn.className=on?'ov on':'ov';curBtn.textContent=on?'❚❚':'▶'}"
+    "function list(b){return JSON.parse(b.getAttribute('data-t')).map(function(t){return{src:new URL(t[0],location.href).href,title:t[1]}})}"
+    "var start,toggle;"
+    "if(framed){"
+    "start=function(t,name,page){window.parent.postMessage({t:'play',tracks:t,index:0,album:name,page:page},'*')};"
+    "toggle=function(){window.parent.postMessage({t:'toggle'},'*')};"
+    "window.addEventListener('message',function(e){var d=e.data;if(e.source!==window.parent||!d||d.t!=='state')return;"
+    "nowSrc=d.src;nowPaused=d.paused;shown()});"
+    "window.parent.postMessage({t:'hello'},'*');"
+    "}else{"
+    "a=document.getElementById('player');bar=document.getElementById('bar');song=document.getElementById('song');"
+    "prev=document.getElementById('prev');next=document.getElementById('next');"
+    "function update(){prev.disabled=cur<0;next.disabled=cur<0||cur>=queue.length-1;"
+    "nowSrc=cur>=0?queue[cur].src:'';nowPaused=a.paused;shown()}"
+    "function play(i){if(i<0||i>=queue.length){cur=-1;update();return}"
+    "cur=i;a.src=queue[i].src;song.textContent=(i+1)+'/'+queue.length+' · '+queue[i].title;song.className='';"
+    "bar.hidden=false;document.body.classList.add('playing');"
+    "var p=a.play();if(p&&p.catch)p.catch(function(){});update()}"
+    "start=function(t){queue=t;play(0)};"
+    "toggle=function(){if(a.paused){a.play()}else{a.pause()}};"
+    "prev.onclick=function(){if(a.currentTime>3||cur===0){a.currentTime=0}else{play(cur-1)}};"
+    "next.onclick=function(){play(cur+1)};"
+    "a.addEventListener('play',update);a.addEventListener('pause',update);"
+    "a.addEventListener('ended',function(){play(cur+1)});"
+    "a.addEventListener('error',function(){if(cur<0)return;song.className='bad';song.textContent='Lecture impossible : '+queue[cur].title});"
+    "}"
+    "document.addEventListener('click',function(ev){"
+    "var b=ev.target.closest&&ev.target.closest('button.ov');if(!b)return;"
+    "if(b===curBtn&&curSrcs.indexOf(nowSrc)>=0){toggle();return}"
+    "var was=curBtn,al=b.closest('.al'),link=al.querySelector('a.cv'),t=list(b);"
+    "curBtn=b;curSrcs=t.map(function(x){return x.src});nowSrc='';nowPaused=true;"
+    "if(was&&was!==b){was.className='ov';was.textContent='▶'}"
+    "start(t,al.querySelector('.t').textContent,link?link.href:'')})"
+    "})();"
 )
 
 ALL_BUTTON = "<div><button id='all' type='button'>▶ Tout lire</button></div>"

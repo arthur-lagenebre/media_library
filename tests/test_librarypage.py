@@ -1,9 +1,11 @@
 """Pages de la médiathèque musicale : ce que montrent le sommaire et la fiche d'un album, et leur relecture comme cache de pochettes."""
 
+import json
 import re
 import sys
 import tempfile
 import unittest
+from html import unescape
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -352,6 +354,83 @@ class TestFiche(PageTestCase):
         album = self.un()
         album.unsupported = ["04.m4a"]
         self.assertIn("Non pris en charge : 04.m4a", self.fiche(album))
+
+
+class TestBoutonSurPochette(PageTestCase):
+    """Le bouton posé au milieu des pochettes du sommaire et de la fiche d'un artiste : lire l'album, sans perdre le lien vers sa fiche."""
+
+    def sommaire(self, album, base="./", pages=True):
+        return librarypage.build_index("Musique", library.sections([album]), {}, {album.id} if pages else set(), None, base)
+
+    def pistes(self, html):
+        return json.loads(unescape(re.search(r"data-t='([^']+)'", html).group(1)))
+
+    def test_un_bouton_par_pochette_avec_les_pistes_de_l_album(self):
+        html = self.sommaire(self.un())
+        self.assertEqual(html.count("class='ov'"), 1)
+        self.assertEqual(self.pistes(html), [["./Daft%20Punk/Discovery/01.flac", "Piste 1"], ["./Daft%20Punk/Discovery/02.flac", "Piste 2"], ["./Daft%20Punk/Discovery/03.flac", "Piste 3"]])
+
+    def test_le_bouton_est_a_cote_du_lien_pas_dedans(self):
+        # Un bouton dans un lien n'est pas valide, et un clic à côté du bouton doit rester celui du lien.
+        html = self.sommaire(self.un())
+        self.assertRegex(html, r"<a class='cv' href='[^']+'>.*?</a><span class='ovl'><button class='ov'")
+        self.assertNotRegex(html, r"<a class='cv'[^>]*>(?:(?!</a>).)*<button")
+
+    def test_sans_racine_le_sommaire_ne_lit_rien(self):
+        html = librarypage.build_index("Musique", library.sections([self.un()]), {}, set())
+        for absent in ("class='ov'", "<audio", "TILE", "button.ov", "#bar", ".ovl"):
+            self.assertNotIn(absent, html)
+
+    def test_pochette_sans_fiche_lit_quand_meme(self):
+        html = self.sommaire(self.un(), pages=False)
+        self.assertIn("class='ov'", html)
+        self.assertNotIn("<a class='cv'", html)
+
+    def test_pistes_illisibles_et_album_illisible(self):
+        album = self.un()
+        album.tracks[1].error = "en-tete invalide"
+        self.assertEqual([titre for _, titre in self.pistes(self.sommaire(album))], ["Piste 1", "Piste 3"])
+        for track in album.tracks:
+            track.error = "en-tete invalide"
+        html = self.sommaire(album)
+        for absent in ("class='ov'", "<audio", "button.ov"):
+            self.assertNotIn(absent, html)
+
+    def test_pistes_dans_l_ordre_de_la_fiche_disques_a_la_suite(self):
+        piste(self.racine / "A", "d2.flac", number=1, disc=2, title="Deux", total=1)
+        piste(self.racine / "A", "d1b.flac", number=2, disc=1, title="Un-b", total=2)
+        piste(self.racine / "A", "d1a.flac", number=1, disc=1, title="Un-a", total=2)
+        html = self.sommaire(self.albums()[0])
+        self.assertEqual([titre for _, titre in self.pistes(html)], ["Un-a", "Un-b", "Deux"])
+
+    def test_titre_et_chemin_echappes(self):
+        piste(self.racine / "Artiste" / "L'Oeil #1", "01 - Ça va 100%.flac", number=1, total=1, title="L'été")
+        html = self.sommaire(self.albums()[0], "../")
+        self.assertEqual(self.pistes(html), [["../Artiste/L%27Oeil%20%231/01%20-%20%C3%87a%20va%20100%25.flac", "L'été"]])
+        self.assertIn("L&#39;été", html)               # l'apostrophe ne ferme pas l'attribut
+
+    def test_la_barre_precede_le_script_qui_la_cherche(self):
+        html = self.sommaire(self.un())
+        self.assertLess(html.index("<audio id='player'"), html.index("document.getElementById('player')"))
+        self.assertLess(html.index("</div><div id='bar'"), html.index("<script>", html.index("<audio")))
+
+    def test_fiche_d_artiste_lit_aussi(self):
+        self.album("Daft Punk", "Homework", annee="1997")
+        self.album("Daft Punk", "Discovery")
+        albums = self.albums()
+        artiste, = library.artists(albums)
+        html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", {r.id for r in albums}, None, "../")
+        self.assertEqual(html.count("class='ov'"), 2)
+        self.assertEqual(self.pistes(html)[0][0].split("/")[0], "..")
+        self.assertIn("<audio id='player'", html)
+
+    def test_fiche_d_artiste_sans_racine_ne_lit_rien(self):
+        self.album()
+        albums = self.albums()
+        artiste, = library.artists(albums)
+        html = librarypage.build_artist(artiste, {}, "../index.html", "Musique", {r.id for r in albums})
+        for absent in ("class='ov'", "<audio", "button.ov"):
+            self.assertNotIn(absent, html)
 
 
 class TestFicheArtiste(PageTestCase):
