@@ -11,6 +11,7 @@ Tout est pur : ni réseau ni disque, l'appelant fournit les pochettes déjà ré
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from urllib.parse import quote
@@ -138,8 +139,33 @@ CSS_BASE = (
 )
 
 
-def _tile(release, uri, link, attrs=""):
-    """Une pochette avec son titre. 'link' = adresse de la fiche de l'album, ou '' ; 'attrs' = les attributs de la vignette."""
+def _order(number, i):
+    """Où se range une piste sur une fiche : son numéro, et à la suite celles qui n'en ont pas."""
+    return number if number is not None else 10 ** 6 + i
+
+
+def _playlist(release, media_base):
+    """[[adresse, titre]] des pistes lisibles d'un album, dans l'ordre de sa fiche (disques à la suite) ; vide quand la page ne lit rien (media_base = None)."""
+    if media_base is None:
+        return []
+    found = []
+    for _, tracks in release.discs:
+        ordered = sorted(enumerate(tracks), key=lambda p: _order(p[1].number, p[0]))
+        found += [[media_base + quote(t.rel), t.title] for _, t in ordered if not t.error]
+    return found
+
+
+def _play_overlay(release, media_base):
+    """Le bouton de lecture posé au milieu de la pochette ; rien pour un album sans piste lisible. Il est à côté du lien de la pochette, pas dedans : voir player.TILE_CSS."""
+    tracks = _playlist(release, media_base)
+    if not tracks:
+        return ""
+    return (f"<span class='ovl'><button class='ov' type='button' aria-label='Lire {esc(release.title)}' "
+            f"data-t='{esc(json.dumps(tracks, ensure_ascii=False, separators=(',', ':')))}'>▶</button></span>")
+
+
+def _tile(release, uri, link, attrs="", media_base=None):
+    """Une pochette avec son titre. 'link' = adresse de la fiche de l'album, ou '' ; 'attrs' = les attributs de la vignette ; 'media_base' = le chemin relatif de la page à la racine de la médiathèque, terminé par '/' : avec lui, un bouton lit l'album depuis la pochette."""
     warn = " warn" if release.progress() else ""
     facts = " · ".join(p for p in (release.year, _count_label(release)) if p)
     tag, target = ("a", f" href='{esc(link)}'") if link else ("div", "")
@@ -148,6 +174,7 @@ def _tile(release, uri, link, attrs=""):
             f"<div class='aff'>{_cover(release.key, uri, release.title)}</div>"
             f"<div class='t'>{esc(release.title)}</div>"
             f"</{tag}>"
+            f"{_play_overlay(release, media_base)}"
             f"<div class='y{warn}'>{esc(facts)}</div>"
             "</div>")
 
@@ -161,9 +188,10 @@ def _group(release, artists):
 # ----------------------------------------------------------------------------
 # Sommaire
 # ----------------------------------------------------------------------------
-def build_index(library_name, sections, covers, pages=(), artists=None):
-    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé) ; 'artists' = {id d'artiste: Artist} de ceux dont la fiche existe, de même."""
+def build_index(library_name, sections, covers, pages=(), artists=None, media_base=None):
+    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé) ; 'artists' = {id d'artiste: Artist} de ceux dont la fiche existe, de même ; 'media_base' = le chemin relatif du sommaire à la racine de la médiathèque, terminé par '/' (chaque pochette porte alors un bouton qui lit l'album), ou None pour un sommaire qui ne lit rien."""
     artists = artists or {}
+    playable = False
     blocks = []
     n_albums = n_tracks = 0
     seconds = 0
@@ -180,7 +208,9 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
             tiles.append(_tile(
                 release, covers.get(release.id), href(release) if release.id in pages else "",
-                f" id='{anchor(release)}'{_group(release, artists)} data-s='{esc(_search_text(release))}'{layout.genre_attr(release.genres)}"))
+                f" id='{anchor(release)}'{_group(release, artists)} data-s='{esc(_search_text(release))}'{layout.genre_attr(release.genres)}",
+                media_base))
+            playable = playable or bool(_playlist(release, media_base))
         # C'est le titre de la section que vise l'index A-Z : la pochette ne dit pas de qui elle est.
         shown, ident = esc(name), ""
         letter = f" data-i='{layout.initial(name)}'"
@@ -201,7 +231,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
         + CSS_BASE +
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
         ".sub{color:#9aa0aa}"
-        + layout.CSS +
+        + layout.CSS + (player.TILE_CSS if playable else "") +
         ".none{color:#9aa0aa;margin-top:30px}"
         # Sept par ligne, comme les films ; sous 900 px, remplissage automatique.
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
@@ -219,6 +249,8 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
             + layout.index_nav()) +
         f"{''.join(blocks)}"
         "<p class='none' hidden>Aucun album ne correspond.</p>"
+        # La barre précède le script : il la cherche à son exécution.
+        "</div>" + (player.bar() if playable else "") +
         "<script>"
         "var f=document.querySelector('.filter');"
         "function n(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase()}"
@@ -228,8 +260,8 @@ def build_index(library_name, sections, covers, pages=(), artists=None):
         "var ok=(!q||n(c.getAttribute('data-s')).indexOf(q)>=0)&&gok(c);c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!(q||picked())};"
-        + layout.genre_script() + layout.mode_script() + layout.index_script() + RETURN_SCRIPT +
-        "</script></div></body></html>"
+        + layout.genre_script() + layout.mode_script() + layout.index_script() + RETURN_SCRIPT + (player.TILE_SCRIPT if playable else "") +
+        "</script></body></html>"
     )
 
 
@@ -307,7 +339,7 @@ def _absent(number, media_base=None):
 
 def _disc_table(tracks, lacking, album_artist, media_base=None):
     """Les pistes d'un disque dans l'ordre, les manquantes grisées à leur place."""
-    rows = [(t.number if t.number is not None else 10 ** 6 + i, _row(t, album_artist, media_base)) for i, t in enumerate(tracks)]
+    rows = [(_order(t.number, i), _row(t, album_artist, media_base)) for i, t in enumerate(tracks)]
     rows += [(n, _absent(n, media_base)) for n in lacking]
     return "<table class='trk'>" + "".join(html for _, html in sorted(rows, key=lambda r: r[0])) + "</table>"
 
@@ -433,13 +465,14 @@ def _links(artist, info):
         f"<a class='mb' href='{esc(url)}' target='_blank' rel='noopener'>{esc(label)} ↗</a>" for label, url in found) + "</div>"
 
 
-def build_artist(artist, covers, back_href, library_name, pages=(), info=None):
-    """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None."""
+def build_artist(artist, covers, back_href, library_name, pages=(), info=None, media_base=None):
+    """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pochettes lisent leur album), ou None."""
     info = info or {}
     back_href = f"{back_href}#{artist_anchor(artist)}"
     tiles = "".join(
-        _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "")
+        _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "", media_base=media_base)
         for release in artist.releases)
+    playable = any(_playlist(release, media_base) for release in artist.releases)
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
         f"{favicon.monogram_link(artist.name)}"
@@ -473,6 +506,7 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None):
         ".links{margin-top:6px}"
         ".mb{color:#7cc4ff;font-size:13px;text-decoration:none;white-space:nowrap}.mb:hover{text-decoration:underline}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}"
+        + (player.TILE_CSS if playable else "") +
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
                         + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
@@ -488,6 +522,7 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None):
         + _members(info)
         + f"<details class='mem' open><summary>Albums<span class='cnt'>{len(artist.releases)}</span></summary>"
         f"<div class='grid'>{tiles}</div></details>"
-        "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) +
-        "</script></div></body></html>"
+        "</div>" + (player.bar() if playable else "") +
+        "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) + (player.TILE_SCRIPT if playable else "") +
+        "</script></body></html>"
     )
