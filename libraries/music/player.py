@@ -244,9 +244,13 @@ MAIN_BAR_CSS = (
     "@media(max-width:760px){#bar{grid-template-columns:1fr auto;padding:0 12px}.end,#time,#shuffle,#repeat{display:none}}"
 )
 
-# Le panneau de la file d'attente : un volet à droite, au-dessus de la fiche ouverte (z-index 20) et sous la barre (30), qu'il laisse libre.
+# Le panneau de la file d'attente : un volet à droite, au-dessus de la fiche ouverte (z-index 20) et sous la barre (30), qu'il laisse libre. Ouvert, il ne recouvre pas la page : celle-ci et la fiche se rétrécissent de sa largeur (classe qopen sur le body), pour que les durées et les menus ⋯ du bord droit restent accessibles. Sur un écran étroit il n'y a pas la place : il passe par-dessus.
 QUEUE_CSS = (
-    "#queue{position:fixed;top:0;right:0;bottom:72px;z-index:25;display:flex;flex-direction:column;width:360px;max-width:100%;background:#1a1c23;border-left:1px solid #2a2d37;box-shadow:-8px 0 24px rgba(0,0,0,.35)}"
+    "#queue{position:fixed;top:0;right:0;bottom:72px;z-index:25;display:flex;flex-direction:column;width:360px;max-width:100%;background:#1a1c23;border-left:1px solid #2a2d37}"
+    "body.qopen{padding-right:360px}"
+    # Une iframe n'est pas étirée par left/right (un élément remplacé garde sa largeur de 300 px) : sa largeur est donnée.
+    "body.qopen #frame{right:360px;width:calc(100% - 360px)}"
+    "@media(max-width:760px){body.qopen{padding-right:0}body.qopen #frame{right:0;width:100%}}"
     ".qh{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2a2d37}"
     ".qh h3{margin:0;font-size:16px}"
     ".qh button{padding:4px 9px;border:0;border-radius:6px;background:none;color:#c7ccd4;font-size:16px;cursor:pointer}"
@@ -384,7 +388,7 @@ if(repeat===2){qb.appendChild(make('div','qnone','Le titre en cours se r\u00e9p\
 else if(rest<=0){qb.appendChild(make('div','qnone',repeat===1?'Rien d\u2019autre : la lecture reprend au d\u00e9but.':'Rien \u00e0 suivre.'))}
 for(var i=pos+1;i<order.length;i++){(function(p){qb.appendChild(qrow(queue[order[p]],'',function(){load(p)},function(){removeAt(p)}))})(i)}}
 function toggleQueue(){
-qp.hidden=!qp.hidden;qbtn.classList.toggle('on',!qp.hidden);qbtn.setAttribute('aria-pressed',!qp.hidden);drawQueue()}function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
+qp.hidden=!qp.hidden;document.body.classList.toggle('qopen',!qp.hidden);qbtn.classList.toggle('on',!qp.hidden);qbtn.setAttribute('aria-pressed',!qp.hidden);drawQueue()}function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
 function go(){var r=a.play();if(r&&r.catch)r.catch(function(){})}
 function load(p){
 pos=p;cur().nx=false;a.src=cur().src;show();

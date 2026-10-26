@@ -94,6 +94,17 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertGreater(z("#bar"), z("#queue"))
         self.assertIn("bottom:72px", re.search(r"#queue\{[^}]*\}", player.INDEX_CSS).group(0))        # la barre reste libre
 
+    def test_le_panneau_pousse_la_page_au_lieu_de_la_recouvrir(self):
+        # Sinon il cache le bord droit des fiches - durées, menus ⋯ - justement là où on ajoute des titres.
+        css = player.INDEX_CSS
+        self.assertIn("body.qopen{padding-right:360px}", css)
+        self.assertIn("body.qopen #frame{right:360px;width:calc(100% - 360px)}", css)     # une largeur donnée : une iframe n'est pas étirée par left/right
+        self.assertEqual(re.search(r"#queue\{[^}]*width:(\d+)px", css).group(1), "360")      # la même largeur que le retrait
+        self.assertIn("document.body.classList.toggle('qopen',!qp.hidden)", player.INDEX_SCRIPT)
+
+    def test_sur_un_ecran_etroit_le_panneau_repasse_par_dessus(self):
+        self.assertIn("@media(max-width:760px){body.qopen{padding-right:0}body.qopen #frame{right:0;width:100%}}", player.INDEX_CSS)
+
     def test_la_file_se_redessine_quand_elle_change_pas_a_chaque_pause(self):
         script = player.INDEX_SCRIPT
         self.assertIn("go();refresh();paint();drawQueue()}", script)            # un titre chargé
