@@ -263,9 +263,10 @@ QUEUE_CSS = (
     ".qlabel{margin:16px 8px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0aa}"
     ".qnone{margin:6px 8px;font-size:14px;color:#9aa0aa}"
     ".qlabel{display:flex;align-items:center;justify-content:space-between;min-height:24px}"
-    ".qbar{display:flex;gap:8px;padding:10px 8px 4px}"
+    ".qbar{display:flex;flex-wrap:wrap;gap:8px;padding:10px 8px 4px}"
     ".qnew,.qpb{padding:6px 14px;border:1px solid #2a2d37;border-radius:16px;background:#21232b;color:#e8e8ea;font:inherit;font-size:13px;cursor:pointer}"
-    ".qnew:hover,.qpb:hover:not(:disabled){background:#2a2d37}"
+    ".qnew:hover:not(:disabled),.qpb:hover:not(:disabled){background:#2a2d37}"
+    ".qnew:disabled{opacity:.4;cursor:default}"
     ".qpb:disabled{opacity:.4;cursor:default}"
     ".qpb.main{background:#7cc4ff;border-color:#7cc4ff;color:#14151a;font-weight:600}"
     ".qpb.main:hover:not(:disabled){background:#a6d8ff}"
@@ -279,6 +280,15 @@ QUEUE_CSS = (
     ".qask button{padding:6px 12px;border:0;border-radius:8px;background:#21232b;color:#e8e8ea;font:inherit;font-size:13px;cursor:pointer}"
     ".qask button[type=submit]{background:#7cc4ff;color:#14151a;font-weight:600}"
     ".qrow.lost .qt{color:#9aa0aa;text-decoration:line-through}"
+    # Réordonner : la poignée à gauche d'un titre de playlist (discrète tant qu'on ne vise pas la ligne, toujours là au doigt), la ligne soulevée, et le trait bleu de l'endroit où elle tombera.
+    ".qdrag{flex:none;width:22px;height:30px;margin-left:2px;border:0;border-radius:6px;background:none;color:#6b7080;font-size:14px;letter-spacing:-2px;cursor:grab;touch-action:none;opacity:0}"
+    ".qrow:hover .qdrag,.qdrag:focus-visible,.qrow.dragging .qdrag{opacity:1}"
+    ".qdrag:hover{color:#fff}"
+    ".qdrag:active{cursor:grabbing}"
+    "@media(hover:none){.qdrag{opacity:1}}"
+    ".qrow.dragging{opacity:.45}"
+    ".qrow.drop-before{box-shadow:0 -2px 0 #7cc4ff}"
+    ".qrow.drop-after{box-shadow:0 2px 0 #7cc4ff}"
     "#pick{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}"
     ".pickbox{display:flex;flex-direction:column;width:360px;max-width:92%;max-height:80%;padding:16px;border:1px solid #2a2d37;border-radius:12px;background:#1a1c23;box-shadow:0 16px 48px rgba(0,0,0,.6)}"
     ".pickbox h3{margin:0 0 10px;font-size:16px}"
@@ -373,11 +383,11 @@ function absolute(rel){return new URL(rel,location.href).href}
 function plural(n){return n+' titre'+(n>1?'s':'')}
 // Les playlists : [{id, name, tracks:[{src: rel, title}]}], gardées dans le navigateur. Le stockage peut manquer (navigation privée, accès refusé) : on le dit, et la page marche sans.
 var KEY='media_library.music.playlists.v1',view='queue',openId=null,lists=stored();
-function stored(){
-try{var d=JSON.parse(localStorage.getItem(KEY));
-return Array.isArray(d)?d.filter(function(p){return p&&typeof p.id==='string'&&typeof p.name==='string'&&Array.isArray(p.tracks)}).map(function(p){
-return{id:p.id,name:p.name,tracks:p.tracks.filter(function(t){return t&&typeof t.src==='string'}).map(function(t){return{src:t.src,title:String(t.title||'')}})}}):[]}
-catch(e){return[]}}
+// Des playlists comme on les lit - dans le stockage ou dans un fichier importé - : seul ce qui a la bonne forme est gardé, et un identifiant manquant est refait.
+function clean(d){
+return Array.isArray(d)?d.filter(function(p){return p&&typeof p.name==='string'&&p.name.trim()&&Array.isArray(p.tracks)}).map(function(p){
+return{id:typeof p.id==='string'&&p.id?p.id:uid(),name:p.name.trim().slice(0,80),tracks:p.tracks.filter(function(t){return t&&typeof t.src==='string'}).map(function(t){return{src:t.src,title:String(t.title||'')}})}}):[]}
+function stored(){try{return clean(JSON.parse(localStorage.getItem(KEY)))}catch(e){return[]}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(lists));return true}catch(e){toast('Playlists non enregistrées : le navigateur refuse le stockage.');return false}}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function listById(id){for(var i=0;i<lists.length;i++){if(lists[i].id===id)return lists[i]}return null}
@@ -475,11 +485,58 @@ i.type='text';i.value=initial;i.maxLength=80;i.placeholder='Nom de la playlist';
 ok.type='submit';no.type='button';f.appendChild(i);f.appendChild(ok);f.appendChild(no);host.appendChild(f);
 f.onsubmit=function(e){e.preventDefault();var n=i.value.trim();if(n)done(n)};
 no.onclick=cancel;i.focus();i.select()}
+// Déplacer un titre d'une playlist : de 'from' à 'to', rangs de la liste d'avant et d'après.
+function moveTrack(pl,from,to){
+if(to<0||to>=pl.tracks.length||to===from)return;
+pl.tracks.splice(to,0,pl.tracks.splice(from,1)[0]);save();drawList();
+var h=qb.querySelector('.qrow[data-k="'+to+'"] .qdrag');if(h)h.focus()}
+// Glisser un titre par sa poignée (souris ou doigt, par les événements de pointeur) : on cherche l'endroit où il tombera d'après le milieu de chaque ligne, on le montre d'un trait, et on déplace au relâchement. Près du bord du volet, il défile.
+function dragStart(e,pl,k,row,handle){
+if(e.button>0)return;
+e.preventDefault();
+try{handle.setPointerCapture(e.pointerId)}catch(x){}
+var rows=[].slice.call(qb.querySelectorAll('.qrow[data-k]')),slot=k;
+row.classList.add('dragging');
+function mark(n){rows.forEach(function(r,i){r.classList.toggle('drop-before',i===n);r.classList.toggle('drop-after',n===rows.length&&i===rows.length-1)})}
+function slotAt(y){var n=0;rows.forEach(function(r){var b=r.getBoundingClientRect();if(y>b.top+b.height/2)n++});return n}
+function move(ev){
+slot=slotAt(ev.clientY);mark(slot);
+var q=qb.getBoundingClientRect();
+if(ev.clientY<q.top+28){qb.scrollTop-=12}else if(ev.clientY>q.bottom-28){qb.scrollTop+=12}}
+function stop(){
+handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);handle.removeEventListener('pointercancel',stop);
+row.classList.remove('dragging');mark(-1)}
+function end(){stop();moveTrack(pl,k,slot>k?slot-1:slot)}
+handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',stop)}
+function exportLists(){
+var doc={format:'media_library-playlists',version:1,playlists:lists.map(function(p){return{name:p.name,tracks:p.tracks}})},
+a=make('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));a.download='playlists.json';
+document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+toast(plural(lists.length).replace('titre','playlist')+' exportée'+(lists.length>1?'s':''))}
+function sig(p){return p.tracks.map(function(t){return t.src}).join('\n')}
+// L'import ajoute : une playlist identique (même nom, mêmes titres) n'est pas doublée, et un nom déjà pris reçoit un numéro - rien n'écrase ce qu'on a.
+function addImported(text){
+var d;try{d=JSON.parse(text)}catch(e){toast('Fichier non reconnu.');return}
+var found=clean(Array.isArray(d)?d:d&&d.playlists),n=0,same=0;
+if(!found.length){toast('Aucune playlist dans ce fichier.');return}
+found.forEach(function(p){
+if(lists.some(function(q){return q.name===p.name&&sig(q)===sig(p)})){same++;return}
+var name=p.name,k=2;while(lists.some(function(q){return q.name===name})){name=p.name+' ('+k+')';k++}
+lists.push({id:uid(),name:name,tracks:p.tracks});n++});
+save();
+toast(n+' playlist'+(n>1?'s':'')+' importée'+(n>1?'s':'')+(same?' ('+same+' déjà présente'+(same>1?'s':'')+')':''));redraw()}
+function importLists(){
+var f=make('input');f.type='file';f.accept='.json,application/json';
+f.onchange=function(){var file=f.files&&f.files[0];if(!file)return;
+var r=new FileReader();r.onload=function(){addImported(String(r.result))};r.onerror=function(){toast('Fichier illisible.')};r.readAsText(file)};
+f.click()}
 function drawLists(){
 qb.textContent='';
 var top=make('div','qbar'),nb=make('button','qnew','＋ Nouvelle playlist');nb.type='button';
 nb.onclick=function(){askName(top,'',function(name){setView('list',create(name,[]).id)},drawLists)};
-top.appendChild(nb);qb.appendChild(top);
+var ex=make('button','qnew','Exporter'),im=make('button','qnew','Importer');ex.type='button';im.type='button';
+ex.disabled=!lists.length;ex.onclick=exportLists;im.onclick=importLists;
+top.appendChild(nb);top.appendChild(ex);top.appendChild(im);qb.appendChild(top);
 if(!lists.length){qb.appendChild(make('div','qnone','Aucune playlist. Ajoutez-y des titres avec « Ajouter à une playlist… » dans le menu ⋯ d’un titre ou d’un album.'));return}
 lists.forEach(function(pl){
 var first=null;for(var k=0;k<pl.tracks.length&&!first;k++){first=catalog[absolute(pl.tracks[k].src)]||null}
@@ -509,7 +566,12 @@ del.onclick=function(){if(confirm('Supprimer la playlist « '+pl.name+' » ?')){
 if(!n){qb.appendChild(make('div','qnone','Cette playlist est vide.'));return}
 pl.tracks.forEach(function(t,k){
 var c=catalog[absolute(t.src)],item=c?{title:c.title,artist:c.meta.artist,album:c.meta.album,cover:c.meta.cover}:{title:t.title,artist:'',album:'Introuvable',cover:''};
-var row=qrow(item,c?'':' lost',function(){if(c)playList(pl,k)},function(){pl.tracks.splice(k,1);save();drawList()});
+var row=qrow(item,c?'':' lost',function(){if(c)playList(pl,k)},function(){pl.tracks.splice(k,1);save();drawList()}),
+h=make('button','qdrag','⋮⋮');
+h.type='button';h.title='Glisser pour déplacer (ou flèches haut et bas)';h.setAttribute('aria-label','Déplacer '+item.title);
+h.onpointerdown=function(e){dragStart(e,pl,k,row,h)};
+h.onkeydown=function(e){if(e.key==='ArrowUp'){e.preventDefault();moveTrack(pl,k,k-1)}else if(e.key==='ArrowDown'){e.preventDefault();moveTrack(pl,k,k+1)}};
+row.setAttribute('data-k',k);row.insertBefore(h,row.firstChild);
 qb.appendChild(row)})}
 // Choisir où ranger des titres : une fenêtre au-dessus de tout, avec les playlists et « Nouvelle playlist ».
 function closePick(){var e=$('pick');if(e)e.remove()}

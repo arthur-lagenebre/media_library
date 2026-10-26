@@ -133,7 +133,8 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertIn("var KEY='media_library.music.playlists.v1'", script)
         self.assertIn("catch(e){return[]}", script)                         # contenu illisible : on repart de rien
         self.assertIn("refuse le stockage", script)                          # stockage refusé : la page le dit et marche sans
-        self.assertIn("typeof p.id==='string'&&typeof p.name==='string'&&Array.isArray(p.tracks)", script)
+        self.assertIn("typeof p.name==='string'&&p.name.trim()&&Array.isArray(p.tracks)", script)      # la même validation pour le stockage et pour un fichier importé
+        self.assertIn("function stored(){try{return clean(JSON.parse(localStorage.getItem(KEY)))}catch(e){return[]}}", script)
 
     def test_un_ajout_a_une_playlist_ne_double_pas_un_titre(self):
         script = player.INDEX_SCRIPT
@@ -175,6 +176,44 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertGreater(z("#pick"), z("#toast"))
         self.assertGreater(z("#pick"), z("#bar"))
         self.assertIn("ov.onclick=function(e){if(e.target===ov)closePick()}", player.INDEX_SCRIPT)   # un clic à côté la ferme
+
+    def test_reordonner_par_glisser_deposer(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("h.onpointerdown=function(e){dragStart(e,pl,k,row,h)}", script)
+        self.assertIn("function dragStart(e,pl,k,row,handle)", script)
+        self.assertIn("handle.addEventListener('pointermove',move)", script)           # les événements de pointeur : la souris et le doigt
+        self.assertIn("try{handle.setPointerCapture(e.pointerId)}catch(x){}", script)  # une capture refusée n'arrête pas le geste
+        self.assertIn("moveTrack(pl,k,slot>k?slot-1:slot)", script)                     # un rang d'insertion, pas un rang final
+        self.assertIn("qb.scrollTop-=12", script)                                       # défile près du bord du volet
+        self.assertIn(".qdrag{", player.INDEX_CSS)
+        self.assertIn("touch-action:none", re.search(r"\.qdrag\{[^}]*\}", player.INDEX_CSS).group(0))   # sinon le doigt fait défiler au lieu de glisser
+        self.assertIn(".qrow.drop-before{box-shadow:0 -2px 0 #7cc4ff}", player.INDEX_CSS)
+
+    def test_reordonner_au_clavier(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("e.key==='ArrowUp'", script)
+        self.assertIn("moveTrack(pl,k,k-1)", script)
+        self.assertIn("moveTrack(pl,k,k+1)", script)
+        self.assertIn("if(h)h.focus()", script)                                         # la poignée garde le focus après le déplacement
+
+    def test_un_deplacement_hors_limites_ou_sur_place_ne_fait_rien(self):
+        self.assertIn("if(to<0||to>=pl.tracks.length||to===from)return;", player.INDEX_SCRIPT)
+
+    def test_exporter_les_playlists_en_json(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("format:'media_library-playlists',version:1", script)
+        self.assertIn("a.download='playlists.json'", script)
+        self.assertIn("URL.revokeObjectURL", script)
+        self.assertIn("ex.disabled=!lists.length", script)                              # rien à exporter : le bouton est grisé
+
+    def test_importer_ajoute_sans_rien_ecraser(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("function addImported(text)", script)
+        self.assertIn("catch(e){toast('Fichier non reconnu.');return}", script)
+        self.assertIn("q.name===p.name&&sig(q)===sig(p)", script)                       # la même playlist : pas doublée
+        self.assertIn("name=p.name+' ('+k+')'", script)                                 # un nom déjà pris : numéroté
+        self.assertIn("clean(Array.isArray(d)?d:d&&d.playlists)", script)                # un fichier d'export, ou la liste seule
+        self.assertIn("f.accept='.json,application/json'", script)
 
     def test_aucun_texte_de_titre_n_entre_comme_html(self):
         self.assertNotIn("innerHTML", player.INDEX_SCRIPT)
