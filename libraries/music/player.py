@@ -155,6 +155,7 @@ ICONS = {
     "pause": "M6 19h4V5H6v14zm8-14v14h4V5h-4z",
     "repeat": "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z",
     "repeat-one": "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z",
+    "queue": "M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z",
     "volume": "M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z",
     "muted": "M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z",
 }
@@ -194,15 +195,44 @@ MAIN_BAR_CSS = (
     "#mute .i-muted,#mute.muted .i-vol{display:none}"
     "#mute.muted .i-muted{display:block}"
     ".end{display:flex;align-items:center;justify-content:flex-end;gap:6px}"
-    "#vol{width:110px;accent-color:#7cc4ff;cursor:pointer}"
+    # Le curseur est le nôtre : celui du navigateur est blanc, et se confond avec le bord de la fenêtre. La piste est sombre, la partie remplie bleue (--v, posée par le script), et la poignée claire.
+    "#vol{-webkit-appearance:none;appearance:none;width:110px;height:4px;margin:0 4px 0 0;border-radius:2px;outline:0;cursor:pointer;"
+    "background:linear-gradient(to right,#7cc4ff var(--v,100%),#3a3e4a var(--v,100%))}"
+    "#vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border:0;border-radius:50%;background:#e8e8ea}"
+    "#vol::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#e8e8ea}"
+    "#vol::-moz-range-track{background:transparent}"
+    "#vol:hover::-webkit-slider-thumb,#vol:focus-visible::-webkit-slider-thumb{background:#fff;box-shadow:0 0 0 3px rgba(124,196,255,.35)}"
     "body.playing .page{padding-bottom:96px}"
     "@media(max-width:760px){#bar{grid-template-columns:1fr auto;padding:0 12px}.end,#time,#shuffle,#repeat{display:none}}"
+)
+
+# Le panneau de la file d'attente : un volet à droite, au-dessus de la fiche ouverte (z-index 20) et sous la barre (30), qu'il laisse libre.
+QUEUE_CSS = (
+    "#queue{position:fixed;top:0;right:0;bottom:72px;z-index:25;display:flex;flex-direction:column;width:360px;max-width:100%;background:#1a1c23;border-left:1px solid #2a2d37;box-shadow:-8px 0 24px rgba(0,0,0,.35)}"
+    ".qh{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2a2d37}"
+    ".qh h3{margin:0;font-size:16px}"
+    ".qh button{padding:4px 9px;border:0;border-radius:6px;background:none;color:#c7ccd4;font-size:16px;cursor:pointer}"
+    ".qh button:hover{background:#252833;color:#fff}"
+    "#qbody{flex:1;min-height:0;overflow-y:auto;padding:4px 8px 16px}"
+    ".qlabel{margin:16px 8px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0aa}"
+    ".qnone{margin:6px 8px;font-size:14px;color:#9aa0aa}"
+    ".qrow{display:flex;align-items:center;gap:12px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}"
+    ".qrow:hover,.qrow:focus-visible{background:#252833;outline:0}"
+    ".qrow.now .qt{color:#7cc4ff}"
+    ".qcov{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:4px;background:#21232b center/cover;color:#4a4e5a}"
+    ".qcov.has::after{content:none}"
+    ".qcov::after{content:'♪';font-size:18px}"
+    ".qtxt{min-width:0}"
+    ".qt,.qs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+    ".qt{font-size:14px;font-weight:600}"
+    ".qs{font-size:13px;color:#9aa0aa}"
 )
 
 # Sur le sommaire : le bouton des pochettes, la barre, et la fiche qui s'ouvre par-dessus. L'iframe couvre toute la fenêtre sauf la barre (sa hauteur est posée par le script) ; elle passe au-dessus de l'en-tête fixe du sommaire (z-index 10), et la barre au-dessus d'elle.
 INDEX_CSS = (
     OVERLAY_CSS
     + MAIN_BAR_CSS
+    + QUEUE_CSS
     + "#frame{position:fixed;top:0;left:0;right:0;bottom:0;z-index:20;width:100%;height:100%;border:0;background:#14151a}"
 )
 
@@ -230,9 +260,13 @@ def main_bar():
         + _button("repeat", "Répéter", ("repeat", "i-all"), ("repeat-one", "i-one"))
         + "</div>"
         "<div class='end'>"
+        + _button("qbtn", "File d'attente", ("queue", ""))
         + _button("mute", "Couper le son", ("volume", "i-vol"), ("muted", "i-muted"))
         + "<input id='vol' type='range' min='0' max='100' value='100' aria-label='Volume'></div>"
         "<audio id='player' preload='none'></audio></div>"
+        # Le panneau est hors de la barre : il s'ouvre au-dessus d'elle, sur toute la hauteur.
+        "<aside id='queue' hidden aria-label=\"File d'attente\"><div class='qh'><h3>File d'attente</h3>"
+        "<button id='qclose' type='button' aria-label='Fermer la file d&#39;attente'>\u2715</button></div><div id='qbody'></div></aside>"
     )
 
 
@@ -242,7 +276,11 @@ function $(id){return document.getElementById(id)}
 var a=$('player'),bar=$('bar'),seek=$('seek'),fill=$('fill'),cover=$('cover'),song=$('song'),sub=$('sub'),time=$('time'),side=document.querySelector('.side'),
 bShuffle=$('shuffle'),bPrev=$('prev'),bPlay=$('play'),bNext=$('next'),bRepeat=$('repeat'),bMute=$('mute'),vol=$('vol'),
 head=document.querySelector('.top'),base=document.title,
-queue=[],order=[],pos=-1,shuffled=false,repeat=0,drag=false,meta={album:'',artist:'',cover:'',page:''},curBtn=null,curSrcs=[];
+qp=$('queue'),qb=$('qbody'),qbtn=$('qbtn'),
+queue=[],order=[],pos=-1,shuffled=false,repeat=0,drag=false,curBtn=null,curSrcs=[];
+// Chaque titre de la file porte lui-même son artiste, son album, sa pochette et la fiche de son album : la file peut mêler des albums.
+function item(t,m){return{src:t.src,title:String(t.title||''),artist:m.artist,album:m.album,cover:m.cover,page:m.page}}
+function make(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function frame(){return $('frame')}
 function ours(u){try{return new URL(u).protocol===location.protocol}catch(e){return false}}
 function cur(){return pos>=0?queue[order[pos]]:null}
@@ -270,23 +308,42 @@ var f=frame();if(f&&f.contentWindow)f.contentWindow.postMessage({t:'state',src:n
 function show(){
 var t=cur();
 song.textContent=t?t.title:'';song.className='';
-sub.textContent=t?(meta.artist?meta.artist+' – ':'')+meta.album:'';
-cover.style.backgroundImage=t&&meta.cover?'url("'+meta.cover+'")':'';
-cover.className=t&&meta.cover?'has':'';
-side.className=meta.page?'side go':'side';side.title=meta.page?'Ouvrir la fiche de cet album':'';
-document.title=t?t.title+(meta.artist?' · '+meta.artist:''):base}
-function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
+sub.textContent=t?(t.artist?t.artist+' \u2013 ':'')+t.album:'';
+cover.style.backgroundImage=t&&t.cover?'url("'+t.cover+'")':'';
+cover.className=t&&t.cover?'has':'';
+side.className=t&&t.page?'side go':'side';side.title=t&&t.page?'Ouvrir la fiche de cet album':'';
+document.title=t?t.title+(t.artist?' \u00b7 '+t.artist:''):base}
+// La file d'attente : le titre en cours, puis ce qui suit dans l'ordre de lecture (celui de l'album, ou le tirage de l'aléatoire). Redessinée quand la file ou l'ordre change, pas à chaque pause : la liste ne doit pas sauter sous le doigt.
+function qrow(t,cls,click){
+var b=make('button','qrow'+cls),c=make('div','qcov'+(t.cover?' has':'')),x=make('div','qtxt');
+b.type='button';if(t.cover)c.style.backgroundImage='url("'+t.cover+'")';
+x.appendChild(make('div','qt',t.title));x.appendChild(make('div','qs',(t.artist?t.artist+' \u2013 ':'')+t.album));
+b.appendChild(c);b.appendChild(x);b.onclick=click;return b}
+function drawQueue(){
+if(qp.hidden)return;
+qb.textContent='';
+var t=cur();
+if(!t){qb.appendChild(make('div','qnone','Rien en cours de lecture.'));return}
+qb.appendChild(make('div','qlabel','En cours'));
+qb.appendChild(qrow(t,' now',function(){toggle()}));
+var rest=order.length-pos-1;
+qb.appendChild(make('div','qlabel','\u00c0 suivre'+(rest>0?' \u00b7 '+rest:'')));
+if(repeat===2){qb.appendChild(make('div','qnone','Le titre en cours se r\u00e9p\u00e8te.'))}
+else if(rest<=0){qb.appendChild(make('div','qnone',repeat===1?'Rien d\u2019autre : la lecture reprend au d\u00e9but.':'Rien \u00e0 suivre.'))}
+for(var i=pos+1;i<order.length;i++){(function(p){qb.appendChild(qrow(queue[order[p]],'',function(){load(p)}))})(i)}}
+function toggleQueue(){
+qp.hidden=!qp.hidden;qbtn.classList.toggle('on',!qp.hidden);qbtn.setAttribute('aria-pressed',!qp.hidden);drawQueue()}function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
 function go(){var r=a.play();if(r&&r.catch)r.catch(function(){})}
 function load(p){
 pos=p;a.src=cur().src;show();
 bar.hidden=false;document.body.classList.add('playing');fit();
-go();refresh();paint()}
+go();refresh();paint();drawQueue()}
 function reshuffle(first){
 for(var i=order.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=order[i];order[i]=order[j];order[j]=x}
 if(first>=0){var k=order.indexOf(first);order[k]=order[0];order[0]=first}}
 // Une file neuve : l'album, depuis la piste 'index' ; l'aléatoire, s'il est actif, la mélange en gardant cette piste en tête.
 function begin(tracks,index,m){
-queue=tracks;meta=m;order=queue.map(function(_,i){return i});
+queue=tracks.map(function(t){return item(t,m)});order=queue.map(function(_,i){return i});
 if(index<0||index>=queue.length)index=0;
 if(shuffled){reshuffle(index);load(0)}else{load(index)}}
 function step(auto){
@@ -306,10 +363,12 @@ if(d.t==='hello'){refresh()}
 else if(d.t==='toggle'){toggle()}
 else if(d.t==='close'){close(String(d.to||''))}
 else if(d.t==='play'&&Array.isArray(d.tracks)&&d.tracks.length&&d.tracks.every(function(t){return t&&ours(t.src)})){
-begin(d.tracks.map(function(t){return{src:t.src,title:String(t.title||'')}}),+d.index||0,
+begin(d.tracks,+d.index||0,
 {album:String(d.album||''),artist:String(d.artist||''),page:ours(d.page)?d.page:'',
 cover:typeof d.cover==='string'&&d.cover.indexOf('data:image/')===0?d.cover:''})}});
-side.onclick=function(){if(meta.page)open(meta.page)};
+side.onclick=function(){var t=cur();if(t&&t.page)open(t.page)};
+qbtn.onclick=toggleQueue;$('qclose').onclick=toggleQueue;
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!qp.hidden)toggleQueue()});
 bPlay.onclick=function(){if(pos<0){return}toggle()};
 bPrev.onclick=function(){if(a.currentTime>3||pos===0){a.currentTime=0}else{load(pos-1)}};
 bNext.onclick=function(){step(false)};
@@ -318,11 +377,11 @@ var t=cur(),ci=t?order[pos]:-1;
 shuffled=!shuffled;
 if(shuffled){reshuffle(ci);pos=ci>=0?0:-1}
 else{order=queue.map(function(_,i){return i});pos=ci}
-bShuffle.classList.toggle('on',shuffled);bShuffle.setAttribute('aria-pressed',shuffled);refresh()};
+bShuffle.classList.toggle('on',shuffled);bShuffle.setAttribute('aria-pressed',shuffled);refresh();drawQueue()};
 bRepeat.onclick=function(){
 repeat=(repeat+1)%3;
 bRepeat.classList.toggle('on',repeat>0);bRepeat.classList.toggle('one',repeat===2);
-bRepeat.setAttribute('aria-pressed',repeat>0);refresh()};
+bRepeat.setAttribute('aria-pressed',repeat>0);refresh();drawQueue()};
 function at(e){var r=seek.getBoundingClientRect();return Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))}
 seek.addEventListener('pointerdown',function(e){
 if(!cur()||!length())return;
@@ -335,7 +394,7 @@ seek.addEventListener('pointercancel',function(){drag=false;paint()});
 seek.addEventListener('keydown',function(e){
 var d=e.key==='ArrowRight'?5:e.key==='ArrowLeft'?-5:0;
 if(d&&cur()){a.currentTime=Math.max(0,a.currentTime+d);e.preventDefault()}});
-vol.oninput=function(){a.volume=vol.value/100;a.muted=false};
+vol.oninput=function(){a.volume=vol.value/100;a.muted=false;vol.style.setProperty('--v',vol.value+'%')};
 bMute.onclick=function(){a.muted=!a.muted};
 a.addEventListener('volumechange',function(){bMute.classList.toggle('muted',a.muted||a.volume===0)});
 a.addEventListener('play',refresh);a.addEventListener('pause',refresh);

@@ -56,7 +56,7 @@ class TestUnSeulFichier(unittest.TestCase):
 
     def test_la_barre_du_sommaire_a_toutes_ses_commandes(self):
         html = player.main_bar()
-        for ident in ("seek", "cover", "song", "sub", "time", "shuffle", "prev", "play", "next", "repeat", "mute", "vol", "player"):
+        for ident in ("seek", "cover", "song", "sub", "time", "shuffle", "prev", "play", "next", "repeat", "qbtn", "mute", "vol", "player"):
             self.assertIn(f"id='{ident}'", html, ident)
         self.assertEqual(html.count("<audio"), 1)
         self.assertNotIn("controls", html)                  # la barre est la nôtre, pas celle du navigateur
@@ -69,7 +69,48 @@ class TestUnSeulFichier(unittest.TestCase):
             self.assertNotIn(absent, html)
 
     def test_cliquer_la_piste_ouvre_la_fiche_de_l_album(self):
-        self.assertIn("side.onclick=function(){if(meta.page)open(meta.page)}", player.INDEX_SCRIPT)
+        self.assertIn("side.onclick=function(){var t=cur();if(t&&t.page)open(t.page)}", player.INDEX_SCRIPT)
+
+    def test_chaque_titre_de_la_file_porte_son_album(self):
+        # La file peut mêler des albums : l'artiste, l'album, la pochette et la fiche sont ceux du titre, pas d'une file entière.
+        self.assertIn("function item(t,m){return{src:t.src,title:String(t.title||''),artist:m.artist,album:m.album,cover:m.cover,page:m.page}}", player.INDEX_SCRIPT)
+        self.assertNotIn("meta.", player.INDEX_SCRIPT)
+        self.assertNotIn("meta=", player.INDEX_SCRIPT)
+        for champ in ("t.artist", "t.album", "t.cover", "t.page"):
+            self.assertIn(champ, player.INDEX_SCRIPT)
+
+    def test_le_panneau_de_la_file_d_attente(self):
+        html = player.main_bar()
+        for ident in ("queue", "qbody", "qclose"):
+            self.assertIn(f"id='{ident}'", html, ident)
+        self.assertIn("<aside id='queue' hidden", html)                 # fermé au départ
+        self.assertGreater(html.index("<aside"), html.index("<audio"))   # hors de la barre : il s'ouvre au-dessus
+        self.assertLess(html.index("<aside"), html.index("</aside>"))
+
+    def test_le_panneau_passe_au_dessus_de_la_fiche_et_sous_la_barre(self):
+        def z(selector):
+            return int(re.findall(re.escape(selector) + r"\{[^}]*z-index:(\d+)", player.INDEX_CSS)[-1])
+        self.assertGreater(z("#queue"), z("#frame"))
+        self.assertGreater(z("#bar"), z("#queue"))
+        self.assertIn("bottom:72px", re.search(r"#queue\{[^}]*\}", player.INDEX_CSS).group(0))        # la barre reste libre
+
+    def test_la_file_se_redessine_quand_elle_change_pas_a_chaque_pause(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("go();refresh();paint();drawQueue()}", script)            # un titre chargé
+        self.assertIn("refresh();drawQueue()};", script)                         # aléatoire et répéter
+        refresh = script[script.index("function refresh()"):script.index("function show()")]
+        self.assertNotIn("drawQueue", refresh)
+
+    def test_le_panneau_liste_le_titre_en_cours_puis_la_suite_dans_l_ordre_de_lecture(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("for(var i=pos+1;i<order.length;i++)", script)             # l'ordre de lecture, pas celui de l'album
+        self.assertIn("queue[order[p]]", script)
+        self.assertIn("load(p)", script)                                          # un clic saute sur le titre
+        self.assertIn("textContent", script)
+        self.assertNotIn("innerHTML", script)                                     # titres et artistes entrent comme texte
+
+    def test_echap_ferme_le_panneau(self):
+        self.assertIn("e.key==='Escape'&&!qp.hidden", player.INDEX_SCRIPT)
 
     def test_la_barre_montre_l_artiste_et_la_pochette_envoyes_par_la_fiche(self):
         # Chaque fiche dit de qui est l'album et quelle est sa pochette, et la page ne garde que des images en data-URI.
@@ -77,6 +118,14 @@ class TestUnSeulFichier(unittest.TestCase):
             self.assertIn("artist:", script)
             self.assertIn("cover:", script)
         self.assertIn("d.cover.indexOf('data:image/')===0", player.INDEX_SCRIPT)
+
+    def test_le_curseur_de_volume_n_est_pas_celui_du_navigateur(self):
+        # Le curseur natif est blanc : sur la barre sombre il se confondait avec le bord de la fenêtre.
+        self.assertIn("#vol{-webkit-appearance:none;appearance:none", player.INDEX_CSS)
+        self.assertIn("#3a3e4a", player.INDEX_CSS)                      # la piste, sombre
+        self.assertIn("#7cc4ff var(--v,100%)", player.INDEX_CSS)        # la partie remplie, bleue
+        self.assertNotIn("accent-color", player.INDEX_CSS)
+        self.assertIn("vol.style.setProperty('--v',vol.value+'%')", player.INDEX_SCRIPT)
 
     def test_aucun_play_sans_promesse_rattrapee(self):
         # Un fichier introuvable fait rejeter play() : sans catch, la console s'emplit d'erreurs « Uncaught (in promise) ».
