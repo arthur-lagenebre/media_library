@@ -327,9 +327,9 @@ def _button(ident, label, *icons):
 
 
 def main_bar():
-    """La barre de music.html : pochette, titre et artiste, temps, aléatoire, précédent, lecture, suivant, répéter, volume, et la progression. Cachée jusqu'à la première lecture."""
+    """La barre de music.html : pochette, titre et artiste, temps, aléatoire, précédent, lecture, suivant, répéter, volume, et la progression. Toujours là, même au repos : c'est elle qui porte le bouton du volet, par lequel on lance une playlist avant d'avoir joué quoi que ce soit."""
     return (
-        "<div id='bar' hidden>"
+        "<div id='bar'>"
         "<div id='seek' role='slider' tabindex='0' aria-label='Position de lecture' aria-valuemin='0' aria-valuemax='100'><div id='fill'></div></div>"
         "<div class='side'><div id='cover'></div><div class='txt'><div id='song'></div><div id='sub'></div></div></div>"
         "<div class='mid'><span id='time'>00:00 - 00:00</span>"
@@ -418,14 +418,14 @@ function refresh(){
 var t=cur(),playing=!a.paused&&!a.ended;
 bPlay.classList.toggle('on',playing);
 bPlay.setAttribute('aria-label',playing?'Pause':'Lecture');
-bPrev.disabled=!t;
+bPlay.disabled=!t;bPrev.disabled=!t;
 bNext.disabled=!t||(pos>=order.length-1&&repeat!==1);
 shown();
 var f=frame();if(f&&f.contentWindow)f.contentWindow.postMessage({t:'state',src:nowSrc(),paused:a.paused},'*')}
 function show(){
 var t=cur();
-song.textContent=t?t.title:'';song.className='';
-sub.textContent=t?(t.artist?t.artist+' \u2013 ':'')+t.album:'';
+song.textContent=t?t.title:'Aucune lecture';song.className='';
+sub.textContent=t?(t.artist?t.artist+' \u2013 ':'')+t.album:'Lancez un album ou une playlist';
 cover.style.backgroundImage=t&&t.cover?'url("'+t.cover+'")':'';
 cover.className=t&&t.cover?'has':'';
 side.className=t&&t.page?'side go':'side';side.title=t&&t.page?'Ouvrir la fiche de cet album':'';
@@ -532,11 +532,11 @@ b.onclick=function(){done(pl)};body.appendChild(b)});
 plus();
 ov.onclick=function(e){if(e.target===ov)closePick()};
 document.body.appendChild(ov);
-var f=body.querySelector('button')||host.querySelector('button');if(f)f.focus()}function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
+var f=body.querySelector('button')||host.querySelector('button');if(f)f.focus()}function fit(){var f=frame();if(f)f.style.bottom=bar.offsetHeight+'px'}
 function go(){var r=a.play();if(r&&r.catch)r.catch(function(){})}
 function load(p){
 pos=p;cur().nx=false;a.src=cur().src;show();
-bar.hidden=false;document.body.classList.add('playing');fit();
+fit();
 go();refresh();paint();drawQueue()}
 function reshuffle(first){
 for(var i=order.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=order[i];order[i]=order[j];order[j]=x}
@@ -641,6 +641,7 @@ tracks=list(b);
 curBtn=b;curSrcs=tracks.map(function(x){return x.src});
 if(was&&was!==b){was.className='ov';was.textContent='▶'}
 begin(tracks,0,{album:al.querySelector('.t').textContent,artist:h?h.firstChild.textContent:'',page:link?link.href:'',cover:im?im.src:''})});
-refresh();paint();
+document.body.classList.add('playing');
+show();refresh();paint();
 })();
 """

@@ -60,7 +60,25 @@ class TestUnSeulFichier(unittest.TestCase):
             self.assertIn(f"id='{ident}'", html, ident)
         self.assertEqual(html.count("<audio"), 1)
         self.assertNotIn("controls", html)                  # la barre est la nôtre, pas celle du navigateur
-        self.assertIn("hidden", html.split(">")[0])         # cachée jusqu'à la première lecture
+        self.assertNotIn("hidden", html.split(">")[0])      # toujours là, même avant la première lecture
+
+    def test_la_barre_est_la_des_l_arrivee_pour_qu_on_puisse_lancer_une_playlist(self):
+        # Avant la première lecture, la barre était cachée : son bouton, donc le volet et les playlists, étaient hors d'atteinte.
+        script = player.INDEX_SCRIPT
+        self.assertNotIn("bar.hidden", script)
+        self.assertIn("document.body.classList.add('playing');\nshow();refresh();paint();", script)      # la place de la barre est réservée d'emblée
+        self.assertIn("song.textContent=t?t.title:'Aucune lecture'", script)
+        self.assertIn("t.album:'Lancez un album ou une playlist'", script)
+
+    def test_au_repos_on_ne_peut_pas_lancer_une_lecture_qui_n_existe_pas(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("bPlay.disabled=!t;bPrev.disabled=!t;", script)
+        self.assertIn("bNext.disabled=!t||", script)
+        # Mais le bouton du volet reste actif : c'est par lui qu'on lance une playlist.
+        self.assertNotIn("qbtn.disabled", script)
+
+    def test_la_fiche_ouverte_va_jusqu_a_la_barre_toujours_presente(self):
+        self.assertIn("f.style.bottom=bar.offsetHeight+'px'", player.INDEX_SCRIPT)
 
     def test_la_barre_des_fiches_ouvertes_seules_ne_change_pas(self):
         html = player.bar()
