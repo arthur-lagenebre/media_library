@@ -1,10 +1,10 @@
-"""Pages HTML de la médiathèque musicale : un sommaire de tous les albums, une fiche par album et une fiche par artiste.
+"""Pages HTML de la médiathèque musicale : music.html - un sommaire de tous les albums, qui est aussi le lecteur -, une fiche par album et une fiche par artiste.
 
 Le sommaire est un mur de pochettes groupé par artiste - chacun a sa section, même avec un seul album -, avec une zone de recherche, un filtre de genre et un index A-Z, comme celui des films. Chaque pochette mène à la fiche de son album : pochette, artiste, année, label, genres, pistes avec leur durée, et celles qui manquent d'après les tags. Le nom de l'artiste, sur le sommaire comme sur la fiche d'un album, mène à sa fiche : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant.
 
 Comme les fiches des films et des livres, chaque page est un fichier unique - les pochettes y sont encodées - et la page précédente sert de cache : régénérer ne rouvre que les pochettes nouvelles.
 
-Une fiche d'album peut aussi lire ses pistes : chacune porte un bouton qui joue le fichier lui-même, par un lien relatif, dans un lecteur fixé en bas de page qui enchaîne les pistes. Rien n'est copié ni encodé dans la page - elle ne marche donc que là où les fichiers sont joignables depuis elle (disque local, partage réseau, serveur web du NAS).
+Le sommaire porte sa barre de lecture (voir player.py) : un bouton sur chaque pochette lit l'album, et les fiches s'ouvrent par-dessus dans une iframe, sans couper la musique. Une fiche ouverte seule peut aussi lire ses pistes : chacune porte un bouton qui joue le fichier lui-même, par un lien relatif, dans un lecteur fixé en bas de page qui enchaîne les pistes. Rien n'est copié ni encodé dans la page - elle ne marche donc que là où les fichiers sont joignables depuis elle (disque local, partage réseau, serveur web du NAS).
 
 Tout est pur : ni réseau ni disque, l'appelant fournit les pochettes déjà réduites.
 """
@@ -74,12 +74,17 @@ def read_embedded(page_path):
     return dict(EMBEDDED_RE.findall(html))
 
 
-def _cover(key, uri, name):
-    """La pochette, ou à défaut un monogramme dans la couleur du titre : un carré vide ressemble à une image qui n'a pas chargé."""
+# L'image des albums sans pochette : une note sur le gris des pochettes, la même partout. C'est un fond de CSS, écrit une fois par page : un album sans pochette ne coûte que sa <div>.
+NO_COVER_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='#4a4e5a' "
+                "d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>")
+NO_COVER = "data:image/svg+xml," + quote(NO_COVER_SVG, safe="")
+
+
+def _cover(key, uri):
+    """La pochette, ou à défaut l'image générique : un carré vide ressemble à une image qui n'a pas chargé."""
     if uri:
         return f"<img data-img='{esc(key)}' src='{uri}' alt='' decoding='async' loading='lazy'>"
-    return (f"<div class='noimg mono' style='background:{favicon.color(name)}'>"
-            f"{esc(favicon.initials(name))}</div>")
+    return "<div class='noimg'></div>"
 
 
 def tracks_label(n):
@@ -129,7 +134,7 @@ CSS_BASE = (
     "a.cv:hover .aff,a.cv:focus-visible .aff{transform:translateY(-3px);box-shadow:0 0 0 2px #7cc4ff}"
     "a.cv:hover .t{color:#7cc4ff}"
     ".al img,.al .noimg{width:100%;height:100%;object-fit:cover;display:block}"
-    ".mono{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:34px}"
+    f".noimg{{background:#21232b url({NO_COVER}) center/45% no-repeat}}"
     ".al .t{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}"
     ".artist a:hover,h2 a:hover{color:#7cc4ff;text-decoration:underline}"
     "h2 a{color:inherit;text-decoration:none}"
@@ -171,7 +176,7 @@ def _tile(release, uri, link, attrs="", media_base=None):
     tag, target = ("a", f" href='{esc(link)}'") if link else ("div", "")
     return (f"<div class='al'{attrs}>"
             f"<{tag} class='cv'{target}>"
-            f"<div class='aff'>{_cover(release.key, uri, release.title)}</div>"
+            f"<div class='aff'>{_cover(release.key, uri)}</div>"
             f"<div class='t'>{esc(release.title)}</div>"
             f"</{tag}>"
             f"{_play_overlay(release, media_base)}"
@@ -231,7 +236,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
         + CSS_BASE +
         ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
         ".sub{color:#9aa0aa}"
-        + layout.CSS + (player.TILE_CSS if playable else "") +
+        + layout.CSS + (player.INDEX_CSS if playable else "") +
         ".none{color:#9aa0aa;margin-top:30px}"
         # Sept par ligne, comme les films ; sous 900 px, remplissage automatique.
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
@@ -250,7 +255,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
         f"{''.join(blocks)}"
         "<p class='none' hidden>Aucun album ne correspond.</p>"
         # La barre précède le script : il la cherche à son exécution.
-        "</div>" + (player.bar() if playable else "") +
+        "</div>" + (player.main_bar() if playable else "") +
         "<script>"
         "var f=document.querySelector('.filter');"
         "function n(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase()}"
@@ -260,7 +265,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
         "var ok=(!q||n(c.getAttribute('data-s')).indexOf(q)>=0)&&gok(c);c.hidden=!ok;if(ok)seen++});"
         "s.hidden=!seen;if(seen)any=true});"
         "document.querySelector('.none').hidden=any||!(q||picked())};"
-        + layout.genre_script() + layout.mode_script() + layout.index_script() + RETURN_SCRIPT + (player.TILE_SCRIPT if playable else "") +
+        + layout.genre_script() + layout.mode_script() + layout.index_script() + (player.INDEX_SCRIPT if playable else "") + RETURN_SCRIPT +
         "</script></body></html>"
     )
 
@@ -285,9 +290,11 @@ RETURN_SCRIPT = (
     "})();"
 )
 
+# Le lien de retour : dans music.html, la fiche est dans une iframe, et il la fait fermer ; sinon c'est l'historique qui revient quand on vient du sommaire, et le lien mène à sa vignette dans les autres cas.
 BACK_SCRIPT = (
     "var b=document.querySelector('.back');"
     "b.onclick=function(e){"
+    "if(window.parent!==window){e.preventDefault();window.parent.postMessage({t:'close',to:b.getAttribute('href').split('#')[1]||''},'*');return}"
     "var from=document.referrer.split(/[?#]/)[0],"
     "index=new URL(b.getAttribute('href').split('#')[0],location.href).href;"
     "if(history.length>1&&from===index){e.preventDefault();history.back()}};"
@@ -403,7 +410,7 @@ def build_release(release, image, back_href, library_name, artist=None, media_ba
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
                         + layout.mode_button(layout.SHEET_LABELS) + "</div>") +
-        f"<div class='head'><div class='cov'><div class='al'><div class='aff'>{_cover(release.key, image, release.title)}</div></div></div>"
+        f"<div class='head'><div class='cov'><div class='al'><div class='aff'>{_cover(release.key, image)}</div></div></div>"
         "<div class='info'>"
         f"<h1>{esc(release.title)}</h1>"
         f"<div class='artist'>{_name(release.artist, artist)}</div>"

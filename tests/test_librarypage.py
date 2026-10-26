@@ -104,9 +104,26 @@ class TestSommaire(PageTestCase):
         self.assertNotIn("href='Albums/", html)
         self.assertNotIn("<a class='al'", html)
 
-    def test_monogramme_sans_pochette(self):
+    def test_image_generique_sans_pochette(self):
         self.album(titre="Discovery")
-        self.assertIn("class='noimg mono'", self.sommaire())
+        html = self.sommaire()
+        self.assertIn("<div class='noimg'></div>", html)
+        self.assertIn(".noimg{background:#21232b url(data:image/svg+xml,", html)
+        self.assertNotIn("class='noimg mono'", html)            # plus de monogramme coloré
+        self.assertNotIn("Discovery</div></div>", html.replace("<div class='t'>Discovery</div>", ""))
+
+    def test_l_image_generique_est_la_meme_pour_tous_et_n_est_ecrite_qu_une_fois(self):
+        self.album("Daft Punk", "Discovery")
+        self.album("Air", "Moon Safari")
+        self.album("Kavinsky", "Outrun")
+        html = self.sommaire()
+        self.assertEqual(html.count("<div class='noimg'></div>"), 3)
+        self.assertEqual(html.count("url(data:image/svg+xml,"), 1)      # (le premier data:image/svg+xml de la page est son icône d'onglet)
+        self.assertNotIn("style='background:", html.split("</style>")[1])      # aucune couleur propre à l'album
+
+    def test_l_image_generique_est_une_note_de_musique(self):
+        self.assertEqual(unquote(librarypage.NO_COVER).count("<path"), 1)
+        self.assertTrue(librarypage.NO_COVER.startswith("data:image/svg+xml,%3Csvg"))
 
     def test_pochette_encodee_dans_la_page(self):
         album = self.un()
@@ -340,10 +357,11 @@ class TestFiche(PageTestCase):
     def test_chemin_de_l_album(self):
         self.assertIn("<div class='path'>Daft Punk/Discovery</div>", self.fiche(self.un()))
 
-    def test_pochette_ou_monogramme(self):
+    def test_pochette_ou_image_generique(self):
         album = self.un()
         self.assertIn(f"<img data-img='{album.key}' src='{URI}'", self.fiche(album, URI))
-        self.assertIn("class='noimg mono'", self.fiche(album))
+        self.assertIn("<div class='noimg'></div>", self.fiche(album))
+        self.assertNotIn("class='noimg'", self.fiche(album, URI).split("</style>")[1])
 
     def test_fichier_illisible_signale_sur_la_fiche(self):
         album = self.un()
@@ -411,8 +429,31 @@ class TestBoutonSurPochette(PageTestCase):
 
     def test_la_barre_precede_le_script_qui_la_cherche(self):
         html = self.sommaire(self.un())
-        self.assertLess(html.index("<audio id='player'"), html.index("document.getElementById('player')"))
+        self.assertLess(html.index("<audio id='player'"), html.index("$('player')"))
         self.assertLess(html.index("</div><div id='bar'"), html.index("<script>", html.index("<audio")))
+
+    def test_le_sommaire_est_aussi_le_lecteur(self):
+        html = self.sommaire(self.un())
+        for ident in ("seek", "shuffle", "play", "repeat", "vol"):   # la barre à la Qobuz, pas celle des fiches
+            self.assertIn(f"id='{ident}'", html)
+        self.assertNotIn("controls preload", html)
+        self.assertIn("createElement('iframe')", html)               # la fiche s'ouvre par-dessus
+        self.assertNotIn("<iframe", html)                            # mais rien ne couvre le sommaire tant qu'aucune n'est ouverte
+        self.assertIn("#frame{", html)
+
+    def test_le_script_de_la_page_precede_celui_du_retour(self):
+        html = self.sommaire(self.un())
+        self.assertLess(html.index("stopImmediatePropagation"), html.index("history.replaceState({back:id}"))
+
+    def test_sans_racine_ni_iframe_ni_script_de_fiche(self):
+        html = librarypage.build_index("Musique", library.sections([self.un()]), {}, set())
+        for absent in ("createElement('iframe')", "#frame", "id='seek'"):
+            self.assertNotIn(absent, html)
+        self.assertIn("history.replaceState({back:id}", html)       # les liens se suivent alors dans l'onglet, et le retour se cale comme avant
+
+    def test_le_retour_d_une_fiche_ouverte_par_dessus_la_ferme(self):
+        self.assertIn("window.parent.postMessage({t:'close'", librarypage.BACK_SCRIPT)
+        self.assertIn("history.back()", librarypage.BACK_SCRIPT)    # et seule, il revient comme avant
 
     def test_fiche_d_artiste_lit_aussi(self):
         self.album("Daft Punk", "Homework", annee="1997")
@@ -570,7 +611,7 @@ class TestCache(PageTestCase):
     def test_page_absente(self):
         self.assertEqual(librarypage.read_embedded(self.racine / "rien.html"), {})
 
-    def test_monogramme_ne_laisse_aucune_pochette(self):
+    def test_image_generique_ne_laisse_aucune_pochette(self):
         album = self.un()
         page = self.racine / "fiche.html"
         page.write_text(librarypage.build_release(album, None, "../index.html", "Musique"), encoding="utf-8")

@@ -447,16 +447,15 @@ class TestFilmsDeBoutEnBout(ProgrammeTestCase):
         self.assertIn("[À CONFIRMER] plusieurs versions portent ce titre", texte)
         self.assertIn("[À CONFIRMER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
 
-    def test_fiche_vers_un_dossier_qui_n_existe_pas(self):
-        code, texte = self.films(None, "--no-tag", "--recap", "--recap-out", str(self.racine / "absent" / "index.html"))
-        self.assertIn("dossier introuvable pour la fiche", texte)
-        self.assertEqual(code, 0)
-        self.assertFalse((self.racine / "absent").exists())
+    def test_dossier_des_pages_cree_au_besoin(self):
+        self.assertFalse((self.racine / "__Data__").exists())
+        self.films(None, "--no-tag", "--recap", "--apply")
+        self.assertTrue((self.racine / "__Data__").is_dir())
 
     def test_fiche_et_fiches_de_films_ecrites(self):
         _, texte = self.films(None, "--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "index.html").is_file())
-        self.assertTrue((self.racine / "Fiches" / "1.html").is_file())
+        self.assertTrue((self.racine / "__Data__" / "movies.html").is_file())
+        self.assertTrue((self.racine / "__Data__" / "Fiches" / "1.html").is_file())
 
 
 if __name__ == "__main__":

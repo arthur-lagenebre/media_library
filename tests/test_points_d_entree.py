@@ -178,10 +178,12 @@ class TestDossiersSansRienADire(ProgrammeTestCase):
         self.assertIn("Aucune fiche dans", message)
 
     def test_index_n_ecrase_pas_une_page_etrangere(self):
-        (self.racine / "index.html").write_text("<html>à moi</html>", encoding="utf-8")
+        page = self.racine / "__Data__" / "tv_shows.html"
+        page.parent.mkdir()
+        page.write_text("<html>à moi</html>", encoding="utf-8")
         message, _ = self.lancer_script("TV_Shows/Index.py", "--apply")
         self.assertIn("n'a pas été écrit par ce script", message)
-        self.assertEqual((self.racine / "index.html").read_text(encoding="utf-8"), "<html>à moi</html>")
+        self.assertEqual(page.read_text(encoding="utf-8"), "<html>à moi</html>")
 
     def test_recap_all_sans_serie(self):
         message, _ = self.lancer_script("TV_Shows/Recap_All.py")

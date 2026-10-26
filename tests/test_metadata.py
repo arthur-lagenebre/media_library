@@ -700,12 +700,20 @@ class TestFilmsValides(unittest.TestCase):
 
 
 class TestEmplacementDuRecap(unittest.TestCase):
-    def test_par_defaut_a_la_racine(self):
-        self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/index.html"))
+    def test_movies_html_dans_le_dossier_data(self):
+        self.assertEqual(films.recap_path("D:/Films"), Path("D:/Films/__Data__/movies.html"))
 
-    def test_dossier_ou_fichier(self):
-        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__"), Path("D:/Films/__Data__/index.html"))
-        self.assertEqual(films.recap_path("D:/Films", "D:/Films/__Data__/films.html"), Path("D:/Films/__Data__/films.html"))
+    def test_la_fiche_precedente_est_celle_de_movies_html_a_defaut_un_ancien_index(self):
+        with tempfile.TemporaryDirectory() as d:
+            racine = Path(d)
+            self.assertEqual(films.previous_recap(racine), racine / "__Data__" / "movies.html")           # rien encore : l'emplacement futur
+            (racine / "recap.html").write_text("x", encoding="utf-8")
+            self.assertEqual(films.previous_recap(racine), racine / "recap.html")
+            (racine / "index.html").write_text("x", encoding="utf-8")
+            self.assertEqual(films.previous_recap(racine), racine / "index.html")                         # index.html passe avant recap.html
+            (racine / "__Data__").mkdir()
+            (racine / "__Data__" / "movies.html").write_text("x", encoding="utf-8")
+            self.assertEqual(films.previous_recap(racine), racine / "__Data__" / "movies.html")           # et movies.html avant les deux
 
 
 class TestRenduRecapFilms(unittest.TestCase):

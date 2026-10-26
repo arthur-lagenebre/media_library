@@ -75,10 +75,21 @@ class TestRecapAll(unittest.TestCase):
 
     def test_sommaire_reecrit_s_il_existe(self):
         _, _, sortie = self.lancer("--apply")
-        self.assertFalse((self.bib / "index.html").exists())         # jamais créé ici
-        (self.bib / "index.html").write_text(showindex.build_html("x", []), encoding="utf-8")
+        self.assertFalse((self.bib / "__Data__").exists())            # jamais créé ici
+        (self.bib / "__Data__").mkdir()
+        (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
+        (self.bib / "__Data__" / "notes.html").write_text("<html>à moi</html>", encoding="utf-8")
         _, _, sortie = self.lancer("--apply")
-        self.assertIn("index.html écrit (2 série(s))", sortie)
+        self.assertIn("Anime.html écrit (2 série(s))", sortie)
+        self.assertEqual((self.bib / "__Data__" / "notes.html").read_text(encoding="utf-8"), "<html>à moi</html>")   # une page qui n'est pas la nôtre n'est pas touchée
+
+    def test_title_ne_reecrit_que_le_sommaire_de_ce_titre(self):
+        (self.bib / "__Data__").mkdir()
+        (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
+        (self.bib / "__Data__" / "Series.html").write_text(showindex.build_html("Series", []), encoding="utf-8")
+        _, _, sortie = self.lancer("--apply", "--title", "Anime")
+        self.assertIn("Anime.html écrit (2 série(s))", sortie)
+        self.assertNotIn("Series.html", sortie)
 
 
 if __name__ == "__main__":

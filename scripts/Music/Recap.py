@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-Recap.py — Fiche HTML d'une médiathèque musicale, comme celle des films et des séries.
+Recap.py — Fiche HTML d'une médiathèque musicale, comme celle des films et des séries, qui est aussi son lecteur.
 
 Les albums étiquetés par Metadata.py portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Ce script les LIT - sans clé, sans rien écrire dans les fichiers - pour en faire une fiche de la médiathèque : un mur de pochettes groupé par artiste, une fiche par album et une par artiste. Seules ces dernières ont besoin du réseau, et seulement pour s'enrichir (voir plus bas).
 
@@ -11,7 +11,7 @@ Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wik
 Les pistes qui manquent à un album viennent du total que les tags annoncent (TRACKTOTAL, DISCTOTAL), comparé aux numéros possédés : "Manque : pistes 3, 5-7 (sur 13)". Rien n'est dit d'un disque dont une piste n'a pas de numéro.
 
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
-  index.html     le sommaire : recherche (album, artiste, label, genre), filtre de genre, index A-Z
+  music.html   le sommaire et le lecteur : recherche (album, artiste, label, genre), filtre de genre, index A-Z, et une barre de lecture ; les fiches s'ouvrent par-dessus sans couper la musique
   Albums/        une fiche par album : pochette, artiste, année, label, genres, pistes et durées, pistes manquantes
   Artistes/      une fiche par artiste, où mène son nom : ses albums, et son lien MusicBrainz quand les tags en donnent l'identifiant
   artists.json   ce que MusicBrainz et Wikipédia ont dit des artistes : redemandé au bout d'un mois seulement
@@ -24,7 +24,7 @@ Usage :
 
 Options : --apply --out --title --no-cache --no-artist-info --cover-width (défaut 480) --workers (défaut 8)
 
-Aucune dépendance obligatoire, et aucune clé. Pillow (pip install pillow) réduit les pochettes ; sans lui, les pages montrent un monogramme à leur place. Le premier passage ouvre l'en-tête de chaque fichier ; les suivants ne rouvrent que ce qui a changé, et ne réécrivent pas une page déjà à jour : de quoi tourner chaque nuit sur le NAS sans réveiller les disques pour rien.
+Aucune dépendance obligatoire, et aucune clé. Pillow (pip install pillow) réduit les pochettes ; sans lui, les pages montrent une image générique à leur place. Le premier passage ouvre l'en-tête de chaque fichier ; les suivants ne rouvrent que ce qui a changé, et ne réécrivent pas une page déjà à jour : de quoi tourner chaque nuit sur le NAS sans réveiller les disques pour rien.
 """
 
 import argparse
@@ -42,7 +42,8 @@ from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError  # noqa: E
 from libraries.music.tags import AudioError  # noqa: E402
 
 DATA_DIR = "__Data__"
-INDEX_NAME = "index.html"
+PAGE_NAME = "music.html"
+LEGACY_NAMES = ("musique.html", "index.html", "lecteur.html")      # ce que les versions précédentes écrivaient à sa place : seulement lus (pour leur titre), jamais effacés
 CATALOG_NAME = "catalog.json"
 ARTISTS_NAME = "artists.json"
 LOG_NAME = "recap.log"
@@ -105,7 +106,7 @@ def write_release_page(release, folder, library_name, width, artists, base=None)
     if image is None:
         image = cover_uri(release, width)
         fresh = bool(image)
-    html = librarypage.build_release(release, image, f"../{INDEX_NAME}", library_name, artists.get(release.artist_id), base)
+    html = librarypage.build_release(release, image, f"../{PAGE_NAME}", library_name, artists.get(release.artist_id), base)
     written = not textfile.same(page, html)
     if written:
         textfile.write(page, html)
@@ -164,7 +165,7 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name, base=
     done, written = {}, 0
     for artist in artists.values():
         page = folder / librarypage.artist_page_name(artist)
-        html = librarypage.build_artist(artist, covers, f"../{INDEX_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base)
+        html = librarypage.build_artist(artist, covers, f"../{PAGE_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base)
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -177,16 +178,6 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name, base=
     return done, written
 
 
-def write_shell(path, library_name):
-    """Écrit la coque qui garde la lecture en vie d'une fiche à l'autre : le sommaire dans une iframe, au-dessus d'une barre de lecture."""
-    html = player.build_shell(library_name, INDEX_NAME)
-    if textfile.same(path, html):
-        print(f"  [lecteur] {path} inchangé")
-    else:
-        textfile.write(path, html)
-        print(f"  [lecteur] {path} écrit  (ouvrir celle-ci pour naviguer sans couper la musique)")
-
-
 def write_pages(sections, out, root, args):
     """Écrit la fiche de chaque album, celle de chaque artiste, puis le sommaire. Retourne le nombre de fiches d'albums écrites.
 
@@ -195,10 +186,10 @@ def write_pages(sections, out, root, args):
     folder = out / librarypage.DIR
     folder.mkdir(parents=True, exist_ok=True)
     base = None if args.no_player else media_base(folder, root)
-    index = out / INDEX_NAME
-    library_name = args.title or textfile.title_of(index) or DEFAULT_TITLE
+    index = out / PAGE_NAME
+    library_name = args.title or next((t for t in (textfile.title_of(out / n) for n in (PAGE_NAME, *LEGACY_NAMES)) if t), DEFAULT_TITLE)
     if not thumbs.available():
-        print("  [pochettes] Pillow absent : les pages montrent un monogramme à la place (pip install pillow)")
+        print("  [pochettes] Pillow absent : les pages montrent une image générique à la place des pochettes (pip install pillow)")
 
     every = [r for _, releases in sections for r in releases]
     # Les albums d'artiste inconnu n'ont rien en commun : ils n'ont pas de fiche à eux.
@@ -238,8 +229,6 @@ def write_pages(sections, out, root, args):
     else:
         textfile.write(index, html)
         print(f"  [sommaire] {index} écrit  ({len(html) / 1_048_576:.1f} Mo, {len(covers)} pochette(s) intégrée(s))")
-    if base is not None:
-        write_shell(out / player.SHELL_NAME, library_name)
     return written
 
 
@@ -301,7 +290,7 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Écrit réellement la fiche (défaut : simulation)")
     ap.add_argument("--no-cache", action="store_true", help="Rouvre toutes les pistes, sans reprendre le catalogue, et redemande tous les artistes")
     ap.add_argument("--no-artist-info", action="store_true", help="N'interroge ni MusicBrainz ni Wikipédia : les fiches d'artiste n'ont que ce qu'on savait déjà")
-    ap.add_argument("--no-player", action="store_true", help="Les fiches d'album ne lisent pas les pistes (utile si elles sont copiées sans la musique)")
+    ap.add_argument("--no-player", action="store_true", help="Les pages ne lisent pas les pistes : ni barre de lecture, ni boutons (utile si elles sont copiées sans la musique)")
     ap.add_argument("--cover-width", type=int, default=COVER_WIDTH, help=f"Largeur des pochettes des fiches en pixels (défaut : {COVER_WIDTH})")
     ap.add_argument("--workers", type=int, default=8, help="Pistes lues en parallèle (défaut : 8)")
     args = ap.parse_args()
@@ -339,7 +328,7 @@ def main():
             textfile.write(out / CATALOG_NAME, catalog)
         write_pages(sections, out, root, args)
     else:
-        print(f"  [fiche] écrirait {out / INDEX_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
+        print(f"  [fiche] écrirait {out / PAGE_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
         asked = pending(library.artists(releases), artistinfo.load(out / ARTISTS_NAME), args)
         if asked:
             print(f"  [artistes] interrogerait MusicBrainz et Wikipédia sur {len(asked)} artiste(s)")

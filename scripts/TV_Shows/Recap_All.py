@@ -10,7 +10,7 @@ L'identifiant TMDB inscrit dans la fiche existante est repris : une série ident
 
 Chaque série tourne dans son propre processus : une série en échec est signalée au bilan, et les suivantes sont traitées quand même. Les images déjà dans une fiche sont reprises, seules les nouvelles sont téléchargées.
 
-Si la médiathèque a un sommaire index.html (Index.py), il est réécrit à la fin.
+Si la médiathèque a un sommaire (Index.py : un .html dans son dossier __Data__), il est réécrit à la fin ; --title ne réécrit que celui de ce titre.
 
 Usage :
   python Recap_All.py --dir "D:\Séries"                       # simulation
@@ -57,6 +57,7 @@ def parse_args():
     ap.add_argument("--dir", required=True, help="Racine de la médiathèque : un sous-dossier par série")
     ap.add_argument("--apply", action="store_true", help="Écrit réellement les fiches (défaut : simulation)")
     ap.add_argument("--only", help="Ne traite que les séries dont le nom de dossier contient ce texte")
+    ap.add_argument("--title", help="Titre du sommaire à réécrire à la fin, comme pour Index.py (défaut : tous ceux que Index.py a écrits dans __Data__)")
     return ap.parse_known_args()
 
 
@@ -81,9 +82,12 @@ def main():
 
     print(f"\n{len(series) - len(failed)}/{len(series)} fiche(s) "
           + ("régénérée(s)." if args.apply else "à régénérer (simulation)."))
-    index = root / showindex.INDEX_NAME
-    if showindex.is_ours(index):
-        print(showindex.write(root, args.apply))
+    if args.title:
+        indexes = [p for p in [showindex.index_path(root, args.title)] if p.is_file() and showindex.is_ours(p)]
+    else:
+        indexes = showindex.our_indexes(root)
+    for index in indexes:
+        print(showindex.write(root, args.apply, args.title, out=index))
     if failed:
         print("EN ÉCHEC : " + ", ".join(failed))
         return 1

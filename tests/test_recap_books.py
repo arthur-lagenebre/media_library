@@ -67,19 +67,19 @@ class TestRecapLivres(unittest.TestCase):
     def test_apply_ecrit_sommaire_pages_catalogue_et_journal(self):
         code, _ = self.lancer("--apply")
         self.assertEqual(code, 0)
-        self.assertEqual(sorted(p.name for p in self.data.iterdir()), ["Series", "catalog.json", "index.html", "recap.log"])
+        self.assertEqual(sorted(p.name for p in self.data.iterdir()), ["Series", "books.html", "catalog.json", "recap.log"])
         self.assertEqual(len(list((self.data / "Series").glob("*.html"))), 4)       # une page par série
-        html = (self.data / "index.html").read_text(encoding="utf-8")
+        html = (self.data / "books.html").read_text(encoding="utf-8")
         self.assertIn("<title>Livres</title>", html)
         self.assertIn("Captain Tsubasa", html)
         self.assertNotIn("Brouillon", html)
 
     def test_le_sommaire_mene_a_la_page_de_chaque_serie(self):
         self.lancer("--apply")
-        html = (self.data / "index.html").read_text(encoding="utf-8")
+        html = (self.data / "books.html").read_text(encoding="utf-8")
         for page in (self.data / "Series").glob("*.html"):
             self.assertIn(page.name.replace(" ", "%20").replace("'", "%27"), html)
-            self.assertIn("href='../index.html#s", page.read_text(encoding="utf-8"))
+            self.assertIn("href='../books.html#s", page.read_text(encoding="utf-8"))
 
     def test_journal_des_livres_sans_fiche(self):
         self.lancer("--apply")
@@ -103,7 +103,7 @@ class TestRecapLivres(unittest.TestCase):
         with mock.patch.object(recap.shelf, "read_info", side_effect=AssertionError("livre rouvert")):
             _, sortie = self.lancer("--apply")
         self.assertIn("5 repris du catalogue, 0 à lire", sortie)
-        self.assertIn("index.html inchangé", sortie)
+        self.assertIn("books.html inchangé", sortie)
         self.assertIn("(0 écrite(s), 4 inchangée(s))", sortie)
         self.assertEqual(avant, {p: p.stat().st_mtime_ns for p in avant})
 
@@ -122,13 +122,20 @@ class TestRecapLivres(unittest.TestCase):
     def test_titre_choisi_puis_repris_sans_l_option(self):
         self.lancer("--apply", "--title", "Ma bibliotheque")
         self.lancer("--apply")                       # la tâche de nuit, sans --title
-        self.assertIn("<title>Ma bibliotheque</title>", (self.data / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("<title>Ma bibliotheque</title>", (self.data / "books.html").read_text(encoding="utf-8"))
+
+    def test_titre_repris_d_un_ancien_sommaire(self):
+        self.data.mkdir(exist_ok=True)
+        (self.data / "index.html").write_text("<html><head><title>Ma bibliothèque</title></head></html>", encoding="utf-8")
+        self.lancer("--apply")
+        self.assertIn("<title>Ma bibliothèque</title>", (self.data / "books.html").read_text(encoding="utf-8"))
+        self.assertTrue((self.data / "index.html").exists())          # jamais effacé
 
     def test_sortie_ailleurs(self):
         ailleurs = self.racine.parent / (self.racine.name + "-sortie")
         self.addCleanup(lambda: __import__("shutil").rmtree(ailleurs, ignore_errors=True))
         self.lancer("--apply", "--out", str(ailleurs))
-        self.assertTrue((ailleurs / "index.html").exists())
+        self.assertTrue((ailleurs / "books.html").exists())
         self.assertFalse(self.data.exists())
 
     def test_bibliotheque_vide(self):
@@ -148,7 +155,7 @@ class TestRecapLivres(unittest.TestCase):
         self.assertIn("4 couverture(s) extraite(s)", sortie)               # les 3 .cbz et l'.epub ; le .mobi n'en a pas
         page = next((self.data / "Series").glob("Captain Tsubasa-*.html")).read_text(encoding="utf-8")
         self.assertEqual(page.count("<img data-img="), 3)                  # les 2 tomes + l'en-tête
-        self.assertIn("data:image/jpeg;base64,", (self.data / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("data:image/jpeg;base64,", (self.data / "books.html").read_text(encoding="utf-8"))
         # Une page déjà écrite sert de cache : rien n'est rouvert pour la couverture.
         (self.data / "catalog.json").unlink()
         def pas_de_reouverture(volume):
@@ -167,14 +174,14 @@ class TestRecapLivres(unittest.TestCase):
         def largeurs(html):
             return {Image.open(io.BytesIO(base64.b64decode(uri))).width for uri in re.findall(r"src='data:image/jpeg;base64,([^']+)'", html)}
         self.assertIn(300, largeurs(next((self.data / "Series").glob("Grand-*.html")).read_text(encoding="utf-8")))
-        self.assertEqual(max(largeurs((self.data / "index.html").read_text(encoding="utf-8"))), recap.INDEX_COVER_WIDTH)
+        self.assertEqual(max(largeurs((self.data / "books.html").read_text(encoding="utf-8"))), recap.INDEX_COVER_WIDTH)
 
     def test_sans_pillow_des_monogrammes(self):
         with mock.patch.object(thumbs, "Image", None):
             _, sortie = self.lancer("--apply")
         self.assertIn("Pillow absent", sortie)
-        self.assertIn("noimg mono", (self.data / "index.html").read_text(encoding="utf-8"))
-        self.assertNotIn("data:image/jpeg", (self.data / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("noimg mono", (self.data / "books.html").read_text(encoding="utf-8"))
+        self.assertNotIn("data:image/jpeg", (self.data / "books.html").read_text(encoding="utf-8"))
 
     def test_les_options_invalides_sont_refusees(self):
         for option in (["--workers", "0"], ["--cover-width", "0"]):

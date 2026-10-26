@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape
 from libraries.common import favicon, layout
 from . import cast, embed, naming
 
-# Le dossier des fiches, rangé À CÔTÉ de l'index : avec --recap-out __Data__ (voir le README), il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
+# Le dossier des fiches, rangé À CÔTÉ de movies.html : il vit donc dans __Data__ avec le reste de ce que le script écrit, et la médiathèque elle-même n'est pas touchée.
 DIR = "Fiches"
 
 POSTER_SIZE = "w342"      # la fiche montre l'affiche en grand : celle de l'index (w185) y serait floue
