@@ -127,6 +127,30 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertNotIn("accent-color", player.INDEX_CSS)
         self.assertIn("vol.style.setProperty('--v',vol.value+'%')", player.INDEX_SCRIPT)
 
+    def test_le_menu_d_une_piste_propose_de_la_lire_seule(self):
+        self.assertIn("{label:'Lire ce titre seul',run:function(i){start(i,true)}}", player.PAGE_SCRIPT)
+        self.assertIn("role','menu'", player.PAGE_SCRIPT)
+        self.assertIn("e.stopPropagation()", player.PAGE_SCRIPT)                 # le clic sur « ⋯ » n'est pas pris pour un clic « ailleurs »
+        self.assertIn("e.key==='Escape'", player.PAGE_SCRIPT)
+        self.assertNotIn("innerHTML", player.PAGE_SCRIPT)
+
+    def test_un_titre_seul_n_envoie_que_lui_a_la_page(self):
+        # Dans musique.html : la file de la page est ce que la fiche envoie, donc un seul titre, à la place 0.
+        self.assertIn("tracks:solo?[tracks[i]]:tracks,index:solo?0:i", player.PAGE_SCRIPT)
+
+    def test_un_titre_seul_ne_lance_pas_le_suivant_sur_une_fiche_ouverte_seule(self):
+        script = player.PAGE_SCRIPT
+        self.assertIn("only=!!solo", script)
+        self.assertIn("if(only){update()}else{start(cur+1)}", script)           # fin du titre : on s'arrête
+        self.assertIn("next.disabled=cur<0||only||", script)                      # pas de « suivant »
+        self.assertIn("cur===0||only", script)                                    # « précédent » relance le titre
+
+    def test_le_menu_est_range_a_sa_place_dans_la_fenetre(self):
+        css = player.PLAYER_CSS
+        self.assertIn("#menu{position:fixed;z-index:40", css)                    # au-dessus de la barre de la fiche (5)
+        self.assertIn("@media(hover:none){.more{opacity:1}}", css)                # visible au doigt
+        self.assertIn("innerHeight", player.PAGE_SCRIPT)                          # remonte s'il manque de la place en bas
+
     def test_aucun_play_sans_promesse_rattrapee(self):
         # Un fichier introuvable fait rejeter play() : sans catch, la console s'emplit d'erreurs « Uncaught (in promise) ».
         self.assertEqual(player.INDEX_SCRIPT.count(".play()"), 1)

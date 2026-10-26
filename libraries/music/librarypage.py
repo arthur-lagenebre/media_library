@@ -324,6 +324,16 @@ def _play_cell(track, media_base):
             f"data-src='{esc(media_base + quote(track.rel))}' data-title='{esc(track.title)}'>▶</button></td>")
 
 
+def _more_cell(track, media_base):
+    """La cellule du menu « ⋯ » d'une piste : comme celle de lecture, vide pour une piste illisible ou absente, et absente de la table quand la fiche ne lit rien (media_base = None)."""
+    if media_base is None:
+        return ""
+    if track is None or track.error:
+        return "<td class='m'></td>"
+    return (f"<td class='m'><button class='more' type='button' aria-haspopup='menu' aria-expanded='false' "
+            f"aria-label='Plus d&#39;actions pour {esc(track.title)}'>⋯</button></td>")
+
+
 FEAT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring)\s+.*$", re.IGNORECASE)
 
 
@@ -337,11 +347,11 @@ def _row(track, album_artist, media_base=None):
     shown = f"<div class='by'>{esc(by)}</div>" if by and _main_artist(by) != _main_artist(album_artist) else ""
     bad = f"<div class='err'>illisible : {esc(track.error)}</div>" if track.error else ""
     return (f"<tr>{_play_cell(track, media_base)}<td class='n'>{esc(track.number if track.number is not None else '')}</td>"
-            f"<td>{esc(track.title)}{shown}{bad}</td><td class='d'>{esc(clock(track.duration))}</td></tr>")
+            f"<td>{esc(track.title)}{shown}{bad}</td><td class='d'>{esc(clock(track.duration))}</td>{_more_cell(track, media_base)}</tr>")
 
 
 def _absent(number, media_base=None):
-    return f"<tr class='absent'>{_play_cell(None, media_base)}<td class='n'>{number}</td><td>piste manquante</td><td class='d'></td></tr>"
+    return f"<tr class='absent'>{_play_cell(None, media_base)}<td class='n'>{number}</td><td>piste manquante</td><td class='d'></td>{_more_cell(None, media_base)}</tr>"
 
 
 def _disc_table(tracks, lacking, album_artist, media_base=None):

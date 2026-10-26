@@ -320,6 +320,27 @@ class TestFiche(PageTestCase):
             self.assertIn(present, html)
         self.assertLess(html.index("id='all'"), html.index("<table class='trk'>"))
 
+    def test_un_menu_par_piste_lisible(self):
+        html = self.lisible(self.un())
+        self.assertEqual(html.count("class='more'"), 3)
+        self.assertEqual(html.count("aria-haspopup='menu'"), 3)
+        self.assertIn("aria-label='Plus d&#39;actions pour Piste 1'", html)
+        # Une colonne de plus, en fin de ligne : après la durée.
+        self.assertRegex(html, r"<td class='d'>0:10</td><td class='m'><button class='more'")
+
+    def test_piste_manquante_ou_illisible_sans_menu_mais_la_colonne_reste(self):
+        album = self.un(pistes=(1, 3), total=3)
+        album.tracks[0].error = "en-tete invalide"
+        html = self.lisible(album)
+        self.assertEqual(html.count("class='more'"), 1)                       # la piste 3 seule
+        self.assertIn("<td class='d'></td><td class='m'></td></tr>", html)    # la piste manquante : cellule vide, lignes alignées
+        self.assertEqual(html.count("<td class='m'>"), 3)                     # une cellule par ligne
+
+    def test_sans_racine_ni_menu_ni_colonne(self):
+        html = self.fiche(self.un())
+        for absent in ("class='more'", "class='m'", "#menu", "aria-haspopup"):
+            self.assertNotIn(absent, html)
+
     def test_album_sans_piste_lisible_sans_lecteur(self):
         album = self.un()
         for track in album.tracks:
