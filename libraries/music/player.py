@@ -40,8 +40,10 @@ PLAYER_CSS = (
     ".play{width:30px;height:30px;border:0;border-radius:50%;background:#21232b;color:#c7ccd4;font-size:12px;cursor:pointer}"
     ".play:hover,.play:focus-visible,#all:hover{background:#7cc4ff;color:#14151a}"
     ".trk tr.now td{color:#7cc4ff}.trk tr.now .play{background:#7cc4ff;color:#14151a}"
-    "#all{margin-top:16px;padding:9px 18px;border:0;border-radius:20px;background:#7cc4ff;color:#14151a;font:600 14px system-ui,sans-serif;cursor:pointer}"
+    ".allbar{display:flex;align-items:center;gap:6px;margin-top:16px}"
+    "#all{padding:9px 18px;border:0;border-radius:20px;background:#7cc4ff;color:#14151a;font:600 14px system-ui,sans-serif;cursor:pointer}"
     "#all:hover{background:#a6d8ff}"
+    "#allmore{opacity:1}"
     # Le menu « ⋯ » de chaque piste : discret tant qu'on ne vise pas la ligne (toujours visible au doigt), et le menu lui-même, posé près du bouton.
     ".trk .m{width:1%;padding:4px 4px 4px 0}"
     ".more{width:30px;height:30px;border:0;border-radius:50%;background:none;color:#c7ccd4;font-size:18px;line-height:1;cursor:pointer;opacity:0}"
@@ -110,7 +112,9 @@ TILE_SCRIPT = (
     "})();"
 )
 
-ALL_BUTTON = "<div><button id='all' type='button'>▶ Tout lire</button></div>"
+# « Tout lire », et le menu de l'album (lire ensuite, ajouter à la fin) : le script retire ce menu d'une fiche ouverte seule, qui n'a pas de file.
+ALL_BUTTON = ("<div class='allbar'><button id='all' type='button'>▶ Tout lire</button>"
+              "<button id='allmore' class='more' type='button' aria-haspopup='menu' aria-expanded='false' aria-label='Plus d&#39;actions pour l&#39;album'>⋯</button></div>")
 
 
 def bar():
@@ -125,31 +129,40 @@ PAGE_SCRIPT = (
     "(function(){"
     "var btns=[].slice.call(document.querySelectorAll('button.play')),all=document.getElementById('all'),"
     "tracks=btns.map(function(b){return{src:new URL(b.getAttribute('data-src'),location.href).href,title:b.getAttribute('data-title')}}),"
-    "framed=window.parent!==window,cur=-1,paused=true,only=false,start,toggle,"
-    "mores=[].slice.call(document.querySelectorAll('button.more')),mi=-1,menu=document.createElement('div');"
+    "framed=window.parent!==window,cur=-1,paused=true,only=false,start,toggle,enqueue,"
+    "mores=[].slice.call(document.querySelectorAll('.trk button.more')),allmore=document.getElementById('allmore'),mb=null,menu=document.createElement('div');"
+    # De qui est l'album et quelle est sa pochette : la barre de musique.html les montre.
+    "function side(){var ar=document.querySelector('.artist'),im=document.querySelector('.cov img');return{artist:ar?ar.textContent:'',cover:im?im.src:''}}"
     "function mark(){"
     "btns.forEach(function(b,k){var on=k===cur;b.parentNode.parentNode.className=on?'now':'';b.textContent=on&&!paused?'❚❚':'▶'});"
     "all.textContent=cur<0?'▶ Tout lire':paused?'▶ Reprendre':'❚❚ Pause'}"
     "btns.forEach(function(b,k){b.onclick=function(){if(k===cur){toggle()}else{start(k)}}});"
     "all.onclick=function(){if(cur<0){start(0)}else{toggle()}};"
-    # Le menu d'une piste : un seul menu pour la page, rempli au clic. 'actions' est ce qu'il propose ; chaque action reçoit le rang de la piste.
-    "var actions=[{label:'Lire ce titre seul',run:function(i){start(i,true)}}];"
+    # Les menus : un seul pour la page, rempli au clic. Une action reçoit le rang de la piste (-1 pour l'album). Lire ensuite et ajouter à la fin n'existent que dans musique.html, qui seul a une file.
+    "var trackActions=[{label:'Lire ce titre seul',run:function(i){start(i,true)}}],albumActions=[];"
+    "if(framed){"
+    "trackActions.push({label:'Lire ensuite',run:function(i){enqueue('next',[tracks[i]])}},{label:'Ajouter à la fin',run:function(i){enqueue('end',[tracks[i]])}});"
+    "albumActions.push({label:'Lire l’album ensuite',run:function(){enqueue('next',tracks)}},{label:'Ajouter l’album à la fin',run:function(){enqueue('end',tracks)}})}"
     "menu.id='menu';menu.hidden=true;menu.setAttribute('role','menu');document.body.appendChild(menu);"
-    "function closeMenu(){if(mi>=0)mores[mi].setAttribute('aria-expanded','false');menu.hidden=true;mi=-1}"
-    "function openMenu(k){closeMenu();mi=k;menu.textContent='';"
-    "actions.forEach(function(x){var b=document.createElement('button');b.type='button';b.setAttribute('role','menuitem');b.textContent=x.label;"
-    "b.onclick=function(){var i=mi;closeMenu();x.run(i)};menu.appendChild(b)});"
-    "menu.hidden=false;mores[k].setAttribute('aria-expanded','true');"
-    "var r=mores[k].getBoundingClientRect(),h=menu.offsetHeight,w=menu.offsetWidth;"
+    "function closeMenu(){if(mb)mb.setAttribute('aria-expanded','false');menu.hidden=true;mb=null}"
+    "function openMenu(b,acts,arg){closeMenu();mb=b;menu.textContent='';"
+    "acts.forEach(function(x){var e=document.createElement('button');e.type='button';e.setAttribute('role','menuitem');e.textContent=x.label;"
+    "e.onclick=function(){closeMenu();x.run(arg)};menu.appendChild(e)});"
+    "menu.hidden=false;b.setAttribute('aria-expanded','true');"
+    "var r=b.getBoundingClientRect(),h=menu.offsetHeight,w=menu.offsetWidth;"
     "menu.style.top=(r.bottom+h+8>innerHeight?Math.max(4,r.top-h-4):r.bottom+4)+'px';"
     "menu.style.left=Math.max(4,Math.min(r.right-w,innerWidth-w-4))+'px';menu.firstChild.focus()}"
-    "mores.forEach(function(b,k){b.onclick=function(e){e.stopPropagation();if(mi===k){closeMenu()}else{openMenu(k)}}});"
+    "function toggleMenu(b,acts,arg){if(mb===b){closeMenu()}else{openMenu(b,acts,arg)}}"
+    "mores.forEach(function(b,k){b.onclick=function(e){e.stopPropagation();toggleMenu(b,trackActions,k)}});"
+    "if(allmore){if(albumActions.length){allmore.onclick=function(e){e.stopPropagation();toggleMenu(allmore,albumActions,-1)}}else{allmore.remove()}}"
     "document.addEventListener('click',closeMenu);"
     "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenu()});"
     "if(framed){"
     # Un titre seul : la page n'envoie que lui, et sa file ne contient rien d'autre.
-    "start=function(i,solo){var ar=document.querySelector('.artist'),im=document.querySelector('.cov img');"
-    "window.parent.postMessage({t:'play',tracks:solo?[tracks[i]]:tracks,index:solo?0:i,album:document.title,page:location.href,artist:ar?ar.textContent:'',cover:im?im.src:''},'*')};"
+    "start=function(i,solo){var m=side();"
+    "window.parent.postMessage({t:'play',tracks:solo?[tracks[i]]:tracks,index:solo?0:i,album:document.title,page:location.href,artist:m.artist,cover:m.cover},'*')};"
+    "enqueue=function(where,list){var m=side();"
+    "window.parent.postMessage({t:'enqueue',where:where,tracks:list,album:document.title,page:location.href,artist:m.artist,cover:m.cover},'*')};"
     "toggle=function(){window.parent.postMessage({t:'toggle'},'*')};"
     "window.addEventListener('message',function(e){var d=e.data;if(e.source!==window.parent||!d||d.t!=='state')return;"
     "cur=-1;tracks.forEach(function(t,k){if(t.src===d.src)cur=k});paused=d.paused;mark()});"
@@ -241,8 +254,16 @@ QUEUE_CSS = (
     "#qbody{flex:1;min-height:0;overflow-y:auto;padding:4px 8px 16px}"
     ".qlabel{margin:16px 8px 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0aa}"
     ".qnone{margin:6px 8px;font-size:14px;color:#9aa0aa}"
-    ".qrow{display:flex;align-items:center;gap:12px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}"
-    ".qrow:hover,.qrow:focus-visible{background:#252833;outline:0}"
+    ".qlabel{display:flex;align-items:center;justify-content:space-between}"
+    ".qclear{padding:2px 6px;border:0;border-radius:6px;background:none;color:#7cc4ff;font:inherit;font-size:12px;letter-spacing:0;text-transform:none;cursor:pointer}"
+    ".qclear:hover{background:#252833}"
+    ".qrow{display:flex;align-items:center;border-radius:8px}"
+    ".qrow:hover,.qrow:focus-within{background:#252833}"
+    ".qmain{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:6px 8px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;outline:0}"
+    ".qx{flex:none;width:28px;height:28px;margin-right:6px;border:0;border-radius:50%;background:none;color:#9aa0aa;font-size:13px;cursor:pointer;opacity:0}"
+    ".qrow:hover .qx,.qx:focus-visible{opacity:1}"
+    ".qx:hover{background:#2f3340;color:#fff}"
+    "@media(hover:none){.qx{opacity:1}}"
     ".qrow.now .qt{color:#7cc4ff}"
     ".qcov{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:4px;background:#21232b center/cover;color:#4a4e5a}"
     ".qcov.has::after{content:none}"
@@ -251,6 +272,8 @@ QUEUE_CSS = (
     ".qt,.qs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
     ".qt{font-size:14px;font-weight:600}"
     ".qs{font-size:13px;color:#9aa0aa}"
+    # La confirmation d'un ajout, au-dessus de la barre : plus haut que la fiche (20) et le panneau (25), sans prendre les clics.
+    "#toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:35;max-width:80%;padding:9px 16px;border-radius:20px;background:#252833;color:#e8e8ea;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
 )
 
 # Sur le sommaire : le bouton des pochettes, la barre, et la fiche qui s'ouvre par-dessus. L'iframe couvre toute la fenêtre sauf la barre (sa hauteur est posée par le script) ; elle passe au-dessus de l'en-tête fixe du sommaire (z-index 10), et la barre au-dessus d'elle.
@@ -302,7 +325,7 @@ var a=$('player'),bar=$('bar'),seek=$('seek'),fill=$('fill'),cover=$('cover'),so
 bShuffle=$('shuffle'),bPrev=$('prev'),bPlay=$('play'),bNext=$('next'),bRepeat=$('repeat'),bMute=$('mute'),vol=$('vol'),
 head=document.querySelector('.top'),base=document.title,
 qp=$('queue'),qb=$('qbody'),qbtn=$('qbtn'),
-queue=[],order=[],pos=-1,shuffled=false,repeat=0,drag=false,curBtn=null,curSrcs=[];
+queue=[],natural=[],order=[],pos=-1,shuffled=false,repeat=0,drag=false,curBtn=null,curSrcs=[];
 // Chaque titre de la file porte lui-même son artiste, son album, sa pochette et la fiche de son album : la file peut mêler des albums.
 function item(t,m){return{src:t.src,title:String(t.title||''),artist:m.artist,album:m.album,cover:m.cover,page:m.page}}
 function make(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
@@ -339,11 +362,13 @@ cover.className=t&&t.cover?'has':'';
 side.className=t&&t.page?'side go':'side';side.title=t&&t.page?'Ouvrir la fiche de cet album':'';
 document.title=t?t.title+(t.artist?' \u00b7 '+t.artist:''):base}
 // La file d'attente : le titre en cours, puis ce qui suit dans l'ordre de lecture (celui de l'album, ou le tirage de l'aléatoire). Redessinée quand la file ou l'ordre change, pas à chaque pause : la liste ne doit pas sauter sous le doigt.
-function qrow(t,cls,click){
-var b=make('button','qrow'+cls),c=make('div','qcov'+(t.cover?' has':'')),x=make('div','qtxt');
+function qrow(t,cls,click,remove){
+var r=make('div','qrow'+cls),b=make('button','qmain'),c=make('div','qcov'+(t.cover?' has':'')),x=make('div','qtxt');
 b.type='button';if(t.cover)c.style.backgroundImage='url("'+t.cover+'")';
 x.appendChild(make('div','qt',t.title));x.appendChild(make('div','qs',(t.artist?t.artist+' \u2013 ':'')+t.album));
-b.appendChild(c);b.appendChild(x);b.onclick=click;return b}
+b.appendChild(c);b.appendChild(x);b.onclick=click;r.appendChild(b);
+if(remove){var d=make('button','qx','\u2715');d.type='button';d.setAttribute('aria-label','Retirer de la file');d.onclick=function(e){e.stopPropagation();remove()};r.appendChild(d)}
+return r}
 function drawQueue(){
 if(qp.hidden)return;
 qb.textContent='';
@@ -351,26 +376,45 @@ var t=cur();
 if(!t){qb.appendChild(make('div','qnone','Rien en cours de lecture.'));return}
 qb.appendChild(make('div','qlabel','En cours'));
 qb.appendChild(qrow(t,' now',function(){toggle()}));
-var rest=order.length-pos-1;
-qb.appendChild(make('div','qlabel','\u00c0 suivre'+(rest>0?' \u00b7 '+rest:'')));
+var rest=order.length-pos-1,lab=make('div','qlabel');
+lab.appendChild(make('span',null,'\u00c0 suivre'+(rest>0?' \u00b7 '+rest:'')));
+if(rest>0){var cl=make('button','qclear','Vider');cl.type='button';cl.onclick=clearRest;lab.appendChild(cl)}
+qb.appendChild(lab);
 if(repeat===2){qb.appendChild(make('div','qnone','Le titre en cours se r\u00e9p\u00e8te.'))}
 else if(rest<=0){qb.appendChild(make('div','qnone',repeat===1?'Rien d\u2019autre : la lecture reprend au d\u00e9but.':'Rien \u00e0 suivre.'))}
-for(var i=pos+1;i<order.length;i++){(function(p){qb.appendChild(qrow(queue[order[p]],'',function(){load(p)}))})(i)}}
+for(var i=pos+1;i<order.length;i++){(function(p){qb.appendChild(qrow(queue[order[p]],'',function(){load(p)},function(){removeAt(p)}))})(i)}}
 function toggleQueue(){
 qp.hidden=!qp.hidden;qbtn.classList.toggle('on',!qp.hidden);qbtn.setAttribute('aria-pressed',!qp.hidden);drawQueue()}function fit(){var f=frame();if(f)f.style.bottom=bar.hidden?'0':bar.offsetHeight+'px'}
 function go(){var r=a.play();if(r&&r.catch)r.catch(function(){})}
 function load(p){
-pos=p;a.src=cur().src;show();
+pos=p;cur().nx=false;a.src=cur().src;show();
 bar.hidden=false;document.body.classList.add('playing');fit();
 go();refresh();paint();drawQueue()}
 function reshuffle(first){
 for(var i=order.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=order[i];order[i]=order[j];order[j]=x}
 if(first>=0){var k=order.indexOf(first);order[k]=order[0];order[0]=first}}
 // Une file neuve : l'album, depuis la piste 'index' ; l'aléatoire, s'il est actif, la mélange en gardant cette piste en tête.
-function begin(tracks,index,m){
-queue=tracks.map(function(t){return item(t,m)});order=queue.map(function(_,i){return i});
+function fresh(items,index){
+queue=items;natural=queue.map(function(_,i){return i});order=natural.slice();
 if(index<0||index>=queue.length)index=0;
 if(shuffled){reshuffle(index);load(0)}else{load(index)}}
+function begin(tracks,index,m){fresh(tracks.map(function(t){return item(t,m)}),index)}
+// Ajouter à la file : 'next' juste après le titre en cours - derrière ceux déjà ajoutés ainsi et pas encore joués (nx), pour qu'ils passent dans l'ordre où on les a demandés -, 'end' tout au bout. Le titre est inséré dans l'ordre de lecture, et dans l'ordre naturel que l'aléatoire désactivé retrouve. Rien en cours : l'ajout lance la lecture.
+function runAfter(arr,p){var k=p+1;while(k<arr.length&&queue[arr[k]].nx)k++;return k}
+function toast(text){
+var e=$('toast');if(!e){e=make('div');e.id='toast';document.body.appendChild(e)}
+e.textContent=text;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){e.hidden=true},2200)}
+function enqueue(items,where,label){
+if(pos<0||!queue.length){fresh(items,0);return}
+var base=queue.length,idx=items.map(function(t,i){if(where==='next')t.nx=true;queue.push(t);return base+i}),
+cq=order[pos],ao=where==='next'?runAfter(order,pos):order.length,an;
+order.splice.apply(order,[ao,0].concat(idx));
+an=where==='next'?runAfter(natural,natural.indexOf(cq)):natural.length;
+natural.splice.apply(natural,[an,0].concat(idx));
+refresh();drawQueue();
+toast((where==='next'?'Lecture ensuite : ':'Ajouté à la fin : ')+label)}
+function removeAt(p){var qi=order[p];order.splice(p,1);var n=natural.indexOf(qi);if(n>=0)natural.splice(n,1);refresh();drawQueue()}
+function clearRest(){var gone=order.splice(pos+1);natural=natural.filter(function(i){return gone.indexOf(i)<0});refresh();drawQueue()}
 function step(auto){
 if(auto&&repeat===2){a.currentTime=0;go();return}
 if(pos+1<order.length){load(pos+1)}
@@ -383,14 +427,17 @@ document.body.insertBefore(f,bar);fit()}
 function close(to){var f=frame();if(!f)return;f.remove();
 var e=to&&$(to);
 if(e)scrollTo(0,e.getBoundingClientRect().top+scrollY-head.offsetHeight-12)}
+function valid(tracks){return Array.isArray(tracks)&&tracks.length>0&&tracks.every(function(t){return t&&ours(t.src)})}
+function metaOf(d){return{album:String(d.album||''),artist:String(d.artist||''),page:ours(d.page)?d.page:'',
+cover:typeof d.cover==='string'&&d.cover.indexOf('data:image/')===0?d.cover:''}}
 window.addEventListener('message',function(e){var f=frame(),d=e.data;if(!f||e.source!==f.contentWindow||!d)return;
 if(d.t==='hello'){refresh()}
 else if(d.t==='toggle'){toggle()}
 else if(d.t==='close'){close(String(d.to||''))}
-else if(d.t==='play'&&Array.isArray(d.tracks)&&d.tracks.length&&d.tracks.every(function(t){return t&&ours(t.src)})){
-begin(d.tracks,+d.index||0,
-{album:String(d.album||''),artist:String(d.artist||''),page:ours(d.page)?d.page:'',
-cover:typeof d.cover==='string'&&d.cover.indexOf('data:image/')===0?d.cover:''})}});
+else if(d.t==='play'&&valid(d.tracks)){begin(d.tracks,+d.index||0,metaOf(d))}
+else if(d.t==='enqueue'&&(d.where==='next'||d.where==='end')&&valid(d.tracks)){
+var m=metaOf(d),items=d.tracks.map(function(t){return item(t,m)});
+enqueue(items,d.where,items.length>1?m.album:items[0].title)}});
 side.onclick=function(){var t=cur();if(t&&t.page)open(t.page)};
 qbtn.onclick=toggleQueue;$('qclose').onclick=toggleQueue;
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!qp.hidden)toggleQueue()});
@@ -401,7 +448,7 @@ bShuffle.onclick=function(){
 var t=cur(),ci=t?order[pos]:-1;
 shuffled=!shuffled;
 if(shuffled){reshuffle(ci);pos=ci>=0?0:-1}
-else{order=queue.map(function(_,i){return i});pos=ci}
+else{order=natural.slice();pos=ci>=0?order.indexOf(ci):-1}
 bShuffle.classList.toggle('on',shuffled);bShuffle.setAttribute('aria-pressed',shuffled);refresh();drawQueue()};
 bRepeat.onclick=function(){
 repeat=(repeat+1)%3;

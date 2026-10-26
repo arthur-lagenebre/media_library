@@ -134,6 +134,57 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertIn("e.key==='Escape'", player.PAGE_SCRIPT)
         self.assertNotIn("innerHTML", player.PAGE_SCRIPT)
 
+    def test_lire_ensuite_et_ajouter_a_la_fin_n_existent_que_dans_music_html(self):
+        script = player.PAGE_SCRIPT
+        self.assertIn("label:'Lire ensuite'", script)
+        self.assertIn("label:'Ajouter à la fin'", script)
+        self.assertIn("label:'Lire l’album ensuite'", script)
+        self.assertIn("label:'Ajouter l’album à la fin'", script)
+        # Ajoutés seulement si la fiche est dans l'iframe : une fiche ouverte seule n'a pas de file.
+        self.assertIn("albumActions=[];if(framed){trackActions.push({label:'Lire ensuite'", script)
+        self.assertIn("allmore.remove()", script)                                  # sans file, le menu de l'album disparaît
+
+    def test_une_fiche_envoie_un_ajout_que_la_page_comprend(self):
+        envoi = re.search(r"enqueue=function\(where,list\)\{.*?postMessage\(\{t:'enqueue',where:where,tracks:list,", player.PAGE_SCRIPT)
+        self.assertIsNotNone(envoi)
+        self.assertIn("d.t==='enqueue'&&(d.where==='next'||d.where==='end')&&valid(d.tracks)", player.INDEX_SCRIPT)
+
+    def test_un_ajout_se_place_apres_le_titre_en_cours_et_ceux_deja_ajoutes_ainsi(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("function runAfter(arr,p){var k=p+1;while(k<arr.length&&queue[arr[k]].nx)k++;return k}", script)
+        self.assertIn("if(where==='next')t.nx=true", script)                      # marqué : « lire ensuite » se range derrière les précédents
+        self.assertIn("cur().nx=false", script)                                    # joué : la marque tombe
+        self.assertIn("ao=where==='next'?runAfter(order,pos):order.length", script)
+
+    def test_l_ordre_naturel_suit_les_ajouts_pour_que_la_fin_de_l_aleatoire_les_garde(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("natural.splice.apply(natural,[an,0].concat(idx))", script)
+        self.assertIn("order=natural.slice();pos=ci>=0?order.indexOf(ci):-1", script)
+        self.assertNotIn("order=queue.map", script)
+
+    def test_rien_en_cours_un_ajout_lance_la_lecture(self):
+        self.assertIn("if(pos<0||!queue.length){fresh(items,0);return}", player.INDEX_SCRIPT)
+
+    def test_le_panneau_retire_et_vide(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("function removeAt(p)", script)
+        self.assertIn("function clearRest()", script)
+        self.assertIn("function(){removeAt(p)}", script)
+        self.assertIn("'Vider'", script)
+        self.assertIn("aria-label','Retirer de la file'", script)
+        # Une ligne n'est pas un bouton qui en contient un autre : le bouton de retrait est à côté du bouton principal.
+        self.assertIn("r.appendChild(b)", script)
+        self.assertIn("r.appendChild(d)", script)
+
+    def test_la_confirmation_d_un_ajout(self):
+        self.assertIn("'Lecture ensuite : '", player.INDEX_SCRIPT)
+        self.assertIn("'Ajouté à la fin : '", player.INDEX_SCRIPT)
+        self.assertIn("#toast{position:fixed", player.INDEX_CSS)
+        self.assertIn("pointer-events:none", re.search(r"#toast\{[^}]*\}", player.INDEX_CSS).group(0))
+        def z(selector):
+            return int(re.findall(re.escape(selector) + r"\{[^}]*z-index:(\d+)", player.INDEX_CSS)[-1])
+        self.assertGreater(z("#toast"), z("#queue"))
+
     def test_un_titre_seul_n_envoie_que_lui_a_la_page(self):
         # Dans musique.html : la file de la page est ce que la fiche envoie, donc un seul titre, à la place 0.
         self.assertIn("tracks:solo?[tracks[i]]:tracks,index:solo?0:i", player.PAGE_SCRIPT)
