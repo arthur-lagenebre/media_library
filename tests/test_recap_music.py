@@ -68,7 +68,7 @@ class TestRecapMusique(unittest.TestCase):
     def test_simulation_n_ecrit_que_le_journal_quand_le_dossier_existe(self):
         self.lancer()
         self.assertEqual(sorted(p.name for p in self.data.iterdir() if p.is_file()), ["recap.log"])
-        self.assertFalse((self.data / "index.html").exists())
+        self.assertFalse((self.data / "music.html").exists())
 
     def test_bilan(self):
         _, sortie = self.lancer()
@@ -76,20 +76,23 @@ class TestRecapMusique(unittest.TestCase):
         self.assertIn("TOTAL : 4/5 piste(s) étiquetée(s) par MusicBrainz.", sortie)
         self.assertNotIn("Ancien", sortie)
 
-    def test_application_ecrit_sommaire_fiches_catalogue_et_journal(self):
+    def test_application_ecrit_un_seul_fichier_pour_le_sommaire_et_le_lecteur(self):
         code, _ = self.lancer("--apply")
         self.assertEqual(code, 0)
-        self.assertEqual(sorted(p.name for p in self.data.iterdir() if p.is_file()), ["catalog.json", "index.html", "lecteur.html", "recap.log"])
+        self.assertEqual(sorted(p.name for p in self.data.iterdir() if p.is_file()), ["catalog.json", "music.html", "recap.log"])
         self.assertEqual(len(list((self.data / "Albums").glob("*.html"))), 3)
-        index = (self.data / "index.html").read_text(encoding="utf-8")
+        index = (self.data / "music.html").read_text(encoding="utf-8")
         self.assertIn("<title>Musique</title>", index)
         self.assertEqual(len(re.findall(r"href='Albums/", index)), 3)
+        self.assertEqual(index.count("<audio"), 1)                  # le sommaire est aussi le lecteur
+        self.assertFalse((self.data / "index.html").exists())
+        self.assertFalse((self.data / "lecteur.html").exists())
 
     def test_une_fiche_par_artiste_et_des_liens_qui_y_mennent(self):
         self.lancer("--apply")
         fiches = sorted(p.name for p in (self.data / "Artistes").glob("*.html"))
         self.assertEqual([n.rsplit("-", 1)[0] for n in fiches], ["Daft Punk", "Kavinsky"])
-        index = (self.data / "index.html").read_text(encoding="utf-8")
+        index = (self.data / "music.html").read_text(encoding="utf-8")
         self.assertEqual(len(re.findall(r"href='Artistes/", index)), 2)
         album = next((self.data / "Albums").glob("Daft Punk - Discovery-*.html")).read_text(encoding="utf-8")
         self.assertIn("<a href='../Artistes/Daft%20Punk-", album)
@@ -198,7 +201,7 @@ class TestRecapMusique(unittest.TestCase):
         piste(self.racine / "Mystere", "01.flac", artist="", albumartist=False, album="Mystere")
         self.lancer("--apply")
         self.assertEqual(sorted(p.name.rsplit("-", 1)[0] for p in (self.data / "Artistes").glob("*.html")), ["Daft Punk", "Kavinsky"])
-        index = (self.data / "index.html").read_text(encoding="utf-8")
+        index = (self.data / "music.html").read_text(encoding="utf-8")
         self.assertIn("<h2 data-i='A'>Artiste inconnu<span", index)          # sa section, sans lien : il n'a pas de fiche
 
     def test_aucune_ecriture_dans_la_musique(self):
@@ -217,14 +220,26 @@ class TestRecapMusique(unittest.TestCase):
     def test_titre_choisi_survit_aux_passages_suivants(self):
         self.lancer("--apply", "--title", "Ma musique")
         self.lancer("--apply")
-        self.assertIn("<title>Ma musique</title>", (self.data / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("<title>Ma musique</title>", (self.data / "music.html").read_text(encoding="utf-8"))
+
+    def test_titre_repris_d_un_ancien_sommaire_ou_d_un_ancien_lecteur(self):
+        for ancien in ("musique.html", "index.html", "lecteur.html"):
+            with self.subTest(ancien):
+                (self.data / "music.html").unlink(missing_ok=True)
+                (self.data / "index.html").unlink(missing_ok=True)
+                (self.data / "musique.html").unlink(missing_ok=True)
+                (self.data / "lecteur.html").unlink(missing_ok=True)
+                (self.data / ancien).write_text("<html><head><title>Ma discothèque</title></head></html>", encoding="utf-8")
+                self.lancer("--apply")
+                self.assertIn("<title>Ma discothèque</title>", (self.data / "music.html").read_text(encoding="utf-8"))
+                self.assertTrue((self.data / ancien).exists())          # jamais effacé
 
     def test_sortie_ailleurs(self):
         ailleurs = self.racine.parent / (self.racine.name + "-out")
         self.addCleanup(shutil.rmtree, ailleurs, ignore_errors=True)
         self.lancer("--apply", "--out", str(ailleurs))
-        self.assertTrue((ailleurs / "index.html").exists())
-        self.assertFalse((self.data / "index.html").exists())
+        self.assertTrue((ailleurs / "music.html").exists())
+        self.assertFalse((self.data / "music.html").exists())
 
     def test_les_fiches_d_album_jouent_les_pistes_depuis_la_racine(self):
         self.lancer("--apply")
@@ -241,25 +256,22 @@ class TestRecapMusique(unittest.TestCase):
         lien = re.search(r"data-src='([^']+)'", fiche).group(1)
         self.assertTrue((ailleurs / "Albums" / lien.replace("%20", " ")).resolve().exists())
 
-    def test_la_coque_affiche_le_sommaire_a_cote_d_elle(self):
+    def test_le_sommaire_lit_les_pistes_depuis_la_racine(self):
         self.lancer("--apply")
-        coque = (self.data / "lecteur.html").read_text(encoding="utf-8")
-        self.assertIn("<iframe id='frame' src='index.html'", coque)
-        self.assertIn("<title>Musique</title>", coque)
+        index = (self.data / "music.html").read_text(encoding="utf-8")
+        self.assertIn("../Daft%20Punk/Discovery/01.flac", index)
+        self.assertTrue((self.data / "../Daft Punk/Discovery/01.flac").exists())
 
-    def test_la_coque_suit_le_titre_choisi(self):
-        self.lancer("--apply", "--title", "Ma musique")
-        self.assertIn("<title>Ma musique</title>", (self.data / "lecteur.html").read_text(encoding="utf-8"))
-
-    def test_coque_inchangee_au_deuxieme_passage(self):
+    def test_les_fiches_reviennent_a_musique_html(self):
         self.lancer("--apply")
-        _, sortie = self.lancer("--apply")
-        self.assertRegex(sortie, r"\[lecteur\] .*lecteur\.html inchangé")
+        fiche = next((self.data / "Albums").glob("Daft Punk - Discovery-*.html")).read_text(encoding="utf-8")
+        self.assertIn("href='../music.html#", fiche)
+        self.assertNotIn("index.html", fiche)
 
     def test_no_player_n_ajoute_aucun_lecteur(self):
         self.lancer("--apply", "--no-player")
-        for page in (self.data / "Albums").glob("*.html"):
-            self.assertNotIn("<audio", page.read_text(encoding="utf-8"))
+        for page in [*(self.data / "Albums").glob("*.html"), self.data / "music.html"]:
+            self.assertNotIn("<audio", page.read_text(encoding="utf-8"), page.name)
         self.assertFalse((self.data / "lecteur.html").exists())
 
     def test_deuxieme_passage_ne_reecrit_rien_et_reprend_le_catalogue(self):
@@ -296,7 +308,7 @@ class TestRecapMusique(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("À CORRIGER : 1 fichier(s) illisible(s)", sortie)
         self.assertIn("[ILLISIBLE] Daft Punk/Discovery/03.flac", (self.data / "recap.log").read_text(encoding="utf-8"))
-        self.assertTrue((self.data / "index.html").exists())
+        self.assertTrue((self.data / "music.html").exists())
 
     def test_catalogue_sans_piste_illisible(self):
         (self.racine / "Daft Punk" / "Discovery" / "03.flac").write_bytes(b"coupe")
@@ -342,22 +354,24 @@ class TestRecapMusique(unittest.TestCase):
                                    extra=[(flac.PICTURE, image(png(900, 900)))]))
         _, sortie = self.lancer("--apply")
         self.assertIn("1 pochette(s) extraite(s)", sortie)
-        index = (self.data / "index.html").read_text(encoding="utf-8")
+        index = (self.data / "music.html").read_text(encoding="utf-8")
         self.assertIn("src='data:image/jpeg;base64,", index)
         self.assertEqual(len(re.findall(r"<img data-img=", index)), 1)
         # Deuxième passage : la page sert de cache, la pochette n'est pas rouverte.
         with mock.patch.object(recap.library, "read_cover", side_effect=AssertionError("pochette rouverte")):
             _, sortie = self.lancer("--apply")
         self.assertIn("0 pochette(s) extraite(s)", sortie)
-        self.assertEqual((self.data / "index.html").read_text(encoding="utf-8"), index)
+        self.assertEqual((self.data / "music.html").read_text(encoding="utf-8"), index)
 
-    def test_sans_pillow_monogrammes(self):
+    def test_sans_pillow_image_generique(self):
         chemin = self.racine / "Daft Punk" / "Discovery" / "01.flac"
         chemin.write_bytes(fichier(["TITLE=Titre 1", "ARTIST=Daft Punk", "ALBUM=Discovery", "TRACKNUMBER=1"], extra=[(flac.PICTURE, image(png()))]))
         with mock.patch.object(thumbs, "Image", None):
             _, sortie = self.lancer("--apply")
         self.assertIn("Pillow absent", sortie)
-        self.assertNotIn("<img data-img=", (self.data / "index.html").read_text(encoding="utf-8"))
+        index = (self.data / "music.html").read_text(encoding="utf-8")
+        self.assertNotIn("<img data-img=", index)
+        self.assertIn("<div class='noimg'></div>", index)
 
     def test_pochette_illisible_n_arrete_pas_le_passage(self):
         chemin = self.racine / "Daft Punk" / "Discovery" / "01.flac"
@@ -371,7 +385,7 @@ class TestRecapMusique(unittest.TestCase):
         shutil.rmtree(self.racine / "Kavinsky")
         self.lancer("--apply")
         self.assertEqual(len(list((self.data / "Albums").glob("*.html"))), 3)
-        self.assertEqual(len(re.findall(r"href='Albums/", (self.data / "index.html").read_text(encoding="utf-8"))), 2)
+        self.assertEqual(len(re.findall(r"href='Albums/", (self.data / "music.html").read_text(encoding="utf-8"))), 2)
 
 
 if __name__ == "__main__":

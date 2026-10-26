@@ -4,6 +4,7 @@ Les tests unitaires couvrent les pièces ; ceux-ci vérifient qu'elles sont bien
 """
 
 import io
+import shutil
 import sys
 import tempfile
 import unittest
@@ -111,7 +112,8 @@ class TestAnnexesDesFilms(FluxTestCase):
 
     def test_recap_ecrit_sous_no_tag(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "index.html").exists())
+        self.assertTrue((self.racine / "__Data__" / "movies.html").exists())
+        self.assertFalse((self.racine / "index.html").exists())          # plus rien n'est écrit à la racine de la médiathèque
 
     def lancer_peu_vote(self, *options):
         """Un film que presque personne n'a noté : l'association est suspecte."""
@@ -134,35 +136,30 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.assertNotIn("À VÉRIFIER", (self.racine / "metadata.log").read_text(encoding="utf-8"))
         self.assertIn("1 film(s) validé(s)", sortie)
 
-    def test_validation_lue_a_cote_du_journal(self):
-        annexes = self.racine / "__Data__"
-        annexes.mkdir()
-        (annexes / "metadata.ok").write_text("1\n", encoding="utf-8")
-        _, sortie = self.lancer_peu_vote("--recap", "--recap-out", str(annexes))
-        self.assertNotIn("presque inconnue", sortie)
-
     def test_chaque_film_a_sa_fiche(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        fiche = (self.racine / "Fiches" / "1.html").read_text(encoding="utf-8")
+        fiche = (self.racine / "__Data__" / "Fiches" / "1.html").read_text(encoding="utf-8")
         self.assertIn("<title>Dune (2021)</title>", fiche)
-        self.assertIn("href='../index.html#f1'", fiche)
-        self.assertIn("href='Fiches/1.html'", (self.racine / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("href='../movies.html#f1'", fiche)
+        self.assertIn("href='Fiches/1.html'", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
 
-    def test_simulation_n_ecrit_aucune_fiche(self):
+    def test_simulation_n_ecrit_aucune_fiche_ni_dossier(self):
         self.lancer_films("--no-tag", "--recap")
-        self.assertFalse((self.racine / "Fiches").exists())
-        self.assertFalse((self.racine / "index.html").exists())
+        self.assertFalse((self.racine / "__Data__").exists())
 
-    def test_fiches_rangees_a_cote_de_l_index(self):
-        annexes = self.racine / "__Data__"
-        annexes.mkdir()
-        self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes / "films.html"), "--apply")
-        self.assertIn("href='../films.html#f1'", (annexes / "Fiches" / "1.html").read_text(encoding="utf-8"))
+    def test_les_fiches_sont_rangees_a_cote_de_movies_html_et_pas_a_la_racine(self):
+        self.lancer_films("--no-tag", "--recap", "--apply")
         self.assertFalse((self.racine / "Fiches").exists())
+        self.assertEqual(sorted(p.name for p in (self.racine / "__Data__").iterdir()), ["Fiches", "movies.html"])
+
+    def test_l_option_recap_out_n_existe_plus(self):
+        with self.assertRaises(SystemExit):
+            with mock.patch("sys.stderr", io.StringIO()):
+                self.lancer_films("--no-tag", "--recap", "--recap-out", str(self.racine / "ailleurs"), "--apply")
 
     def test_fiches_identiques_pas_reecrites(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        fiche = self.racine / "Fiches" / "1.html"
+        fiche = self.racine / "__Data__" / "Fiches" / "1.html"
         avant = fiche.stat().st_mtime_ns
         _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
         self.assertIn("(0 écrite(s), 1 inchangée(s))", sortie)
@@ -172,30 +169,31 @@ class TestAnnexesDesFilms(FluxTestCase):
         # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
         self.lancer_films("--no-tag", "--recap", "--apply")
         _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("index.html inchangé", sortie)
+        self.assertIn("movies.html inchangé", sortie)
         self.assertIn("metadata.log inchangé", sortie)
 
-    def test_journal_a_cote_de_la_fiche_rangee_ailleurs(self):
-        annexes = self.racine / "__Data__"
-        annexes.mkdir()
-        self.lancer_films("--no-tag", "--recap", "--recap-out", str(annexes), "--apply")
-        self.assertTrue((annexes / "index.html").exists())
-        self.assertTrue((annexes / "metadata.log").exists())
-        self.assertFalse((self.racine / "metadata.log").exists())
-
-    def test_ancienne_fiche_renommee_et_reprise(self):
-        # recap.html devient index.html : renommée plutôt que doublée, elle garde son titre et ses affiches en cache.
-        (self.racine / "recap.html").write_text("<html><head><title>Ma videotheque</title></head></html>", encoding="utf-8")
+    def test_le_journal_reste_a_la_racine(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertFalse((self.racine / "recap.html").exists())
-        self.assertIn("<title>Ma videotheque</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+        self.assertTrue((self.racine / "metadata.log").exists())
+        self.assertFalse((self.racine / "__Data__" / "metadata.log").exists())
+
+    def test_ancienne_fiche_lue_pour_son_titre_et_jamais_effacee(self):
+        # index.html (ou recap.html avant lui) était écrit à la racine : movies.html reprend son titre, et elle reste en place.
+        for ancien in ("index.html", "recap.html"):
+            with self.subTest(ancien):
+                shutil.rmtree(self.racine / "__Data__", ignore_errors=True)
+                (self.racine / ancien).write_text("<html><head><title>Ma videotheque</title></head></html>", encoding="utf-8")
+                self.lancer_films("--no-tag", "--recap", "--apply")
+                self.assertTrue((self.racine / ancien).exists())
+                self.assertIn("<title>Ma videotheque</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
+                (self.racine / ancien).unlink()
 
     def test_titre_par_defaut_puis_choisi(self):
         self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("<title>Films</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("<title>Films</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
         self.lancer_films("--no-tag", "--recap", "--title", "Cinematheque", "--apply")
         self.lancer_films("--no-tag", "--recap", "--apply")       # la tache de nuit, sans --title
-        self.assertIn("<title>Cinematheque</title>", (self.racine / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("<title>Cinematheque</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
 
     def test_no_tag_relit_l_id_inscrit_dans_le_film(self):
         # Régression : sous --no-tag, rien n'était lu - "Mortal Kombat" (1995), pourtant identifié dans son fichier, redevenait par recherche celui de 2021.

@@ -1,8 +1,8 @@
 """Sommaire des séries d'une médiathèque, construit à partir de leurs fiches.
 
-Chaque fiche de série (index.html, autrefois recap.html) porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
+Chaque fiche de série (index.html dans le dossier de la série, autrefois recap.html) porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
 
-Un index.html qui n'a pas été écrit par ce module n'est jamais remplacé.
+Le sommaire est rangé dans le dossier __Data__ de la médiathèque, sous le nom du titre qu'on lui donne (--title "Anime" l'écrit dans Anime.html), à défaut tv_shows.html : la médiathèque elle-même n'est pas touchée, et ses liens remontent d'un cran jusqu'aux fiches. Une page qui n'a pas été écrite par ce module n'est jamais remplacée.
 """
 
 import re
@@ -14,9 +14,12 @@ from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 from libraries.common import favicon, layout, textfile
+from libraries.common.filenames import safe_name
 
-INDEX_NAME = "index.html"
-# La fiche de chaque série porte le même nom que le sommaire : un navigateur ou un serveur ouvre index.html de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
+DATA_DIR = "__Data__"                 # là où le sommaire est écrit, à la racine de la médiathèque
+DEFAULT_INDEX = "tv_shows.html"       # son nom quand on ne lui donne pas de titre
+LEGACY_INDEX = "index.html"           # là où les versions précédentes l'écrivaient, à la racine : lu pour son titre, jamais effacé
+# La fiche de chaque série reste dans le dossier de la série, sous le nom qu'un navigateur ou un serveur ouvre de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
 PAGE_NAME = "index.html"
 LEGACY_NAME = "recap.html"
 DEFAULT_TITLE = "Séries"
@@ -103,8 +106,8 @@ class Entry:
 
     @property
     def href(self):
-        """Lien relatif vers la fiche, encodé : les noms de séries ont des espaces, des accents, des #."""
-        return quote(f"{self.folder}/{self.page}")
+        """Lien relatif vers la fiche, encodé : les noms de séries ont des espaces, des accents, des #. Le sommaire est dans __Data__ : il remonte d'un cran."""
+        return quote(f"../{self.folder}/{self.page}")
 
     @property
     def seasons_label(self):
@@ -146,7 +149,7 @@ def find_entries(root):
     """[Entry, ...] pour chaque sous-dossier de `root` qui contient une fiche."""
     entries = []
     try:
-        subs = sorted(p for p in Path(root).iterdir() if p.is_dir() and not p.name.startswith("."))
+        subs = sorted(p for p in Path(root).iterdir() if p.is_dir() and not p.name.startswith(".") and p.name != DATA_DIR)
     except OSError:
         return []
     for sub in subs:
@@ -242,20 +245,41 @@ def is_ours(path):
     return any(f"<meta name='generator' content='{name}'>" in head for name in (GENERATOR, *LEGACY_GENERATORS))
 
 
-def write(root, apply, title=None):
+def index_name(title=None):
+    """Nom du fichier du sommaire : le titre qu'on lui donne (« Anime » -> Anime.html), à défaut tv_shows.html."""
+    return f"{safe_name(title) or Path(DEFAULT_INDEX).stem}.html" if title else DEFAULT_INDEX
+
+
+def index_path(root, title=None):
+    """Où écrire le sommaire : dans le dossier __Data__ de `root`."""
+    return Path(root) / DATA_DIR / index_name(title)
+
+
+def our_indexes(root):
+    """Les sommaires que ce module a écrits dans le dossier __Data__ de `root`, quel que soit leur nom : un titre changé ou oublié n'en perd aucun."""
+    try:
+        return sorted(p for p in (Path(root) / DATA_DIR).glob("*.html") if p.is_file() and is_ours(p))
+    except OSError:
+        return []
+
+
+def write(root, apply, title=None, out=None):
     """Réécrit le sommaire de `root` d'après les fiches présentes. Retourne le compte rendu à afficher.
 
-    Une page identique n'est pas réécrite : lancé toutes les heures sur un NAS, le sommaire ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
+    Il va dans __Data__, sous le nom de `title` (voir index_name) ou, avec `out`, sous ce chemin-là. Une page identique n'est pas réécrite : lancé toutes les heures sur un NAS, le sommaire ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
 
-    Le titre est `title`, sinon celui du sommaire existant, sinon "Séries" - pas le nom du dossier, qui manque à la racine d'un partage réseau : la page n'avait alors aucun titre, et l'onglet affichait "index.html".
+    Le titre est `title`, sinon celui du sommaire existant, sinon celui du sommaire que les versions précédentes écrivaient à la racine (index.html), sinon "Séries" - pas le nom du dossier, qui manque à la racine d'un partage réseau : la page n'avait alors aucun titre, et l'onglet affichait le nom du fichier.
     """
-    out = Path(root) / INDEX_NAME
+    out = Path(out) if out else index_path(root, title)
     entries = find_entries(root)
-    html = build_html(title or textfile.title_of(out) or DEFAULT_TITLE, entries)
+    legacy = Path(root) / LEGACY_INDEX
+    previous = textfile.title_of(out) or (textfile.title_of(legacy) if is_ours(legacy) else None)
+    html = build_html(title or previous or DEFAULT_TITLE, entries)
     if textfile.same(out, html):
         return f"{out.name} inchangé ({len(entries)} série(s))"
     if not apply:
         return f"écrirait {out.name} ({len(entries)} série(s))"
+    out.parent.mkdir(exist_ok=True)
     textfile.write(out, html)
     missing = sum(1 for e in entries if not e.poster)
     return (f"{out.name} écrit ({len(entries)} série(s)"

@@ -61,9 +61,9 @@ Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --n
 
 À chaque passage, un JOURNAL est écrit à la racine de --dir : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
 
---recap genere une fiche HTML de la médiathèque à la racine de --dir (ou là où --recap-out le dit, dossier ou fichier .html) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
+--recap genere une fiche HTML de la médiathèque, movies.html, dans le dossier __Data__ à la racine de --dir (créé au besoin : la médiathèque elle-même n'est pas touchée) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
 Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
-Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de l'index (donc dans __Data__ avec --recap-out). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --profile-size règle la taille des portraits du casting.
+Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de movies.html (donc dans __Data__ aussi). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --profile-size règle la taille des portraits du casting.
 """
 
 from __future__ import annotations
@@ -216,9 +216,7 @@ class Library:
 
 
 def log_path(root_dir, args):
-    """Où écrire le journal : à côté de la fiche quand --recap-out la range ailleurs (les annexes vivent ensemble), sinon à la racine de --dir."""
-    if getattr(args, "recap", False) and getattr(args, "recap_out", None):
-        return recap_path(root_dir, args.recap_out).parent / "metadata.log"
+    """Où écrire le journal : à la racine de --dir, où on le cherche."""
     return Path(root_dir) / "metadata.log"
 
 
@@ -764,17 +762,23 @@ def build_recap_html(library_name, sections, posters, size, pages=()):
     )
 
 
-RECAP_NAME = "index.html"       # le nom qu'un navigateur ou un serveur ouvre de lui-même dans un dossier
-LEGACY_NAME = "recap.html"      # l'ancien nom, repris au premier passage
+DATA_DIR = "__Data__"           # là où le script écrit ses pages : la médiathèque elle-même n'est pas touchée
+RECAP_NAME = "movies.html"
+LEGACY_NAMES = ("index.html", "recap.html")      # ce que les versions précédentes écrivaient à la racine de --dir : lus pour leur titre et leurs affiches, jamais effacés
 DEFAULT_TITLE = "Films"
 
 
-def recap_path(root_dir, recap_out=None):
-    """Où écrire la fiche : à la racine de --dir, sinon là où --recap-out le dit (un dossier, ou le chemin du fichier)."""
-    if not recap_out:
-        return Path(root_dir) / RECAP_NAME
-    out = Path(recap_out)
-    return out if out.suffix.lower() in (".html", ".htm") else out / RECAP_NAME
+def recap_path(root_dir):
+    """Où écrire la fiche : movies.html dans le dossier __Data__ de --dir."""
+    return Path(root_dir) / DATA_DIR / RECAP_NAME
+
+
+def previous_recap(root_dir):
+    """La fiche précédente, qui sert de cache d'affiches et de titre : movies.html, à défaut celle que les versions précédentes écrivaient à la racine (index.html, ou recap.html avant elle)."""
+    out = recap_path(root_dir)
+    if out.is_file():
+        return out
+    return next((p for p in (Path(root_dir) / n for n in LEGACY_NAMES) if p.is_file()), out)
 
 
 def recap_title(args, previous):
@@ -820,16 +824,19 @@ def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
 
 
 def write_recap(root_dir, movies, args, tmdb, paths=None):
-    """Écrit la fiche (index.html à la racine de --dir, ou --recap-out) et celle de chaque film. Ne télécharge ni n'écrit rien en simulation.
+    """Écrit la fiche (movies.html dans __Data__) et celle de chaque film. Ne télécharge ni n'écrit rien en simulation.
 
-    La fiche précédente, au même endroit, sert de cache d'affiches ; une fiche encore nommée recap.html est renommée plutôt que doublée."""
+    La fiche précédente sert de cache d'affiches : movies.html, à défaut l'index.html (ou recap.html) que les versions précédentes écrivaient à la racine de --dir, qui reste en place."""
     apply = args.apply and not args.verify
-    out = recap_path(root_dir, getattr(args, "recap_out", None))
-    if not out.parent.is_dir():
-        print(f"  [médiathèque] dossier introuvable pour la fiche : {out.parent} -> fiche non écrite")
-        return
+    out = recap_path(root_dir)
+    if apply:
+        try:
+            out.parent.mkdir(exist_ok=True)
+        except OSError as e:
+            print(f"  [médiathèque] dossier {out.parent} non créé : {e} -> fiche non écrite")
+            return
     print("--- annexes ---")
-    previous = textfile.adopt(out.with_name(LEGACY_NAME), out, apply) if out.name == RECAP_NAME else out
+    previous = previous_recap(root_dir)
     sections = library_sections(movies, fetch_collections(movies, tmdb))
     needed = collect_posters(sections, args.poster_size)
     posters = (embed.fetch(needed, embed.read_embedded(previous), args.poster_size, tmdb, label="affiche") if apply else {})
@@ -870,10 +877,9 @@ def parse_args():
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques")
     ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; génère seulement folder.jpg / recap")
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (affiche EN) par film")
-    ap.add_argument("--recap", action="store_true", help="Génère une fiche recap HTML de la médiathèque (sagas et manquants)")
+    ap.add_argument("--recap", action="store_true", help="Génère la fiche movies.html de la médiathèque (sagas et manquants), dans __Data__ à la racine de --dir")
     ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (défaut : w185)")
     ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (défaut : {filmpage.PROFILE_SIZE})")
-    ap.add_argument("--recap-out", help="Où écrire la fiche recap : un dossier ou un chemin .html (défaut : index.html à la racine de --dir)")
     ap.add_argument("--title", help="Titre de la fiche recap (défaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     return ap.parse_args()

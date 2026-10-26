@@ -11,7 +11,7 @@ Les tomes manquants viennent du champ Count des fiches ("37" : la série compte 
 Les .pdf sont ignorés : ils n'ont ni fiche ni couverture à lire. --include-pdf les ajoute, avec un monogramme et le titre de leur nom de fichier.
 
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
-  index.html     le sommaire, avec une zone de recherche (titre, auteur, éditeur, genre)
+  books.html     le sommaire, avec une zone de recherche (titre, auteur, éditeur, genre)
   Series/        une page par série
   catalog.json   ce qu'on a lu dans chaque livre : au passage suivant, seuls les livres nouveaux ou modifiés sont rouverts
   recap.log      le journal : les livres sans fiche et les fichiers illisibles
@@ -38,7 +38,8 @@ from libraries.books import shelf, shelfpage  # noqa: E402
 from libraries.books.archive import BookError  # noqa: E402
 
 DATA_DIR = "__Data__"
-INDEX_NAME = "index.html"
+PAGE_NAME = "books.html"
+LEGACY_NAMES = ("index.html",)      # ce que les versions précédentes écrivaient à sa place : seulement lu (pour son titre), jamais effacé
 CATALOG_NAME = "catalog.json"
 LOG_NAME = "recap.log"
 DEFAULT_TITLE = "Livres"
@@ -96,7 +97,7 @@ def write_series_page(series, folder, library_name, width):
         if uri:
             images[volume.key] = uri
             fresh += 1
-    html = shelfpage.build_series(series, images, f"../{INDEX_NAME}", library_name)
+    html = shelfpage.build_series(series, images, f"../{PAGE_NAME}", library_name)
     written = not textfile.same(page, html)
     if written:
         textfile.write(page, html)
@@ -110,8 +111,8 @@ def write_pages(sections, out, args):
     """
     folder = out / shelfpage.DIR
     folder.mkdir(parents=True, exist_ok=True)
-    index = out / INDEX_NAME
-    library_name = args.title or textfile.title_of(index) or DEFAULT_TITLE
+    index = out / PAGE_NAME
+    library_name = args.title or next((t for t in (textfile.title_of(out / n) for n in (PAGE_NAME, *LEGACY_NAMES)) if t), DEFAULT_TITLE)
     if not thumbs.available():
         print("  [couvertures] Pillow absent : les pages montrent un monogramme à la place (pip install pillow)")
 
@@ -234,7 +235,7 @@ def main():
             textfile.write(out / CATALOG_NAME, catalog)
         write_pages(sections, out, args)
     else:
-        print(f"  [fiche] écrirait {out / INDEX_NAME} et une page par série dans {shelfpage.DIR}/")
+        print(f"  [fiche] écrirait {out / PAGE_NAME} et une page par série dans {shelfpage.DIR}/")
     if out.is_dir():
         write_log(out / LOG_NAME, root, sections, args, report)
 
