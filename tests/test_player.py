@@ -74,8 +74,7 @@ class TestUnSeulFichier(unittest.TestCase):
     def test_chaque_titre_de_la_file_porte_son_album(self):
         # La file peut mêler des albums : l'artiste, l'album, la pochette et la fiche sont ceux du titre, pas d'une file entière.
         self.assertIn("function item(t,m){return{src:t.src,title:String(t.title||''),artist:m.artist,album:m.album,cover:m.cover,page:m.page}}", player.INDEX_SCRIPT)
-        self.assertNotIn("meta.", player.INDEX_SCRIPT)
-        self.assertNotIn("meta=", player.INDEX_SCRIPT)
+        self.assertIsNone(re.search(r"(?<![\w.])meta[.=]", player.INDEX_SCRIPT))        # plus de meta commune à toute la file
         for champ in ("t.artist", "t.album", "t.cover", "t.page"):
             self.assertIn(champ, player.INDEX_SCRIPT)
 
@@ -93,6 +92,74 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertGreater(z("#queue"), z("#frame"))
         self.assertGreater(z("#bar"), z("#queue"))
         self.assertIn("bottom:72px", re.search(r"#queue\{[^}]*\}", player.INDEX_CSS).group(0))        # la barre reste libre
+
+    def test_le_volet_a_deux_onglets(self):
+        html = player.main_bar()
+        for ident in ("tabq", "tabp", "qclose", "qbody"):
+            self.assertIn(f"id='{ident}'", html, ident)
+        self.assertIn("role='tablist'", html)
+        self.assertIn("id='tabq' class='on'", html)                       # la file d'abord
+        script = player.INDEX_SCRIPT
+        self.assertIn("$('tabp').onclick=function(){setView('lists')}", script)
+        self.assertIn("if(qp.hidden||view!=='queue')return;", script)       # la file ne se dessine que sur son onglet
+
+    def test_une_playlist_garde_le_chemin_relatif_et_pas_l_adresse_complete(self):
+        # Le même fichier se lit en file://truenas et en https://nas… : seule la forme relative vaut pour les deux.
+        script = player.INDEX_SCRIPT
+        self.assertIn("catalog[new URL(t[0],location.href).href]={rel:t[0],title:t[1],meta:m}", script)
+        self.assertIn("out.push({src:c.rel,title:c.title})", script)
+        self.assertIn("catalog[absolute(t.src)]", script)
+
+    def test_le_stockage_est_valide_et_peut_manquer(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("var KEY='media_library.music.playlists.v1'", script)
+        self.assertIn("catch(e){return[]}", script)                         # contenu illisible : on repart de rien
+        self.assertIn("refuse le stockage", script)                          # stockage refusé : la page le dit et marche sans
+        self.assertIn("typeof p.id==='string'&&typeof p.name==='string'&&Array.isArray(p.tracks)", script)
+
+    def test_un_ajout_a_une_playlist_ne_double_pas_un_titre(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("if(!have[t.src]){have[t.src]=1;pl.tracks.push({src:t.src,title:t.title});n++}", script)
+        self.assertIn("(dup?' ('+dup+' déjà présent", script)               # et le dit
+
+    def test_les_playlists_se_creent_se_renomment_se_lisent_se_suppriment(self):
+        script = player.INDEX_SCRIPT
+        for morceau in ("'＋ Nouvelle playlist'", "'Renommer'", "'Supprimer'", "'▶ Lire'", "'À la file'", "confirm('Supprimer la playlist"):
+            self.assertIn(morceau, script)
+        self.assertIn("function playList(pl,from)", script)
+        self.assertIn("fresh(p.map(function(x){return x.item}),idx)", script)    # une playlist devient la file, comme un album
+
+    def test_un_titre_introuvable_reste_visible_mais_ne_se_joue_pas(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("album:'Introuvable'", script)
+        self.assertIn("' lost'", script)
+        self.assertIn("introuvable", script)
+        self.assertIn("var c=catalog[absolute(t.src)]", script)
+        self.assertIn(".qrow.lost .qt{", player.INDEX_CSS)
+
+    def test_enregistrer_la_file_en_playlist(self):
+        script = player.INDEX_SCRIPT
+        self.assertIn("'Enregistrer en playlist'", script)
+        self.assertIn("relTracks(order.map(function(i){return queue[i]}))", script)      # toute la file, dans l'ordre de lecture
+
+    def test_les_fiches_proposent_de_ranger_dans_une_playlist(self):
+        script = player.PAGE_SCRIPT
+        self.assertIn("label:'Ajouter à une playlist…'", script)
+        self.assertIn("label:'Ajouter l’album à une playlist…'", script)
+        self.assertIn("postMessage({t:'pick',tracks:list}", script)
+        self.assertIn("d.t==='pick'&&valid(d.tracks)", player.INDEX_SCRIPT)
+        # Comme « lire ensuite » : seulement dans music.html, qui seul a des playlists.
+        self.assertLess(script.index("if(framed){trackActions"), script.index("label:'Ajouter à une playlist…'"))
+
+    def test_la_fenetre_de_choix_passe_au_dessus_de_tout(self):
+        def z(selector):
+            return int(re.findall(re.escape(selector) + r"\{[^}]*z-index:(\d+)", player.INDEX_CSS)[-1])
+        self.assertGreater(z("#pick"), z("#toast"))
+        self.assertGreater(z("#pick"), z("#bar"))
+        self.assertIn("ov.onclick=function(e){if(e.target===ov)closePick()}", player.INDEX_SCRIPT)   # un clic à côté la ferme
+
+    def test_aucun_texte_de_titre_n_entre_comme_html(self):
+        self.assertNotIn("innerHTML", player.INDEX_SCRIPT)
 
     def test_le_panneau_pousse_la_page_au_lieu_de_la_recouvrir(self):
         # Sinon il cache le bord droit des fiches - durées, menus ⋯ - justement là où on ajoute des titres.
@@ -120,8 +187,11 @@ class TestUnSeulFichier(unittest.TestCase):
         self.assertIn("textContent", script)
         self.assertNotIn("innerHTML", script)                                     # titres et artistes entrent comme texte
 
-    def test_echap_ferme_le_panneau(self):
-        self.assertIn("e.key==='Escape'&&!qp.hidden", player.INDEX_SCRIPT)
+    def test_echap_ferme_d_abord_la_fenetre_de_choix_puis_le_panneau(self):
+        script = player.INDEX_SCRIPT
+        fin = script[script.index("if(e.key!=='Escape')return;"):]
+        self.assertLess(fin.index("closePick()"), fin.index("toggleQueue()"))
+        self.assertIn("if(!qp.hidden)toggleQueue()", fin)
 
     def test_la_barre_montre_l_artiste_et_la_pochette_envoyes_par_la_fiche(self):
         # Chaque fiche dit de qui est l'album et quelle est sa pochette, et la page ne garde que des images en data-URI.
