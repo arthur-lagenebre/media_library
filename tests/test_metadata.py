@@ -308,7 +308,32 @@ class TestRecap(unittest.TestCase):
         for morceau in ("<h1>Ma Serie</h1>", "<nav class='tabs'>", "<button class='mode'"):
             self.assertIn(morceau, en_tete)
         self.assertIn(".top{position:sticky;top:0", html)
-        self.assertNotIn("Resume", html[html.index("<body>"):])    # le résumé global reste dans les métas (pour le sommaire) mais n'est plus affiché : chaque saison porte le sien
+
+    def test_synopsis_de_la_serie_au_dessus_du_lien_tmdb(self):
+        en_tete = (lambda h: h[h.index("<header class='top'>"):h.index("</header>")])(self.rendre({1}))
+        self.assertLess(en_tete.index("<div class='syn'>Resume</div>"), en_tete.index("class='tmdb'"))
+        run = series.SeasonRun(Path("."), 1, self.SAISON, {1})
+        sans = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")
+        self.assertNotIn("<div class='syn'>", sans)                    # pas de résumé, pas de bloc
+
+    def test_retour_au_sommaire_dans_l_en_tete(self):
+        run = series.SeasonRun(Path("."), 1, self.SAISON, {1})
+        html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300", folder="Ma Série")
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        ancre = series.showindex.anchor("Ma Série")
+        self.assertIn(f"<a class='back' href='../__Data__/tv_shows.html#{ancre}'>← Séries</a>", en_tete)
+        self.assertLess(en_tete.index("class='back'"), en_tete.index("<h1>"))
+        self.assertIn("history.back()", html)                          # venu d'un sommaire, quel que soit son nom
+        self.assertIn("new URLSearchParams(location.hash.slice(1))", html)   # le sommaire se nomme dans le lien de la vignette
+        sans = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")
+        self.assertIn("href='../__Data__/tv_shows.html'>", sans)       # sans dossier, le sommaire seul
+
+    def test_affiche_de_la_serie_a_gauche_du_titre(self):
+        run = series.SeasonRun(Path("."), 1, self.SAISON, {1})
+        html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300", poster=("w185/p.jpg", "data:image/jpeg;base64,QUJD"))
+        en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
+        self.assertLess(en_tete.index("<div class='aff'><img data-img='w185/p.jpg'"), en_tete.index("<h1>Ma Serie</h1>"))
+        self.assertNotIn("class='aff'", self.rendre({1}))              # sans affiche, pas d'emplacement vide
 
     def test_fiche_pleine_largeur_ou_centree(self):
         html = self.rendre({1})
