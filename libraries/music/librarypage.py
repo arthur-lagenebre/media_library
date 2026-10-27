@@ -184,6 +184,14 @@ def _tile(release, uri, link, attrs="", media_base=None):
             "</div>")
 
 
+def _wanted_tile(wanted):
+    """La vignette d'un album qu'on n'a pas : grisée, sans lien ni lecture, l'année et « manquant » à la place du nombre de pistes."""
+    return ("<div class='al gone'><div class='cv'>"
+            "<div class='aff'><div class='noimg'></div></div>"
+            f"<div class='t'>{esc(wanted.title)}</div></div>"
+            f"<div class='y'>{esc(wanted.year)} · <span class='lack'>manquant</span></div></div>")
+
+
 def _group(release, artists):
     """Où revenir sur le sommaire après la fiche d'un album : le nom de son groupe, pas sa pochette - sous un en-tête fixe, c'est le titre de la section qu'on veut voir en premier. Rien pour l'artiste sans fiche : on revient à la pochette."""
     artist = artists.get(release.artist_id)
@@ -444,7 +452,8 @@ def _artist_facts(artist):
     first, last = artist.years
     span = first if first == last else f"{first}–{last}"
     count = len(artist.releases)
-    parts = (f"{count} album{'s' if count != 1 else ''}", span, tracks_label(artist.tracks), length(artist.duration))
+    lacking = f"{len(artist.wanted)} manquant{'s' if len(artist.wanted) != 1 else ''}" if artist.wanted else ""
+    parts = (f"{count} album{'s' if count != 1 else ''}", lacking, span, tracks_label(artist.tracks), length(artist.duration))
     return " · ".join(p for p in parts if p)
 
 
@@ -486,9 +495,12 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None, m
     """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pochettes lisent leur album), ou None."""
     info = info or {}
     back_href = f"{back_href}#{artist_anchor(artist)}"
-    tiles = "".join(
-        _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "", media_base=media_base)
-        for release in artist.releases)
+    # Les albums qui manquent se rangent parmi ceux qu'on a, par année : c'est la discographie, à quoi on voit ce qui y est.
+    shown = [(library.order(release), _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "", media_base=media_base))
+             for release in artist.releases]
+    shown += [(wanted.order, _wanted_tile(wanted)) for wanted in artist.wanted]
+    tiles = "".join(tile for _, tile in sorted(shown, key=lambda pair: pair[0]))
+    count = f"{len(artist.releases)}/{len(artist.releases) + len(artist.wanted)}" if artist.wanted else str(len(artist.releases))
     playable = any(_playlist(release, media_base) for release in artist.releases)
     return (
         "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
@@ -523,6 +535,9 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None, m
         ".links{margin-top:6px}"
         ".mb{color:#7cc4ff;font-size:13px;text-decoration:none;white-space:nowrap}.mb:hover{text-decoration:underline}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}"
+        # Un album qui manque : même vignette, en retrait, avec un simple liseré à la place de la pochette qu'il n'a pas.
+        ".al.gone{opacity:.55}.al.gone .aff{box-shadow:inset 0 0 0 1px #3a3d48}.al.gone .t{font-weight:400}"
+        ".al .lack{color:#ff9aa6}"
         + (player.TILE_CSS if playable else "") +
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"
@@ -537,7 +552,7 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None, m
         + _bio(info)
         + "</div>"
         + _members(info)
-        + f"<details class='mem' open><summary>Albums<span class='cnt'>{len(artist.releases)}</span></summary>"
+        + f"<details class='mem' open><summary>Albums<span class='cnt'>{count}</span></summary>"
         f"<div class='grid'>{tiles}</div></details>"
         "</div>" + (player.bar() if playable else "") +
         "<script>" + BACK_SCRIPT + layout.mode_script(layout.SHEET_LABELS) + (player.TILE_SCRIPT if playable else "") +

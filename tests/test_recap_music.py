@@ -209,6 +209,21 @@ class TestRecapMusique(unittest.TestCase):
         self.lancer("--apply")
         self.assertEqual({p: p.read_bytes() for p in avant}, avant)
 
+    def test_albums_manquants_sur_la_fiche_de_l_artiste_et_dans_le_journal(self):
+        (self.racine / "Daft Punk" / "2005 - Human After All.txt").write_text("", encoding="utf-8")
+        (self.racine / "Daft Punk" / "1997 - Homework.txt").write_text("", encoding="utf-8")       # possédé : ni montré ni signalé
+        code, sortie = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("1 album(s) manquant(s) chez 1 artiste(s)", sortie)
+        journal = (self.data / "recap.log").read_text(encoding="utf-8")
+        self.assertIn("[ABSENT] Daft Punk : 2005 - Human After All", journal)
+        self.assertNotIn("[ABSENT] Daft Punk : 1997", journal)
+        fiche, = (self.data / "Artistes").glob("Daft Punk-*.html")
+        html = fiche.read_text(encoding="utf-8")
+        self.assertIn("<div class='al gone'>", html)
+        self.assertIn("Human After All", html)
+        self.assertEqual(html.count("<div class='al gone'>"), 1)
+
     def test_journal(self):
         self.lancer("--apply")
         journal = (self.data / "recap.log").read_text(encoding="utf-8")
