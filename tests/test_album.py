@@ -232,6 +232,12 @@ class TestAppariement(unittest.TestCase):
         places, _ = album.match_tracks(entrees, DOUBLE)
         self.assertEqual(places[Path("CD2/01.flac")][1]["title"], "Alive 1997")
 
+    def test_dossier_de_disque_avec_numerotation_continue_des_tags(self):
+        # Mesuré sur "METAL GALAXY" : CD 2 rangé à part, mais ses tags viennent d'une édition en un seul bloc (piste 9 à 16) ; le titre, lui, porte un "(feat. ...)" que la sortie n'a pas.
+        entrees = [album.entry_for(Path("CD2/a.flac"), meta("TRACKNUMBER=3", "DISCNUMBER=1", "TITLE=Alive 1997 (feat. Quelqu'un)"), 2)]
+        places, raison = album.match_tracks(entrees, DOUBLE)
+        self.assertEqual((raison, places[Path("CD2/a.flac")][1]["title"]), ("", "Alive 1997"))
+
     def test_numerotation_continue(self):
         entrees = [album.entry_for(Path(f"0{n} - x.flac"), meta()) for n in (1, 2, 3)]
         places, _ = album.match_tracks(entrees, DOUBLE)

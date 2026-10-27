@@ -324,14 +324,17 @@ def match_tracks(entries, release):
     for entry in entries:
         if entry.track is None:
             continue
+        continuous = None
+        if 1 <= entry.track <= len(slots):              # numérotation continue d'un album à plusieurs disques
+            medium, track = slots[entry.track - 1]
+            continuous = (medium.get("position"), track.get("position"))
         if len(media) == 1:
             key = (media[0].get("position"), entry.track)
-        elif entry.disc is not None:
+        elif entry.disc is not None and (entry.disc, entry.track) in by_position:
             key = (entry.disc, entry.track)
-        elif 1 <= entry.track <= len(slots):            # numérotation continue d'un album à plusieurs disques
-            medium, track = slots[entry.track - 1]
-            key = (medium.get("position"), track.get("position"))
-        else:
+        else:                                           # "CD 2/10 - Distortion" : les tags d'une édition en 16 pistes d'un seul tenant
+            key = continuous
+        if key is None:
             continue
         if key in by_position and key not in taken:
             placed[entry.path] = key
