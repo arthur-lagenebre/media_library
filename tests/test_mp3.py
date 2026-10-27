@@ -182,9 +182,32 @@ class TestLecture(Mp3TestCase):
         meta = mp3.read(self.poser(b"ID3\x03\x00\x40" + synchrosur(len(corps)) + corps + SON))
         self.assertEqual(meta.first("TITLE"), "x")
 
-    def test_id3v22_refuse(self):
-        with self.assertRaisesRegex(mp3.Mp3Error, "2.2"):
-            mp3.read(self.poser(b"ID3\x02\x00\x00" + synchrosur(20) + bytes(20) + SON))
+    def test_id3v22_lu(self):
+        # Mesuré sur un album de 1997 : identifiants de 3 lettres, taille sur 3 octets, image à format "JPG" sur 3 lettres.
+        def trame22(identifiant, corps):
+            return identifiant.encode() + len(corps).to_bytes(3, "big") + corps
+        corps = b"".join([trame22("TT2", texte(["Barbie Girl"], 0)), trame22("TP1", texte(["Aqua"], 0)), trame22("TRK", texte(["3/11"], 0)), trame22("TYE", texte(["1997"], 0)), trame22("PIC", b"\x00JPG\x03\x00" + b"\xff\xd8img"), trame22("COM", b"\x00eng\x00\x00bien"), trame22("XYZ", b"?")]) + bytes(40)
+        meta = mp3.read(self.poser(b"ID3\x02\x00\x00" + synchrosur(len(corps)) + corps + SON))
+        self.assertEqual((meta.version, meta.first("TITLE"), meta.first("ARTIST"), meta.first("TRACKNUMBER"), meta.first("TRACKTOTAL"), meta.first("DATE")), (2, "Barbie Girl", "Aqua", "3", "11", "1997"))
+        self.assertEqual([(p.mime, p.kind, p.data) for p in meta.pictures], [("image/jpeg", 3, b"\xff\xd8img")])
+        self.assertEqual([f.id for f in meta.frames], ["TIT2", "TPE1", "TRCK", "TYER", "APIC", "COMM"])      # la trame inconnue est abandonnée
+
+    def test_id3v22_reecrit_en_v24(self):
+        corps = b"COM" + (13).to_bytes(3, "big") + b"\x00eng\x00\x00bien!!!" + bytes(60)
+        chemin = self.poser(b"ID3\x02\x00\x00" + synchrosur(len(corps)) + corps + SON)
+        mp3.write(chemin, mp3.read(chemin), [("TITLE", "Barbie Girl")], [])
+        relu = mp3.read(chemin)
+        self.assertEqual((relu.version, relu.first("TITLE")), (4, "Barbie Girl"))
+        self.assertIn("COMM", [f.id for f in relu.frames])                              # le commentaire suit, sous son identifiant 2.4
+        self.assertEqual(chemin.read_bytes()[relu.audio_offset:], SON)
+
+    def test_id3v22_compresse_refuse(self):
+        with self.assertRaisesRegex(mp3.Mp3Error, "compressé"):
+            mp3.read(self.poser(b"ID3\x02\x00\x40" + synchrosur(20) + bytes(20) + SON))
+
+    def test_id3v25_refuse(self):
+        with self.assertRaisesRegex(mp3.Mp3Error, "2.5"):
+            mp3.read(self.poser(b"ID3\x05\x00\x00" + synchrosur(20) + bytes(20) + SON))
 
     def test_pas_un_mp3(self):
         with self.assertRaisesRegex(mp3.Mp3Error, "pas un fichier MP3"):

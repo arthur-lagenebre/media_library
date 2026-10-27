@@ -338,7 +338,7 @@ class TestAlbumMp3(Mp3AlbumTestCase):
 
     def test_fichier_illisible_bloque_l_album(self):
         self.poser()
-        (self.dossier / "02 - Blizzard.mp3").write_bytes(b"ID3\x02\x00\x00" + bytes(40))
+        (self.dossier / "02 - Blizzard.mp3").write_bytes(b"ID3\x05\x00\x00" + bytes(40))
         (seul,) = albums.find_albums(self.dossier.parent)
         _, erreurs = lookup.read_album(seul)
         self.assertEqual(len(erreurs), 1)

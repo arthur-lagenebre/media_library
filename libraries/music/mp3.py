@@ -4,7 +4,7 @@ Un .mp3 n'a pas d'en-tête propre : ses tags sont une étiquette ID3v2 collée D
 
 Pour les scripts, ce module se présente comme flac.py : des tags sous les noms de clé Vorbis ("TITLE", "MUSICBRAINZ_ALBUMID"...) et des Picture. La correspondance avec les trames suit celle de Picard : un fichier étiqueté ici se relit à l'identique dans Picard, et un fichier déjà passé par Picard ne paraît pas différent.
 
-Lit les ID3v2.3 et 2.4, écrit de l'ID3v2.4 : plusieurs valeurs dans une trame (genres, labels, artistes) s'y séparent par un octet nul, sans convention de "/" qui casserait "AC/DC". Les ID3v2.2 (rares, d'avant 1999) sont refusés plutôt que réécrits à moitié. L'étiquette ID3v1 de fin de fichier n'est pas touchée.
+Lit les ID3v2.2, 2.3 et 2.4, écrit de l'ID3v2.4 : plusieurs valeurs dans une trame (genres, labels, artistes) s'y séparent par un octet nul, sans convention de "/" qui casserait "AC/DC". Un ID3v2.2 (d'avant 1999 : identifiants de 3 lettres) est converti trame par trame en son équivalent 2.4 ; ce qui n'en a pas (trame inconnue, image liée par adresse) est abandonné plutôt que recopié invalide, et une étiquette 2.2 compressée est refusée. L'étiquette ID3v1 de fin de fichier n'est pas touchée.
 
 Tout ce qui n'est pas un tag géré - ReplayGain, paroles (USLT), commentaires (COMM), notes (POPM), compositeur... - est recopié tel quel.
 """
@@ -44,6 +44,15 @@ MANAGED_IDS = set(TEXT_FRAMES.values()) | set(NUMBER_FRAMES) | {"TXXX", "APIC", 
 OBSOLETE_IDS = {"RVAD", "EQUA", "TRDA", "TSIZ"}
 GENRE_REFERENCE_RE = re.compile(r"^\((?:\d+|RX|CR)\)(.+)$")      # "(17)Rock" : le numéro d'ID3v1, suivi du nom
 FRAME_ID_RE = re.compile(rb"^[A-Z0-9]{4}$")
+FRAME_ID_V22_RE = re.compile(rb"^[A-Z0-9]{3}$")
+# Identifiants d'ID3v2.2 (3 lettres) -> ID3v2.3/2.4 ; les corps de trame sont les mêmes, hors image (PIC). Une trame absente de cette table est abandonnée.
+FRAMES_V22 = {
+    "BUF": "RBUF", "CNT": "PCNT", "COM": "COMM", "CRA": "AENC", "ETC": "ETCO", "EQU": "EQUA", "GEO": "GEOB", "IPL": "TIPL", "LNK": "LINK", "MCI": "MCDI", "MLL": "MLLT", "PIC": "APIC", "POP": "POPM", "REV": "RVRB", "RVA": "RVAD",
+    "SLT": "SYLT", "STC": "SYTC", "TAL": "TALB", "TBP": "TBPM", "TCM": "TCOM", "TCO": "TCON", "TCR": "TCOP", "TDA": "TDAT", "TDY": "TDLY", "TEN": "TENC", "TFT": "TFLT", "TIM": "TIME", "TKE": "TKEY", "TLA": "TLAN", "TLE": "TLEN", "TMT": "TMED",
+    "TOA": "TOPE", "TOF": "TOFN", "TOL": "TOLY", "TOR": "TORY", "TOT": "TOAL", "TP1": "TPE1", "TP2": "TPE2", "TP3": "TPE3", "TP4": "TPE4", "TPA": "TPOS", "TPB": "TPUB", "TRC": "TSRC", "TRD": "TRDA", "TRK": "TRCK", "TSI": "TSIZ", "TSS": "TSSE",
+    "TT1": "TIT1", "TT2": "TIT2", "TT3": "TIT3", "TXT": "TEXT", "TXX": "TXXX", "TYE": "TYER", "UFI": "UFID", "ULT": "USLT", "WAF": "WOAF", "WAR": "WOAR", "WAS": "WOAS", "WCM": "WCOM", "WCP": "WCOP", "WPB": "WPUB", "WXX": "WXXX",
+}
+IMAGE_MIME_V22 = {b"JPG": b"image/jpeg", b"PNG": b"image/png", b"GIF": b"image/gif", b"BMP": b"image/bmp"}   # le format d'image d'une PIC tient en 3 lettres ; "-->" (image liée par adresse) n'a pas d'équivalent
 
 
 class Mp3Error(AudioError):
@@ -63,7 +72,7 @@ class Metadata:
     """Ce que l'étiquette d'un .mp3 contient, tel qu'on l'a lu."""
     frames: list                                   # [Frame] dans l'ordre du fichier
     audio_offset: int                              # octet où commencent les trames audio ; 0 sans étiquette
-    version: int = 0                               # 3 ou 4 ; 0 sans étiquette
+    version: int = 0                               # 2, 3 ou 4 ; 0 sans étiquette
     comments: list = field(default_factory=list)   # [(clé Vorbis, valeur)]
     pictures: list = field(default_factory=list)   # [Picture]
     padding: int = 0                               # octets de padding de l'étiquette
@@ -174,13 +183,39 @@ def parse_picture(body):
     return Picture(kind, mime, data, description, width, height, depth, 0)
 
 
+def _frame_v22(frame_id, body):
+    """Frame d'une trame ID3v2.2 sous son identifiant 2.4, ou None quand elle n'a pas d'équivalent."""
+    new_id = FRAMES_V22.get(frame_id)
+    if new_id is None or new_id in OBSOLETE_IDS:
+        return None
+    if frame_id == "PIC":                           # codage, format sur 3 lettres, type, description, image -> le type MIME prend la place du format
+        mime = IMAGE_MIME_V22.get(body[1:4].upper()) if len(body) >= 5 else None
+        if mime is None:
+            return None
+        body = body[:1] + mime + b"\x00" + body[4:]
+    return Frame(new_id, body)
+
+
 def _frames(data, version):
     """([Frame], octets de padding) d'un corps d'étiquette. Une trame illisible rend l'étiquette entière suspecte : on s'arrête là."""
     frames, position = [], 0
-    while position + 10 <= len(data):
-        raw_id = data[position:position + 4]
+    header = 6 if version == 2 else 10              # ID3v2.2 : identifiant de 3 lettres, taille sur 3 octets, pas d'indicateurs
+    while position + header <= len(data):
+        raw_id = data[position:position + (3 if version == 2 else 4)]
         if raw_id[0] == 0:                          # le padding commence
             break
+        if version == 2:
+            if not FRAME_ID_V22_RE.match(raw_id):
+                raise Mp3Error(f"étiquette ID3 abîmée : trame '{raw_id.decode('latin-1', 'replace')}' invalide")
+            size = int.from_bytes(data[position + 3:position + 6], "big")
+            body = data[position + 6:position + 6 + size]
+            if len(body) < size:
+                raise Mp3Error(f"trame {raw_id.decode()} déborde de l'étiquette")
+            position += 6 + size
+            frame = _frame_v22(raw_id.decode(), body)
+            if frame is not None:
+                frames.append(frame)
+            continue
         if not FRAME_ID_RE.match(raw_id):
             raise Mp3Error(f"étiquette ID3 abîmée : trame '{raw_id.decode('latin-1', 'replace')}' invalide")
         size = int.from_bytes(data[position + 4:position + 8], "big") if version == 3 else syncsafe(data[position + 4:position + 8])
@@ -337,16 +372,18 @@ def read(path):
             version, frames, padding, offset = 0, [], 0, 0
             if head[:3] == b"ID3":
                 version = head[3]
-                if version not in (3, 4):
-                    raise Mp3Error(f"ID3v2.{version} non pris en charge (seuls 2.3 et 2.4)")
+                if version not in (2, 3, 4):
+                    raise Mp3Error(f"ID3v2.{version} non pris en charge (seuls 2.2, 2.3 et 2.4)")
                 flags, size = head[5], syncsafe(head[6:10])
                 data = f.read(size)
                 if len(data) < size or len(head) < 10:
                     raise Mp3Error("étiquette ID3 tronquée")
                 offset = 10 + size + (10 if version == 4 and flags & 0x10 else 0)
-                if version == 3 and flags & 0x80:                # désynchronisation de toute l'étiquette
+                if version in (2, 3) and flags & 0x80:                # désynchronisation de toute l'étiquette
                     data = data.replace(b"\xff\x00", b"\xff")
-                if flags & 0x40:                                  # en-tête étendu : sans intérêt, on saute
+                if version == 2 and flags & 0x40:                # la compression d'une étiquette 2.2 n'a jamais été définie
+                    raise Mp3Error("ID3v2.2 compressé non pris en charge")
+                if version > 2 and flags & 0x40:                                # en-tête étendu : sans intérêt, on saute
                     skip = (int.from_bytes(data[:4], "big") + 4) if version == 3 else syncsafe(data[:4])
                     data = data[skip:]
                 frames, padding = _frames(data, version)
