@@ -331,7 +331,7 @@ def build_cast_panel(casting, runs, images, size):
     return "".join(blocks)
 
 
-def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None):
+def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None, folder=None):
     """Rend la page HTML (pur rendu : ni réseau ni disque).
 
     'images' = {clé: data-URI}, vignettes d'épisode et portraits du casting mêlés ; un épisode sans vignette propre retombe sur l'affiche de sa saison (voir episode_image), et n'a un emplacement vide que si celle-ci manque aussi. Une affiche de repli revient sur beaucoup d'épisodes : elle est écrite une seule fois, dans une règle CSS, et non recopiée dans chaque balise.
@@ -340,7 +340,10 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
 
     Le casting, s'il y en a un, prend le dernier onglet.
 
-    L'en-tête porte de quoi présenter la série dans le sommaire de la médiathèque (voir showindex) : année, saisons, et l'affiche 'poster' = (clé, data-URI) encodée - le sommaire se construit sans rien demander à TMDB."""
+    L'en-tête porte de quoi présenter la série dans le sommaire de la médiathèque (voir showindex) : année, saisons, et l'affiche 'poster' = (clé, data-URI) encodée - le sommaire se construit sans rien demander à TMDB.
+
+    Le lien de retour mène au sommaire par défaut, à la vignette de 'folder' (le dossier de la série). Un sommaire peut porter un autre nom (--title) : quand on vient d'une page de __Data__, le retour est un vrai retour en arrière, qui rend aussi la recherche en cours."""
+    back = f"../{showindex.DATA_DIR}/{showindex.DEFAULT_INDEX}" + (f"#{showindex.anchor(folder)}" if folder else "")
     tabs, panels, partagees = [], [], {}
     for i, run in enumerate(runs):
         label = run.data.get("name") or f"Saison {run.number}"
@@ -397,6 +400,12 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
         "h1{margin:0}.lnk{margin-top:4px}"
         + layout.CSS +
+        ".back{display:inline-block;margin-bottom:6px;color:#7cc4ff;text-decoration:none;font-size:14px}"
+        ".back:hover{text-decoration:underline}"
+        ".hd{display:flex;gap:16px;align-items:flex-start}.hd .main{flex:1;min-width:0}"
+        ".hd .aff{flex:none;width:96px;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:#21232b}"
+        ".hd .aff img{width:100%;height:100%;object-fit:cover;display:block}"
+        ".syn{color:#c7ccd4;font-size:14px;line-height:1.45;margin-top:6px}"
         ".tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}"
         ".tab{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
         "padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
@@ -434,9 +443,11 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".actor .e{color:#9aa0aa;font-size:12px;font-variant-numeric:tabular-nums}"
         + cast.noface_rule() +
         "</style></head><body>"
-        + layout.header(f"<div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
+        + layout.header(f"<a class='back' href='{esc(back)}'>← Séries</a><div class='hd'>" + (f"<div class='aff'>{embed.tag(*poster)}</div>" if poster else "")
+                        + f"<div class='main'><div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
+                        + (f"<div class='syn'>{esc(show['overview'])}</div>" if show.get("overview") else "")
                         + (f"<div class='lnk'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "")
-                        + f"<nav class='tabs'>{''.join(tabs)}</nav>") +
+                        + f"</div></div><nav class='tabs'>{''.join(tabs)}</nav>") +
         f"{''.join(panels)}"
         "<script>"
         "document.querySelectorAll('.tab').forEach(function(b){"
@@ -444,6 +455,15 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});"
         "document.querySelectorAll('.season').forEach(function(s){s.hidden=s.dataset.s!==b.dataset.s})"
         "}});"
+        # Le sommaire dit dans le lien de la vignette (#i=<fichier>&t=<titre>) qui il est : le lien et le libellé le suivent (« ← Anime » vers Anime.html). Sans cela, la fiche garde le sommaire par défaut.
+        # Venu d'un sommaire (n'importe lequel, dans __Data__), on y retourne par l'historique ; sinon, ou hors serveur (file://) où le navigateur ne donne pas toujours la page d'origine, le lien et son ancre prennent le relais.
+        "var b=document.querySelector('.back'),q=new URLSearchParams(location.hash.slice(1)),i=q.get('i');"
+        "if(i&&/^[^\\/\\\\]+\\.html$/.test(i)){"
+        f"b.href='../{showindex.DATA_DIR}/'+encodeURIComponent(i)+(b.getAttribute('href').match(/#.*/)||[''])[0];"
+        "b.textContent='← '+(q.get('t')||'Séries')}"
+        "b.onclick=function(e){"
+        "var from=document.referrer.split(/[?#]/)[0];"
+        f"if(history.length>1&&/\\/{showindex.DATA_DIR}\\/[^\\/]+\\.html$/.test(from)){{e.preventDefault();history.back()}}}};"
         + layout.mode_script(layout.SHEET_LABELS) +
         "</script></div></body></html>"
     )
@@ -492,7 +512,7 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         images = {**stills, **profiles}
         poster_key = embed.image_key(show.get("poster_path"), POSTER_SIZE)
         poster_uri = (embed.fetch({poster_key: show["poster_path"]}, known, POSTER_SIZE, tmdb, label="affiche").get(poster_key) if apply and poster_key else None)
-        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None)
+        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None, Path(root_dir).name)
         tally = ", ".join(t for t in (f"{len(stills)} vignette(s)" if stills else "",
                                       f"{len(profiles)} portrait(s)" if profiles else "") if t)
         print(f"  [série] {_write_text(out, html, apply)}"

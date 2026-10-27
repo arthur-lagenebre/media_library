@@ -59,13 +59,29 @@ class TestLectureDesFiches(unittest.TestCase):
         self.assertTrue(showindex.GENERATOR_META in html[:html.index("<style>")])    # la marque reste lisible par read_head
 
     def test_index_alphabetique_suit_le_classement(self):
-        # "The Expanse" est classé à E, sans l'article : la lettre de sa vignette doit être celle de sa place.
+        # "The Expanse" est classé à T, article compris : la lettre de sa vignette doit être celle de sa place.
         fiche(self.racine / "Expanse", show={**SHOW, "name": "The Expanse"})
         fiche(self.racine / "Dark")
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
         self.assertIn("<nav class='az'", html[html.index("<header class='top'>"):html.index("</header>")])
-        self.assertIn("class='serie' href='../Expanse/index.html' data-i='E'", html)
-        self.assertIn("class='serie' href='../Dark/index.html' data-i='D'", html)
+        self.assertRegex(html, r"class='serie' href='\.\./Expanse/index\.html#[^']*' data-i='T'")
+        self.assertRegex(html, r"class='serie' href='\.\./Dark/index\.html#[^']*' data-i='D'")
+
+    def test_vignette_ancree_sur_le_dossier_de_la_serie(self):
+        # C'est l'ancre que la fiche vise à son retour : elle ne dépend que du nom du dossier, pas du titre.
+        fiche(self.racine / "Dark")
+        html = showindex.build_html("Series", showindex.find_entries(self.racine))
+        self.assertIn(f"<a id='{showindex.anchor('Dark')}' class='serie' href='../Dark/index.html#", html)
+        self.assertNotEqual(showindex.anchor("Dark"), showindex.anchor("Fargo"))
+
+    def test_lien_de_la_vignette_dit_quel_sommaire_l_a_ouvert(self):
+        # La fiche en tire son lien de retour et son libellé : « ← Anime » vers Anime.html.
+        fiche(self.racine / "Dark")
+        entries = showindex.find_entries(self.racine)
+        self.assertIn("href='../Dark/index.html#i=Anime.html&amp;t=Anime'", showindex.build_html("Anime", entries, "Anime.html"))
+        self.assertIn("href='../Dark/index.html#i=tv_shows.html&amp;t=S%C3%A9ries'", showindex.build_html("Séries", entries))
+        showindex.write(self.racine, True, title="Anime")
+        self.assertIn("#i=Anime.html&amp;t=Anime'", (self.racine / "__Data__" / "Anime.html").read_text(encoding="utf-8"))
 
     def test_genres_ecrits_dans_la_fiche_et_proposes_au_sommaire(self):
         fiche(self.racine / "Dark", show={**SHOW, "genres": [{"name": "Drame"}, {"name": "Science-Fiction"}]})
@@ -94,7 +110,7 @@ class TestLectureDesFiches(unittest.TestCase):
     def test_lien_relatif_encode(self):
         fiche(self.racine / "Dark & Co #1", show={**SHOW, "name": "Dark & Co"})
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
-        self.assertIn("href='../Dark%20%26%20Co%20%231/index.html'", html)
+        self.assertIn("href='../Dark%20%26%20Co%20%231/index.html#", html)
         self.assertIn("Dark &amp; Co", html)
 
     def test_ancienne_fiche_sans_meta(self):
@@ -138,7 +154,7 @@ class TestLectureDesFiches(unittest.TestCase):
         fiche(self.racine / "Dark")
         showindex.write(self.racine, True)
         html = (self.racine / "__Data__" / "tv_shows.html").read_text(encoding="utf-8")
-        self.assertIn("href='../Dark/index.html'", html)
+        self.assertIn("href='../Dark/index.html#", html)
         self.assertTrue((self.racine / "__Data__" / "../Dark/index.html").exists())
 
     def test_le_dossier_data_n_est_pas_une_serie(self):
@@ -175,9 +191,16 @@ class TestLectureDesFiches(unittest.TestCase):
         fiche(self.racine / "Dark")
         self.assertEqual(showindex.recap_poster(self.racine / "Dark" / "index.html"), dict([POSTER]))
 
-    def test_classement_sans_article(self):
-        self.assertLess(showindex.sort_key("The Expanse"), showindex.sort_key("Fargo"))
+    def test_classement_article_compris(self):
+        self.assertGreater(showindex.sort_key("The Expanse"), showindex.sort_key("Fargo"))
+        self.assertLess(showindex.sort_key("Les Motards de l'espace"), showindex.sort_key("Reacher"))
         self.assertLess(showindex.sort_key("Économie"), showindex.sort_key("Fargo"))
+
+    def test_classement_titres_commencant_par_a(self):
+        # Le "A" d'"Alien" n'est pas un article : ces titres se rangeaient à L, R et L, après The Last of Us, Reacher et Kyle XY.
+        titres = ["The Last of Us", "Reacher", "Kyle XY", "Alien: Earth", "Arcane", "À l'est d'Éden", "The Office"]
+        self.assertEqual(sorted(titres, key=showindex.sort_key),
+                         ["À l'est d'Éden", "Alien: Earth", "Arcane", "Kyle XY", "Reacher", "The Last of Us", "The Office"])
 
 
 class TestIndexPy(unittest.TestCase):
@@ -200,8 +223,8 @@ class TestIndexPy(unittest.TestCase):
         fiche(self.bib / "Ma Serie", show={**SHOW, "name": "Ma Serie"})
         self.assertIn("tv_shows.html écrit (2 série(s))", self.indexer("--apply"))
         html = self.index.read_text(encoding="utf-8")
-        self.assertIn("href='../Ma%20Serie/index.html'", html)
-        self.assertIn("href='../Dark/index.html'", html)
+        self.assertIn("href='../Ma%20Serie/index.html#", html)
+        self.assertIn("href='../Dark/index.html#", html)
 
     def test_sommaire_identique_pas_reecrit(self):
         self.indexer("--apply")

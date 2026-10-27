@@ -5,12 +5,12 @@ Chaque fiche de série (index.html dans le dossier de la série, autrefois recap
 Le sommaire est rangé dans le dossier __Data__ de la médiathèque, sous le nom du titre qu'on lui donne (--title "Anime" l'écrit dans Anime.html), à défaut tv_shows.html : la médiathèque elle-même n'est pas touchée, et ses liens remontent d'un cran jusqu'aux fiches. Une page qui n'a pas été écrite par ce module n'est jamais remplacée.
 """
 
+import hashlib
 import re
-import unicodedata
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from xml.sax.saxutils import escape
 
 from libraries.common import favicon, layout, textfile
@@ -161,22 +161,30 @@ def find_entries(root):
     return entries
 
 
-# Articles ignorés au classement, comme sur une étagère.
-ARTICLE_RE = re.compile(r"^(?:the|a|an|le|la|les|l')\s*(?=\w)", re.IGNORECASE)
+def anchor(folder):
+    """Ancre de la vignette d'une série dans le sommaire, d'après le nom de son dossier : le retour depuis la fiche y ramène. Un condensé plutôt que le nom, plein d'espaces, d'accents et de #."""
+    return "s" + hashlib.sha1(layout.fold(folder).encode("utf-8")).hexdigest()[:8]
 
 
 def sort_key(title):
-    """Clé de classement d'un titre : sans article en tête, sans accents, sans casse."""
-    plain = unicodedata.normalize("NFD", title or "")
-    plain = "".join(c for c in plain if not unicodedata.combining(c))
-    return ARTICLE_RE.sub("", plain.strip()).casefold()
+    """Clé de classement d'un titre : le titre tel qu'on le lit, article compris ("The Office" à T, "Les Motards de l'espace" à L), sans accents ni casse.
+
+    Les articles ne sont pas retirés : un retrait par expression régulière prenait le "A" d'"Alien" pour un article, et rangeait Arcane après Reacher.
+    """
+    return layout.fold((title or "").strip())
 
 
-def build_html(library_name, entries):
-    """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, "The Expanse" à E.
+def source_fragment(library_name, page):
+    """Ce que le lien d'une vignette dit de son sommaire - son fichier et son titre - pour que la fiche sache où et comment revenir : « ← Anime » vers Anime.html, pas « ← Séries » vers tv_shows.html. Dans le lien plutôt que déduit de la page d'origine, que le navigateur ne donne pas toujours (file://)."""
+    return "#" + urlencode({"i": page, "t": library_name}, quote_via=quote)
 
-    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. `library_name` titre l'onglet et le h1."""
+
+def build_html(library_name, entries, page=DEFAULT_INDEX):
+    """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, article compris : "The Expanse" à T.
+
+    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. `library_name` titre l'onglet et le h1 ; `page` est le nom du fichier du sommaire, que les fiches rappellent à leur retour."""
     cards = []
+    source = source_fragment(library_name, page)
     genres = {}
     for entry in sorted(entries, key=lambda e: sort_key(e.title)):
         for genre in entry.genres:
@@ -185,7 +193,7 @@ def build_html(library_name, entries):
                if entry.poster else "<div class='noimg'></div>")
         meta = " · ".join(t for t in (entry.year, entry.seasons_label) if t)
         overview = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
-        cards.append(f"<a class='serie' href='{esc(entry.href)}' data-i='{layout.initial(sort_key(entry.title))}'{layout.genre_attr(entry.genres)}>"
+        cards.append(f"<a id='{anchor(entry.folder)}' class='serie' href='{esc(entry.href + source)}' data-i='{layout.initial(sort_key(entry.title))}'{layout.genre_attr(entry.genres)}>"
                      f"<div class='aff'>{img}</div>"
                      f"<div class='t'>{esc(entry.title)}</div>"
                      f"<div class='y'>{esc(meta)}</div>{overview}</a>")
@@ -274,7 +282,7 @@ def write(root, apply, title=None, out=None):
     entries = find_entries(root)
     legacy = Path(root) / LEGACY_INDEX
     previous = textfile.title_of(out) or (textfile.title_of(legacy) if is_ours(legacy) else None)
-    html = build_html(title or previous or DEFAULT_TITLE, entries)
+    html = build_html(title or previous or DEFAULT_TITLE, entries, out.name)
     if textfile.same(out, html):
         return f"{out.name} inchangé ({len(entries)} série(s))"
     if not apply:
