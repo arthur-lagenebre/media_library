@@ -4,6 +4,8 @@ Recap.py — Fiche HTML d'une médiathèque musicale, comme celle des films et d
 
 Les albums étiquetés par Metadata.py portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Ce script les LIT - sans clé, sans rien écrire dans les fichiers - pour en faire une fiche de la médiathèque : un mur de pochettes groupé par artiste, une fiche par album et une par artiste. Seules ces dernières ont besoin du réseau, et seulement pour s'enrichir (voir plus bas).
 
+La pochette d'un album est son fichier cover.jpg / cover.png s'il en a un dans son dossier (voir Cover.py), sinon celle que portent ses pistes.
+
 Un album est un dossier qui contient des .flac ou des .mp3, lui ou ses dossiers de disque (CD1, CD2...) ; les dossiers d'artiste au-dessus ne font que ranger. Un artiste qui a plusieurs albums a sa section, les autres se rangent ensemble à la fin. Les dossiers dont le nom commence par "__", "#" ou "@" (__Data__, #recycle, @eaDir) sont ignorés.
 
 Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wikipédia en disent : type, pays, dates, membres du groupe, liens officiels et un court résumé (en français, à défaut en anglais). Seuls les artistes dont les tags portent l'identifiant MusicBrainz (MUSICBRAINZ_ALBUMARTISTID, écrit par Metadata.py) sont concernés, à raison d'une requête par seconde - la règle de MusicBrainz. Les réponses sont gardées dans artists.json et redemandées au bout d'un mois : aux passages suivants, seuls les nouveaux artistes coûtent une requête. Sans réseau, le script abandonne après trois échecs d'affilée et garde ce qu'il avait ; --no-artist-info ne s'en sert jamais.
@@ -75,12 +77,9 @@ def read_infos(tracks, workers):
 # 2. Pages
 # ----------------------------------------------------------------------------
 def cover_uri(release, width):
-    """Pochette réduite d'un album, en data-URI ; None s'il n'en a pas, qu'elle est illisible ou que Pillow manque."""
-    track = release.cover_track
-    if track is None:
-        return None
+    """Pochette réduite d'un album, en data-URI : le fichier cover de son dossier d'abord, sinon celle de ses pistes. None s'il n'en a pas, qu'elle est illisible ou que Pillow manque."""
     try:
-        raw = library.read_cover(track)
+        raw = library.read_release_cover(release)
     except AudioError:
         return None
     jpeg = thumbs.thumbnail(raw, width) if raw else None

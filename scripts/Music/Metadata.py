@@ -10,7 +10,7 @@ Même principe que Movies/Metadata.py, pour la musique : la base de référence 
   - date de l'édition, date de première sortie de l'album, genres votés  [--no-genres]
   - label, numéro de catalogue, code-barres, pays, type et statut de la sortie, support
   - les IDENTIFIANTS MusicBrainz (album, release group, artistes, enregistrement, piste)
-  - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover]
+  - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover] ; le fichier cover.jpg / cover.png du dossier de l'album, s'il y en a un, l'emporte (voir Cover.py)
 
 Tout ce qui ne vient pas de MusicBrainz reste en place : ReplayGain, paroles, notes, ISRC... Une clé n'est gérée que si la base lui donne une valeur - un genre écrit à la main survit à un album sans genre - sauf celles qui décrivent l'édition (label, code-barres, identifiants), qui mentiraient si elles restaient d'une autre.
 L'écriture se fait sur place tant que les tags tiennent dans le padding du fichier (ou de l'étiquette ID3) ; sinon (une pochette ajoutée, typiquement) le fichier est recopié à côté puis substitué, le son intact.
@@ -50,7 +50,7 @@ from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.common import filenames  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
-from libraries.music import audio, lookup  # noqa: E402
+from libraries.music import audio, coverfile, lookup  # noqa: E402
 from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError, release_url  # noqa: E402
 
 
@@ -60,26 +60,45 @@ from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzErr
 class CoverCache:
     """La pochette d'un album, téléchargée une fois pour toutes ses pistes, et seulement s'il en faut une.
 
+    Le fichier cover posé dans le dossier de l'album (cover.jpg...) l'emporte sur tout : c'est celle qu'on a choisie, elle remplace la pochette embarquée et rien n'est téléchargé.
+
     Quand l'édition retenue n'a pas d'image, celle du release group fait l'affaire : c'est la même pochette d'album. Mesuré sur "Bloodlust" : le CD européen n'en a aucune, le release group si. La fiche de la sortie dit si elle a la sienne, ce qui épargne une requête vouée au 404.
     """
 
-    def __init__(self, release, mb, size):
+    def __init__(self, release, mb, size, folder=None):
         self.release, self.mb, self.size = release, mb, size
         self.own = bool((release.get("cover-art-archive") or {}).get("front"))
         self.group = (release.get("release-group") or {}).get("id")
+        self.file = coverfile.find(folder) if folder else None
+        self._local, self._local_tried = None, False
         self.picture, self.tried = None, False
+
+    def local(self):
+        """La pochette du fichier cover du dossier, prête à embarquer ; None s'il n'y en a pas, ou qu'elle ne peut pas l'être (dit une fois)."""
+        if self.file is not None and not self._local_tried:
+            self._local_tried = True
+            try:
+                self._local = coverfile.picture(self.file)
+            except audio.AudioError as e:
+                print(f"      /!\\ {e} : la pochette de Cover Art Archive la remplace")
+        return self._local
 
     @property
     def possible(self):
-        return self.own or bool(self.group)
+        return self.local() is not None or self.own or bool(self.group)
 
     @property
     def label(self):
+        if self.local() is not None:
+            return f"pochette du dossier ({self.file.name})"
         return "pochette" if self.own else "pochette du release group (si elle existe)"
 
     def get(self):
         if not self.tried:
             self.tried = True
+            if self.local() is not None:
+                self.picture = self._local
+                return self.picture
             try:
                 data = self.mb.cover(self.release.get("id") if self.own else None, self.group, self.size)
                 if data is None:
@@ -106,15 +125,19 @@ def process_album(found, release, group, args, mb):
         print(f"  artiste imposé : {found.artist_name}")
         if not any(albums.names_artist(c, found.artist_name) for c in release.get("artist-credit") or []):
             print(f"      /!\\ aucun artiste crédité de l'album ne ressemble à '{found.artist_name}' : les noms de MusicBrainz sont gardés")
-    covers = CoverCache(release, mb, args.image_size)
+    covers = CoverCache(release, mb, args.image_size, album.folder)
+    local = None if args.no_cover else covers.local()
     for entry in sorted(entries, key=lambda e: (placed[e.path][0].get("position") or 0, placed[e.path][1].get("position") or 0)):
         medium, track = placed[entry.path]
         meta = metas[entry.path]
         target = albums.target_tags(release, group, medium, track, with_genres=not args.no_genres, artist=found.artist_name)
         diffs =albums.differences(meta.comments, target)
-        wants_cover = not args.no_cover and covers.possible and (args.replace_cover or not meta.has_front_cover)
-        # --verify n'exige que la pochette que la sortie déclare : celle du release group n'existe peut-être pas, et l'exiger signalerait un écart que rien ne comble.
-        missing_cover = not args.no_cover and covers.own and not meta.has_front_cover
+        if local is not None:       # le fichier cover du dossier : la piste doit porter exactement celle-là
+            wants_cover = missing_cover = not coverfile.same_front(meta, local)
+        else:
+            wants_cover = not args.no_cover and covers.possible and (args.replace_cover or not meta.has_front_cover)
+            # --verify n'exige que la pochette que la sortie déclare : celle du release group n'existe peut-être pas, et l'exiger signalerait un écart que rien ne comble.
+            missing_cover = not args.no_cover and covers.own and not meta.has_front_cover
         # L'Explorateur de Windows ne lit rien d'un en-tête de plus de 4 Mio : quand c'est le padding qui l'enfle, recopier le fichier suffit à le rendre lisible.
         shrink = meta.bloated
 
@@ -128,7 +151,7 @@ def process_album(found, release, group, args, mb):
             for key, current, wanted in diffs:
                 print(f"      [DIFF] {key} : {', '.join(current) or '(absent)'} -> {', '.join(wanted) or '(retire)'}")
             if missing_cover:
-                print("      [DIFF] pochette : absente")
+                print("      [DIFF] pochette : " + (f"différente de {covers.file.name}" if local is not None else "absente"))
             if shrink:
                 print(f"      [DIFF] en-tête : {meta.audio_offset / 1048576:.1f} Mo dont {meta.padding / 1048576:.1f} Mo de padding, illisible pour l'Explorateur Windows")
             if diffs or missing_cover or shrink:
@@ -233,7 +256,7 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement (aucune écriture)")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque aucune pochette")
-    ap.add_argument("--replace-cover", action="store_true", help="Remplace aussi les pochettes déjà embarquées par celle de Cover Art Archive")
+    ap.add_argument("--replace-cover", action="store_true", help="Remplace aussi les pochettes déjà embarquées par celle de Cover Art Archive (un fichier cover.jpg dans le dossier de l'album l'emporte toujours)")
     ap.add_argument("--no-genres", action="store_true", help="N'écrit pas les genres, et laisse ceux des fichiers")
     ap.add_argument("--image-size", default="1200", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : 1200)")
     args = ap.parse_args()

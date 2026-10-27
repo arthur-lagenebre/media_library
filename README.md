@@ -11,6 +11,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes ; fiche récap de la médiathèque |
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, plus une fiche récap HTML |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
+| [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet |
 | [scripts/Music/Recap.py](scripts/Music/Recap.py) | Fiche HTML d'une médiathèque musicale, lue dans les tags des `.flac` et `.mp3` : un mur de pochettes par artiste, une fiche par album avec ses pistes et celles qui manquent, une fiche par artiste (membres, liens, résumé Wikipédia, via MusicBrainz) ; rien n'est écrit dans les fichiers |
 | [scripts/TV_Shows/Recap_All.py](scripts/TV_Shows/Recap_All.py) | Régénère la fiche récap de toutes les séries d'une médiathèque, sans toucher aux épisodes |
 | [scripts/TV_Shows/Index.py](scripts/TV_Shows/Index.py) | Sommaire de toutes les séries (dans `__Data__`, sous le nom de `--title`), chacune menant à sa fiche récap ; fait pour une tâche planifiée sur le NAS |
@@ -198,6 +199,26 @@ Les tags s'écrivent sous les noms qu'emploie [Picard](https://picard.musicbrain
 **Imposer le nom d'un artiste.** MusicBrainz écrit parfois le même artiste de plusieurs façons d'un album à l'autre (`H.F. Thiéfaine`, `Thiéfaine`, `Hubert Félix Thiéfaine`), et la fiche de la médiathèque en fait alors plusieurs artistes. Un fichier `artist.txt` dans le dossier d'artiste, dont la première ligne est le nom voulu, le fixe pour tous les albums qu'il range (le plus proche de l'album l'emporte) ; `--artist "Hubert-Félix Thiéfaine"` fait de même pour tout `--dir`. Seul le crédit qui désigne cet artiste est réécrit, dans `ARTIST` et `ALBUMARTIST` : `Thiéfaine / Mairet` devient `Hubert-Félix Thiéfaine / Mairet`. Quand MusicBrainz crédite cet artiste « feat. » des invités de tout l'album (`Ultra Vomit feat. A, B, C`), ces invités disparaissent des tags : `Ultra Vomit`, comme sur les autres albums ; l'invité d'une seule piste reste. Les noms de tri restent ceux de MusicBrainz, et un album dont aucun crédit ne ressemble au nom le signale et garde ceux de MusicBrainz.
 
 La pochette est ajoutée aux fichiers qui n'en ont pas : celle de l'édition, à défaut celle du release group. Une pochette déjà embarquée est gardée ; `--replace-cover` la remplace, `--no-cover` n'en ajoute aucune, `--image-size` choisit `250`, `500`, `1200` (défaut) ou `original`. `--verify` n'exige que la pochette que l'édition déclare : celle du release group peut ne pas exister.
+
+**Choisir soi-même la pochette.** Un fichier `cover.jpg` (ou `.jpeg`, `.png` ; aussi `folder`, `front`, `album`, `albumart`, casse libre) posé dans le dossier de l'album — à côté de `CD1`, `CD2`… pour un album en plusieurs disques — est **la** pochette de l'album : elle l'emporte sur celle que portent déjà les pistes (un scan recto-verso, une image mal cadrée) comme sur celle de Cover Art Archive. La fiche de la médiathèque la lit directement, et `Metadata.py` l'embarque à la place de tout téléchargement. Pour n'appliquer **que** les pochettes, sans toucher à un tag ni interroger MusicBrainz :
+
+```powershell
+python scripts\Music\Cover.py --dir "D:\Musique"                  # simulation
+python scripts\Music\Cover.py --dir "D:\Musique" --apply          # embarque cover.jpg dans chaque piste
+python scripts\Music\Cover.py --dir "D:\Musique" --verify         # vérifie seulement (code 1 s'il reste un écart)
+python scripts\Music\Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --apply   # un seul album
+```
+
+**Récupérer les pochettes des albums déjà traités.** Leurs pistes portent une pochette, mais leur dossier n'a pas de fichier : `--extract` l'écrit en `cover.jpg` (ou `cover.png`, selon l'image) dans le dossier de chaque album qui n'en a pas. Un fichier cover existant n'est jamais remplacé, et les pistes ne sont pas touchées. Les albums sans pochette exploitable sont listés à la fin ; une image qui n'est pas typée « face » (un dos, un livret) est signalée.
+
+```powershell
+python scripts\Music\Cover.py --dir "D:\Musique" --extract            # simulation
+python scripts\Music\Cover.py --dir "D:\Musique" --extract --apply    # écrit les cover.jpg manquants
+```
+
+Le chemin pour corriger les mauvaises pochettes (recto-verso, mal cadrées) : extraire, ouvrir les `cover.jpg`, remplacer à la main ceux qui ne vont pas, puis embarquer avec `Cover.py --apply` et régénérer la fiche avec `Recap.py --apply`.
+
+Une piste qui porte déjà exactement cette image n'est pas réécrite ; une autre image de face est remplacée, les images d'un autre type (dos, livret) sont gardées. Les albums sans fichier cover sont listés à la fin, pour savoir où en poser un. Seuls le JPEG et le PNG s'embarquent dans une piste : un `.webp`, `.gif` ou `.bmp` sert à la fiche mais pas aux fichiers audio (signalé). Une image de plus de 4 Mio est signalée, car l'Explorateur de Windows ne lit plus rien d'un `.flac` dont l'en-tête la dépasse. Pour que la fiche montre les nouvelles pochettes, relancer `Recap.py --apply`.
 
 L'identifiant de l'édition (`MUSICBRAINZ_ALBUMID`) est inscrit dans chaque fichier et relu au passage suivant. Priorité : `--mbid`, puis l'identifiant épinglé dans le nom du dossier (`2013 - Outrun [mbid-4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6]`), puis celui que **tous** les fichiers déclarent, puis la recherche.
 
