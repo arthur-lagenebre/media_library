@@ -23,6 +23,7 @@ from libraries.common import layout
 
 from . import album as albums
 from . import audio
+from . import coverfile
 from .tags import FRONT_COVER, AudioError
 
 SKIPPED_PREFIXES = ("__", "#", "@")      # __Data__ (nos pages), #recycle, @eaDir (vignettes DSM) : ce n'est pas de la musique rangée. Les dossiers cachés sont déjà écartés par find_albums.
@@ -137,6 +138,8 @@ class Release:
     tracks: list
     unsupported: list = field(default_factory=list)
     hints: albums.Hints = field(default_factory=albums.Hints)      # ce que dit le nom du dossier, à défaut de tags
+    cover_file: Path | None = None    # "cover.jpg" posé dans le dossier de l'album : il l'emporte sur toute pochette embarquée
+    cover_stamp: str = ""             # taille et date de ce fichier
 
     @property
     def id(self):
@@ -206,6 +209,8 @@ class Release:
 
     @property
     def key(self):
+        if self.cover_file:
+            return f"{self.id}-file-{self.cover_stamp}"
         track = self.cover_track
         return track.key if track else f"{self.id}-nocover"
 
@@ -321,7 +326,8 @@ def scan(root):
             hints = albums.folder_hints(item.folder)
             if item.folder.parent == root or item.folder == root:      # le nom du dossier de la médiathèque n'est pas un artiste
                 hints.artist = ""
-            found.append(Release(item.folder, rel, tracks, [p.name for p in item.unsupported], hints))
+            cover = coverfile.find(item.folder)
+            found.append(Release(item.folder, rel, tracks, [p.name for p in item.unsupported], hints, cover, coverfile.stamp(cover) if cover else ""))
     return found
 
 
@@ -339,6 +345,15 @@ def read_cover(track):
     pictures = audio.read(track.path).pictures
     front = next((p for p in pictures if p.kind == FRONT_COVER), pictures[0] if pictures else None)
     return front.data if front else None
+
+
+def read_release_cover(release):
+    """Octets de la pochette d'un album : le fichier cover de son dossier s'il y en a un lisible, sinon la pochette embarquée de sa première piste. None s'il n'en a aucune. AudioError si le fichier audio est illisible."""
+    data = coverfile.read(release.cover_file) if release.cover_file else None
+    if data:
+        return data
+    track = release.cover_track
+    return read_cover(track) if track else None
 
 
 # ----------------------------------------------------------------------------

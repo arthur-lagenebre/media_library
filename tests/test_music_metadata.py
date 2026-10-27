@@ -49,7 +49,7 @@ class FauxMusicBrainz:
 
 
 def arguments(**changes):
-    args = dict(mbid=None, country="FR", no_cache=False, no_ask=False, apply=True, verify=False, no_cover=False, replace_cover=False, no_genres=False, image_size="1200")
+    args = dict(mbid=None, country="FR", no_cache=False, no_ask=False, apply=True, verify=False, no_cover=False, no_cover_file=False, replace_cover=False, no_genres=False, image_size="1200")
     args.update(changes)
     return types.SimpleNamespace(**args)
 
