@@ -268,8 +268,9 @@ def artist_id(name):
 
 @dataclass
 class Artist:
-    """Un artiste de la médiathèque : tous les albums qui s'écrivent à son nom."""
+    """Un artiste de la médiathèque : tous les albums qui s'écrivent à son nom, et ceux qui lui manquent (voir wanted)."""
     releases: list
+    wanted: list = field(default_factory=list)
 
     @property
     def name(self):
@@ -363,12 +364,16 @@ def order(release):
     return (release.year or "9999", layout.fold(release.title))
 
 
-def artists(releases):
-    """[Artist], rangés sans accents ni casse ; les albums de chacun par année, puis par titre."""
+def artists(releases, wanted=None):
+    """[Artist], rangés sans accents ni casse ; les albums de chacun par année, puis par titre. 'wanted' = {id d'artiste: [Wanted]} (voir wanted.find)."""
     by_artist = {}
     for release in releases:
         by_artist.setdefault(layout.fold(release.artist), []).append(release)
-    return [Artist(sorted(by_artist[key], key=order)) for key in sorted(by_artist)]
+    wanted = wanted or {}
+    found = [Artist(sorted(by_artist[key], key=order)) for key in sorted(by_artist)]
+    for artist in found:
+        artist.wanted = wanted.get(artist.id, [])
+    return found
 
 
 def sections(releases):

@@ -12,6 +12,8 @@ Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wik
 
 Les pistes qui manquent à un album viennent du total que les tags annoncent (TRACKTOTAL, DISCTOTAL), comparé aux numéros possédés : "Manque : pistes 3, 5-7 (sur 13)". Rien n'est dit d'un disque dont une piste n'a pas de numéro.
 
+Les albums qui manquent à un artiste se disent dans son dossier, par un fichier vide nommé comme un album rangé : "1997 - OK Computer.txt". Sa fiche les montre à leur place parmi ses albums, grisés et marqués « manquant », et le journal les liste ([ABSENT]). Un album qui figure aussi en dossier n'est pas déclaré manquant. Seul le nom du fichier est lu.
+
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
   music.html   le sommaire et le lecteur : recherche (album, artiste, label, genre), filtre de genre, index A-Z, et une barre de lecture ; les fiches s'ouvrent par-dessus sans couper la musique
   Albums/        une fiche par album : pochette, artiste, année, label, genres, pistes et durées, pistes manquantes
@@ -39,7 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, layout, textfile, thumbs  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.music import artistinfo, library, librarypage, player  # noqa: E402
+from libraries.music import artistinfo, library, librarypage, player, wanted  # noqa: E402
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError  # noqa: E402
 from libraries.music.tags import AudioError  # noqa: E402
 
@@ -177,8 +179,8 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name, base=
     return done, written
 
 
-def write_pages(sections, out, root, args):
-    """Écrit la fiche de chaque album, celle de chaque artiste, puis le sommaire. Retourne le nombre de fiches d'albums écrites.
+def write_pages(sections, out, root, args, lacking=None):
+    """Écrit la fiche de chaque album, celle de chaque artiste, puis le sommaire. Retourne le nombre de fiches d'albums écrites. 'lacking' = {id d'artiste: [Wanted]}, les albums qui manquent (voir wanted.find), montrés sur la fiche de leur artiste.
 
     Une fiche qu'on n'a pas pu écrire n'est pas rendue au sommaire, pour qu'il ne mène pas à rien. Les fiches d'albums ou d'artistes sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
     """
@@ -192,7 +194,7 @@ def write_pages(sections, out, root, args):
 
     every = [r for _, releases in sections for r in releases]
     # Les albums d'artiste inconnu n'ont rien en commun : ils n'ont pas de fiche à eux.
-    artists = {a.id: a for a in library.artists(every) if a.name != library.UNKNOWN_ARTIST}
+    artists = {a.id: a for a in library.artists(every, lacking) if a.name != library.UNKNOWN_ARTIST}
     entries = update_artist_info(artists, out / ARTISTS_NAME, args)
     # Les albums les plus fournis d'abord : sinon le dernier, seul sur un fil, fait attendre tous les autres.
     queue = sorted(every, key=lambda r: -len(r.tracks))
@@ -243,12 +245,14 @@ def summarize(releases):
     return report
 
 
-def write_log(path, root, releases, args, report):
+def write_log(path, root, releases, args, report, lacking=None):
     """Écrit le journal : le bilan, puis les albums à regarder - pas encore étiquetés, pistes manquantes, fichiers illisibles, formats non pris en charge."""
     untagged = [r for r in releases if r.tagged < len(r.tracks)]
     gaps = [r for r in releases if r.missing()]
     broken = [t for r in releases for t in r.tracks if t.error]
     other = [r for r in releases if r.unsupported]
+    names = {r.artist_id: r.artist for r in releases}
+    absent = [(names[artist], w) for artist, found in (lacking or {}).items() for w in found if artist in names]
     lines = [f"# Music/Recap.py - {Path(root).resolve()}",
              f"# {datetime.now():%Y-%m-%d %H:%M} - {cli.mode_label(args)}",
              f"# {report.matched}/{report.total} piste(s) étiquetée(s) par MusicBrainz", ""]
@@ -261,6 +265,10 @@ def write_log(path, root, releases, args, report):
         for release in gaps:
             for disc, lacking, total in release.missing():
                 lines.append(f"[MANQUE] {release.rel or release.folder.name} : disque {disc}, piste(s) {layout.ranges(lacking)} (sur {total})")
+        lines.append("")
+    if absent:
+        lines.append(f"# --- {len(absent)} album(s) qui manquent à la médiathèque (fichiers .txt dans le dossier de l'artiste) ---")
+        lines += [f"[ABSENT] {artist} : {w.year} - {w.title}" for artist, w in sorted(absent, key=lambda p: (layout.fold(p[0]), p[1].order))]
         lines.append("")
     if broken:
         lines.append(f"# --- {len(broken)} fichier(s) illisible(s) ---")
@@ -320,19 +328,22 @@ def main():
     print()
 
     sections = library.sections(releases)
+    lacking = wanted.find(root, releases)
+    if lacking:
+        print(f"  {sum(len(w) for w in lacking.values())} album(s) manquant(s) chez {len(lacking)} artiste(s) (fichiers .txt)\n")
     if args.apply:
         out.mkdir(parents=True, exist_ok=True)
         catalog = library.dump_catalog(tracks)
         if not textfile.same(out / CATALOG_NAME, catalog):
             textfile.write(out / CATALOG_NAME, catalog)
-        write_pages(sections, out, root, args)
+        write_pages(sections, out, root, args, lacking)
     else:
         print(f"  [fiche] écrirait {out / PAGE_NAME}, une fiche par album dans {librarypage.DIR}/ et une par artiste dans {librarypage.ARTIST_DIR}/")
         asked = pending(library.artists(releases), artistinfo.load(out / ARTISTS_NAME), args)
         if asked:
             print(f"  [artistes] interrogerait MusicBrainz et Wikipédia sur {len(asked)} artiste(s)")
     if out.is_dir():
-        write_log(out / LOG_NAME, root, releases, args, report)
+        write_log(out / LOG_NAME, root, releases, args, report, lacking)
 
     print(f"\nTOTAL : {report.matched}/{report.total} piste(s) étiquetée(s) par MusicBrainz.")
     if report.failures:
