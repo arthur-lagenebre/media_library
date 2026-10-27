@@ -10,7 +10,7 @@ Même principe que Movies/Metadata.py, pour la musique : la base de référence 
   - date de l'édition, date de première sortie de l'album, genres votés  [--no-genres]
   - label, numéro de catalogue, code-barres, pays, type et statut de la sortie, support
   - les IDENTIFIANTS MusicBrainz (album, release group, artistes, enregistrement, piste)
-  - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover] ; le fichier cover.jpg / cover.png du dossier de l'album, s'il y en a un, l'emporte (voir Cover.py)
+  - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover] ; téléchargée, elle est aussi enregistrée en cover.jpg dans le dossier de l'album [--no-cover-file], et un fichier cover.jpg / cover.png déjà là l'emporte sur tout (voir Cover.py)
 
 Tout ce qui ne vient pas de MusicBrainz reste en place : ReplayGain, paroles, notes, ISRC... Une clé n'est gérée que si la base lui donne une valeur - un genre écrit à la main survit à un album sans genre - sauf celles qui décrivent l'édition (label, code-barres, identifiants), qui mentiraient si elles restaient d'une autre.
 L'écriture se fait sur place tant que les tags tiennent dans le padding du fichier (ou de l'étiquette ID3) ; sinon (une pochette ajoutée, typiquement) le fichier est recopié à côté puis substitué, le son intact.
@@ -32,7 +32,7 @@ Usage :
   python Metadata.py --dir "D:\Musique" --verify         # vérifie seulement
   python Metadata.py --dir "D:\Musique\Kavinsky\2013 - Outrun" --mbid 4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6 --apply
 
-Options : --apply --verify --no-cache --no-ask --no-cover --replace-cover --no-genres --mbid --artist --country (défaut FR) --image-size (défaut 1200)
+Options : --apply --verify --no-cache --no-ask --no-cover --no-cover-file --replace-cover --no-genres --mbid --artist --country (défaut FR) --image-size (défaut 1200)
 
 Aucune dépendance pip, aucun outil externe. Nécessite Internet (MusicBrainz + Cover Art Archive), à raison d'une requête par seconde - la règle de MusicBrainz - que le cache (7 jours) épargne aux passages suivants.
 Seuls les .flac et les .mp3 sont écrits : un dossier de .m4a, .ogg... est signalé et laissé tel quel. Dans un .mp3, les tags portent les noms de trames de Picard (TXXX "MusicBrainz Album Id"...), les ID3v2.3 sont réécrits en 2.4, et l'étiquette ID3v1 de fin de fichier n'est pas touchée.
@@ -60,18 +60,24 @@ from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzErr
 class CoverCache:
     """La pochette d'un album, téléchargée une fois pour toutes ses pistes, et seulement s'il en faut une.
 
-    Le fichier cover posé dans le dossier de l'album (cover.jpg...) l'emporte sur tout : c'est celle qu'on a choisie, elle remplace la pochette embarquée et rien n'est téléchargé.
+    Le fichier cover posé dans le dossier de l'album (cover.jpg...) l'emporte sur tout : c'est celle qu'on a choisie, elle remplace la pochette embarquée et rien n'est téléchargé. À l'inverse, une pochette téléchargée est aussi enregistrée en cover.jpg dans ce dossier (`save_file`) : c'est le fichier que la fiche lit, et que l'on peut remplacer à la main.
 
     Quand l'édition retenue n'a pas d'image, celle du release group fait l'affaire : c'est la même pochette d'album. Mesuré sur "Bloodlust" : le CD européen n'en a aucune, le release group si. La fiche de la sortie dit si elle a la sienne, ce qui épargne une requête vouée au 404.
     """
 
-    def __init__(self, release, mb, size, folder=None):
+    def __init__(self, release, mb, size, folder=None, save_file=True):
         self.release, self.mb, self.size = release, mb, size
+        self.folder, self.save_file = folder, save_file
         self.own = bool((release.get("cover-art-archive") or {}).get("front"))
         self.group = (release.get("release-group") or {}).get("id")
         self.file = coverfile.find(folder) if folder else None
         self._local, self._local_tried = None, False
         self.picture, self.tried = None, False
+
+    @property
+    def saves(self):
+        """Vrai quand la pochette téléchargée sera enregistrée en cover.jpg : le dossier n'en a pas encore, et rien ne l'interdit."""
+        return bool(self.save_file and self.folder and self.file is None)
 
     def local(self):
         """La pochette du fichier cover du dossier, prête à embarquer ; None s'il n'y en a pas, ou qu'elle ne peut pas l'être (dit une fois)."""
@@ -91,7 +97,21 @@ class CoverCache:
     def label(self):
         if self.local() is not None:
             return f"pochette du dossier ({self.file.name})"
-        return "pochette" if self.own else "pochette du release group (si elle existe)"
+        label = "pochette" if self.own else "pochette du release group (si elle existe)"
+        return label + (" + cover.jpg dans le dossier" if self.saves else "")
+
+    def save(self):
+        """Enregistre la pochette téléchargée en cover.jpg dans le dossier de l'album, sans jamais écraser un fichier. Un échec n'arrête rien : les pistes ont leur pochette, c'est le fichier qui manquera."""
+        ext = coverfile.extension(self.picture.data)
+        if not ext:
+            print("      /!\\ la pochette téléchargée n'est ni JPEG ni PNG : pas de fichier cover enregistré")
+            return
+        try:
+            path = coverfile.write(self.folder, self.picture)
+        except OSError as e:
+            print(f"      /!\\ cover{ext} non enregistré : {e.strerror or e}")
+            return
+        print(f"      {path.name} enregistré dans le dossier")
 
     def get(self):
         if not self.tried:
@@ -107,6 +127,8 @@ class CoverCache:
                 print(f"      pochette ignorée ({e})")
                 data = None
             self.picture = audio.front_cover(data) if data else None
+            if self.picture is not None and self.saves:
+                self.save()
         return self.picture
 
 
@@ -125,7 +147,7 @@ def process_album(found, release, group, args, mb):
         print(f"  artiste imposé : {found.artist_name}")
         if not any(albums.names_artist(c, found.artist_name) for c in release.get("artist-credit") or []):
             print(f"      /!\\ aucun artiste crédité de l'album ne ressemble à '{found.artist_name}' : les noms de MusicBrainz sont gardés")
-    covers = CoverCache(release, mb, args.image_size, album.folder)
+    covers = CoverCache(release, mb, args.image_size, album.folder, not args.no_cover_file)
     local = None if args.no_cover else covers.local()
     for entry in sorted(entries, key=lambda e: (placed[e.path][0].get("position") or 0, placed[e.path][1].get("position") or 0)):
         medium, track = placed[entry.path]
@@ -256,6 +278,7 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement (aucune écriture)")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque aucune pochette")
+    ap.add_argument("--no-cover-file", action="store_true", help="N'enregistre pas la pochette téléchargée en cover.jpg dans le dossier de l'album")
     ap.add_argument("--replace-cover", action="store_true", help="Remplace aussi les pochettes déjà embarquées par celle de Cover Art Archive (un fichier cover.jpg dans le dossier de l'album l'emporte toujours)")
     ap.add_argument("--no-genres", action="store_true", help="N'écrit pas les genres, et laisse ceux des fichiers")
     ap.add_argument("--image-size", default="1200", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : 1200)")

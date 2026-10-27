@@ -211,6 +211,89 @@ class TestMetadata(AlbumTestCase):
         self.assertEqual(report.diffs, 0)
 
 
+class TestMetadataTelechargement(AlbumTestCase):
+    """Metadata.py : la pochette téléchargée est aussi enregistrée en cover.jpg dans le dossier de l'album."""
+
+    def fronts(self, n=1):
+        return [p.data for p in self.relire(n).pictures if p.kind == 3]
+
+    def test_la_pochette_telechargee_devient_cover_jpg(self):
+        self.poser()
+        mb = faux()
+        _, texte = self.traiter(mb)
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), EN_LIGNE)
+        self.assertIn("cover.jpg enregistré dans le dossier", texte)
+        self.assertEqual([self.fronts(n) for n in (1, 2, 3)], [[EN_LIGNE]] * 3)
+        self.assertEqual(len(mb.covers), 1)
+
+    def test_la_simulation_n_ecrit_pas_le_fichier(self):
+        self.poser()
+        _, texte = self.traiter(faux(), apply=False)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+        self.assertIn("+ cover.jpg dans le dossier", texte)
+
+    def test_no_cover_file(self):
+        self.poser()
+        self.traiter(faux(), no_cover_file=True)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+        self.assertEqual(self.fronts(), [EN_LIGNE])
+
+    def test_no_cover_n_enregistre_rien(self):
+        self.poser()
+        self.traiter(faux(), no_cover=True)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_replace_cover_remplace_l_embarquee_et_enregistre_le_fichier(self):
+        self.poser(images=[image(b"RECTO-VERSO")])
+        self.traiter(faux(), replace_cover=True)
+        self.assertEqual(self.fronts(), [EN_LIGNE])
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), EN_LIGNE)
+
+    def test_passage_suivant_le_fichier_sert_et_rien_n_est_retelecharge(self):
+        self.poser(images=[image(b"RECTO-VERSO")])
+        self.traiter(faux(), replace_cover=True)
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)         # remplacé à la main
+        mb = faux()
+        self.traiter(mb, replace_cover=True)
+        self.assertEqual(mb.covers, [])
+        self.assertEqual(self.fronts(), [FICHIER])
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), FICHIER)
+
+    def test_pochette_deja_embarquee_sans_replace_cover_rien_n_est_telecharge(self):
+        self.poser(images=[image(b"EMBARQUEE")])
+        mb = faux()
+        self.traiter(mb)
+        self.assertEqual(mb.covers, [])
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_png_donne_cover_png(self):
+        png = b"\x89PNG\r\n\x1a\n" + bytes(30)
+        self.poser()
+        self.traiter(faux(cover=png))
+        self.assertEqual((self.dossier / "cover.png").read_bytes(), png)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_format_inconnu_est_embarque_mais_pas_enregistre(self):
+        self.poser()
+        _, texte = self.traiter(faux(cover=b"GIF89a-pas-un-jpeg"))
+        self.assertIn("ni JPEG ni PNG", texte)
+        self.assertEqual(self.fronts(), [b"GIF89a-pas-un-jpeg"])
+        self.assertFalse(any(p.name.startswith("cover") for p in self.dossier.iterdir()))
+
+    def test_pas_de_pochette_chez_cover_art_archive_pas_de_fichier(self):
+        self.poser()
+        self.traiter(faux(cover=None))
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_ecriture_du_fichier_en_echec_n_empeche_pas_les_pistes(self):
+        self.poser()
+        with mock.patch.object(coverfile, "write", side_effect=PermissionError(13, "Accès refusé")):
+            report, texte = self.traiter(faux())
+        self.assertEqual(report.failures, 0)
+        self.assertIn("cover.jpg non enregistré : Accès refusé", texte)
+        self.assertEqual(self.fronts(), [EN_LIGNE])
+
+
 class CoverTestCase(AlbumTestCase):
     def lancer(self, *argv, dossier=None):
         ligne = [str(Path(cover.__file__)), "--dir", str(dossier or self.dossier.parent.parent), *argv]

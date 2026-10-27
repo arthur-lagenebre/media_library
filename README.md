@@ -200,6 +200,15 @@ Les tags s'écrivent sous les noms qu'emploie [Picard](https://picard.musicbrain
 
 La pochette est ajoutée aux fichiers qui n'en ont pas : celle de l'édition, à défaut celle du release group. Une pochette déjà embarquée est gardée ; `--replace-cover` la remplace, `--no-cover` n'en ajoute aucune, `--image-size` choisit `250`, `500`, `1200` (défaut) ou `original`. `--verify` n'exige que la pochette que l'édition déclare : celle du release group peut ne pas exister.
 
+**La pochette téléchargée devient un fichier.** Quand `Metadata.py` télécharge une pochette (aux pistes qui n'en ont pas, ou toutes avec `--replace-cover`), il l'enregistre aussi en `cover.jpg` — ou `cover.png`, selon l'image — dans le dossier de l'album, une seule fois par album et sans jamais écraser un fichier. C'est ce fichier que lira la fiche, et que l'on peut remplacer à la main ; au passage suivant il l'emporte sur toute autre pochette et plus rien n'est téléchargé. `--no-cover-file` s'en abstient. Le passage habituel suffit donc :
+
+```powershell
+python scripts\Music\Rename_Tracks.py --dir "D:\_Music" --apply
+python scripts\Music\Metadata.py --dir "D:\_Music" --replace-cover --apply
+```
+
+Les albums qui portent déjà une pochette que `Metadata.py` n'a pas besoin de remplacer n'ont pas de fichier : `Cover.py --extract` (plus bas) leur en écrit un.
+
 **Choisir soi-même la pochette.** Un fichier `cover.jpg` (ou `.jpeg`, `.png` ; aussi `folder`, `front`, `album`, `albumart`, casse libre) posé dans le dossier de l'album — à côté de `CD1`, `CD2`… pour un album en plusieurs disques — est **la** pochette de l'album : elle l'emporte sur celle que portent déjà les pistes (un scan recto-verso, une image mal cadrée) comme sur celle de Cover Art Archive. La fiche de la médiathèque la lit directement, et `Metadata.py` l'embarque à la place de tout téléchargement. Pour n'appliquer **que** les pochettes, sans toucher à un tag ni interroger MusicBrainz :
 
 ```powershell
