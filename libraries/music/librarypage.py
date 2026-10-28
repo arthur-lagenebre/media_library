@@ -184,10 +184,10 @@ def _tile(release, uri, link, attrs="", media_base=None):
             "</div>")
 
 
-def _wanted_tile(wanted):
-    """La vignette d'un album qu'on n'a pas : grisée, sans lien ni lecture, l'année et « manquant » à la place du nombre de pistes."""
+def _wanted_tile(wanted, uri=None):
+    """La vignette d'un album qu'on n'a pas : grisée, sans lien ni lecture, l'année et « manquant » à la place du nombre de pistes. 'uri' = sa pochette en data-URI, si on en a une."""
     return ("<div class='al gone'><div class='cv'>"
-            "<div class='aff'><div class='noimg'></div></div>"
+            f"<div class='aff'>{_cover(wanted.key, uri)}</div>"
             f"<div class='t'>{esc(wanted.title)}</div></div>"
             f"<div class='y'>{esc(wanted.year)} · <span class='lack'>manquant</span></div></div>")
 
@@ -491,14 +491,15 @@ def _links(artist, info):
         f"<a class='mb' href='{esc(url)}' target='_blank' rel='noopener'>{esc(label)} ↗</a>" for label, url in found) + "</div>"
 
 
-def build_artist(artist, covers, back_href, library_name, pages=(), info=None, media_base=None):
-    """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pochettes lisent leur album), ou None."""
+def build_artist(artist, covers, back_href, library_name, pages=(), info=None, media_base=None, wanted_covers=None):
+    """Rend la fiche d'un artiste : ce que MusicBrainz et Wikipédia en disent (voir artistinfo), ses albums, et son lien MusicBrainz. 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe ; 'back_href' = lien vers le sommaire ; 'info' = le dictionnaire d'artistinfo, ou None ; 'media_base' = le chemin relatif de la fiche à la racine de la médiathèque, terminé par '/' (les pochettes lisent leur album), ou None ; 'wanted_covers' = {Wanted.key: data-URI} des albums manquants qui ont une image."""
     info = info or {}
+    wanted_covers = wanted_covers or {}
     back_href = f"{back_href}#{artist_anchor(artist)}"
     # Les albums qui manquent se rangent parmi ceux qu'on a, par année : c'est la discographie, à quoi on voit ce qui y est.
     shown = [(library.order(release), _tile(release, covers.get(release.id), href(release, "../") if release.id in pages else "", media_base=media_base))
              for release in artist.releases]
-    shown += [(wanted.order, _wanted_tile(wanted)) for wanted in artist.wanted]
+    shown += [(wanted.order, _wanted_tile(wanted, wanted_covers.get(wanted.key))) for wanted in artist.wanted]
     tiles = "".join(tile for _, tile in sorted(shown, key=lambda pair: pair[0]))
     count = f"{len(artist.releases)}/{len(artist.releases) + len(artist.wanted)}" if artist.wanted else str(len(artist.releases))
     playable = any(_playlist(release, media_base) for release in artist.releases)
