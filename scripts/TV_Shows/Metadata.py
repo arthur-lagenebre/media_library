@@ -54,7 +54,9 @@ Options principales :
   --no-tag         ne modifie aucun épisode ; genere seulement folder.jpg / récap (séries non-MKV)
   --no-cover / --no-date / --no-audio-names / --no-sub-names / --no-flags / --no-stats
   --artwork        écrit folder.jpg (vignette de dossier) en anglais (série et chaque saison)
-  --recap          genere une fiche récap HTML de la série (onglets par saison)
+  --recap          genere la fiche HTML de la série (onglets par saison), dans __Data__/Fiches à la racine de la médiathèque
+                   (le dossier parent de la série) : les dossiers de la médiathèque ne sont pas touchés
+                   -> son lien de retour mène au sommaire de __Data__ (Index.py) ; --title nomme celui-ci
                    -> fichier UNIQUE : les vignettes sont encodées dedans, rien à côté
                    -> les épisodes absents du disque sont grises et comptes par saison
                    -> un épisode dont TMDB n'a pas de vignette reprend l'affiche de sa saison
@@ -74,7 +76,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, favicon, layout, textfile  # noqa: E402
+from libraries.common import cache, cli, favicon, layout  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, cast, embed, lookup, mkv, naming, showindex  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
@@ -331,7 +333,7 @@ def build_cast_panel(casting, runs, images, size):
     return "".join(blocks)
 
 
-def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None, folder=None):
+def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None, folder=None, index=None):
     """Rend la page HTML (pur rendu : ni réseau ni disque).
 
     'images' = {clé: data-URI}, vignettes d'épisode et portraits du casting mêlés ; un épisode sans vignette propre retombe sur l'affiche de sa saison (voir episode_image), et n'a un emplacement vide que si celle-ci manque aussi. Une affiche de repli revient sur beaucoup d'épisodes : elle est écrite une seule fois, dans une règle CSS, et non recopiée dans chaque balise.
@@ -342,8 +344,9 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
 
     L'en-tête porte de quoi présenter la série dans le sommaire de la médiathèque (voir showindex) : année, saisons, et l'affiche 'poster' = (clé, data-URI) encodée - le sommaire se construit sans rien demander à TMDB.
 
-    Le lien de retour mène au sommaire par défaut, à la vignette de 'folder' (le dossier de la série). Un sommaire peut porter un autre nom (--title) : quand on vient d'une page de __Data__, le retour est un vrai retour en arrière, qui rend aussi la recherche en cours."""
-    back = f"../{showindex.DATA_DIR}/{showindex.DEFAULT_INDEX}" + (f"#{showindex.anchor(folder)}" if folder else "")
+    La fiche est dans __Data__/Fiches, le sommaire dans __Data__ : le lien de retour monte d'un cran, jusqu'à la vignette de 'folder' (le dossier de la série). 'index' = (fichier, titre) du sommaire, tv_shows.html et "Séries" par défaut. Quand on vient d'une page de __Data__, le retour est un vrai retour en arrière, qui rend aussi la recherche en cours."""
+    page, library = index or (showindex.DEFAULT_INDEX, showindex.DEFAULT_TITLE)
+    back = showindex.back_href(page, folder)
     tabs, panels, partagees = [], [], {}
     for i, run in enumerate(runs):
         label = run.data.get("name") or f"Saison {run.number}"
@@ -443,7 +446,7 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         ".actor .e{color:#9aa0aa;font-size:12px;font-variant-numeric:tabular-nums}"
         + cast.noface_rule() +
         "</style></head><body>"
-        + layout.header(f"<a class='back' href='{esc(back)}'>← Séries</a><div class='hd'>" + (f"<div class='aff'>{embed.tag(*poster)}</div>" if poster else "")
+        + layout.header(f"<a class='back' href='{esc(back)}'>← {esc(library)}</a><div class='hd'>" + (f"<div class='aff'>{embed.tag(*poster)}</div>" if poster else "")
                         + f"<div class='main'><div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
                         + (f"<div class='syn'>{esc(show['overview'])}</div>" if show.get("overview") else "")
                         + (f"<div class='lnk'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "")
@@ -455,12 +458,8 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
         "document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});"
         "document.querySelectorAll('.season').forEach(function(s){s.hidden=s.dataset.s!==b.dataset.s})"
         "}});"
-        # Le sommaire dit dans le lien de la vignette (#i=<fichier>&t=<titre>) qui il est : le lien et le libellé le suivent (« ← Anime » vers Anime.html). Sans cela, la fiche garde le sommaire par défaut.
         # Venu d'un sommaire (n'importe lequel, dans __Data__), on y retourne par l'historique ; sinon, ou hors serveur (file://) où le navigateur ne donne pas toujours la page d'origine, le lien et son ancre prennent le relais.
-        "var b=document.querySelector('.back'),q=new URLSearchParams(location.hash.slice(1)),i=q.get('i');"
-        "if(i&&/^[^\\/\\\\]+\\.html$/.test(i)){"
-        f"b.href='../{showindex.DATA_DIR}/'+encodeURIComponent(i)+(b.getAttribute('href').match(/#.*/)||[''])[0];"
-        "b.textContent='← '+(q.get('t')||'Séries')}"
+        "var b=document.querySelector('.back');"
         "b.onclick=function(e){"
         "var from=document.referrer.split(/[?#]/)[0];"
         f"if(history.length>1&&/\\/{showindex.DATA_DIR}\\/[^\\/]+\\.html$/.test(from)){{e.preventDefault();history.back()}}}};"
@@ -469,11 +468,14 @@ def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=Non
     )
 
 
-def _write_text(path, text, apply):
+def _write_text(path, text, apply, shown=None):
+    """Écrit la page (en créant ses dossiers) ; `shown` : comment la nommer dans le compte rendu, par défaut son nom."""
+    shown = shown or Path(path).name
     if not apply:
-        return f"écrirait {Path(path).name}"
+        return f"écrirait {shown}"
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(text, encoding="utf-8")
-    return f"{Path(path).name} écrit"
+    return f"{shown} écrit"
 
 
 def fill_season_overviews(runs, show, tmdb):
@@ -499,9 +501,11 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         print(f"  [série] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
 
     if args.recap:
-        out = Path(root_dir) / showindex.PAGE_NAME
-        # La fiche précédente sert de cache d'images ; encore nommée recap.html, elle est renommée plutôt que doublée.
-        previous = textfile.adopt(Path(root_dir) / showindex.LEGACY_NAME, out, apply)
+        # La fiche va dans __Data__/Fiches, à la racine de la médiathèque (le parent du dossier de la série) : la médiathèque elle-même n'est pas touchée.
+        folder = naming.series_folder(root_dir)
+        out = showindex.sheet_path(folder.parent, folder.name)
+        # La fiche précédente sert de cache d'images ; celle que les versions précédentes écrivaient dans le dossier de la série est lue, pas effacée.
+        previous = showindex.series_page(folder) or out
         known = {**embed.read_embedded(previous), **showindex.recap_poster(previous)}
         # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
         if apply:
@@ -512,10 +516,10 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
         images = {**stills, **profiles}
         poster_key = embed.image_key(show.get("poster_path"), POSTER_SIZE)
         poster_uri = (embed.fetch({poster_key: show["poster_path"]}, known, POSTER_SIZE, tmdb, label="affiche").get(poster_key) if apply and poster_key else None)
-        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None, Path(root_dir).name)
+        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None, folder.name, showindex.back_target(folder.parent, args.title))
         tally = ", ".join(t for t in (f"{len(stills)} vignette(s)" if stills else "",
                                       f"{len(profiles)} portrait(s)" if profiles else "") if t)
-        print(f"  [série] {_write_text(out, html, apply)}"
+        print(f"  [série] {_write_text(out, html, apply, out.relative_to(folder.parent).as_posix())}"
               + (f"  ({len(html) / 1_048_576:.1f} Mo, {tally} integre(s))" if tally else ""))
         legacy = Path(root_dir) / "assets"
         if legacy.is_dir():
@@ -548,7 +552,8 @@ def parse_args():
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques de piste")
     # --- Générateurs annexes (option, écrivent des fichiers à côté des .mkv) ---
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (vignette de dossier) en anglais")
-    ap.add_argument("--recap", action="store_true", help="Génère une fiche recap HTML de la série")
+    ap.add_argument("--recap", action="store_true", help="Génère la fiche HTML de la série, dans __Data__/Fiches à la racine de la médiathèque")
+    ap.add_argument("--title", help="Titre du sommaire vers lequel la fiche revient, comme pour Index.py (défaut : le sommaire déjà écrit dans __Data__, sinon 'Séries')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquée / folder.jpg : w300 / w780 / original")
     ap.add_argument("--still-size", default="w300",
                     help="Taille TMDB des vignettes du recap (défaut : w300 ; w400 = plus net "

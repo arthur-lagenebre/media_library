@@ -20,11 +20,22 @@ POSTER = ("w185/p.jpg", "data:image/jpeg;base64,QUJD")
 
 
 def fiche(dossier, show=SHOW, poster=POSTER, saisons=(1, 2)):
-    """Une fiche écrite comme Metadata.py l'écrit."""
+    """Une fiche écrite comme Metadata.py l'écrit : dans __Data__/Fiches, à côté des dossiers de série. Retourne son chemin."""
     runs = [series.SeasonRun(dossier / f"Saison {n}", n, {"episodes": []}) for n in saisons]
     dossier.mkdir(parents=True, exist_ok=True)
     html = series.build_recap_html(show["name"], show, runs, "70523", {}, "w300", poster=poster)
-    (dossier / "index.html").write_text(html, encoding="utf-8")
+    page = showindex.sheet_path(dossier.parent, dossier.name)
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(html, encoding="utf-8")
+    return page
+
+
+def ancienne_fiche(dossier, nom="index.html"):
+    """Une fiche comme les versions précédentes l'écrivaient : dans le dossier de la série."""
+    page = fiche(dossier)
+    (dossier / nom).write_text(page.read_text(encoding="utf-8"), encoding="utf-8")
+    page.unlink()
+    return dossier / nom
 
 
 class TestLectureDesFiches(unittest.TestCase):
@@ -64,24 +75,29 @@ class TestLectureDesFiches(unittest.TestCase):
         fiche(self.racine / "Dark")
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
         self.assertIn("<nav class='az'", html[html.index("<header class='top'>"):html.index("</header>")])
-        self.assertRegex(html, r"class='serie' href='\.\./Expanse/index\.html#[^']*' data-i='T'")
-        self.assertRegex(html, r"class='serie' href='\.\./Dark/index\.html#[^']*' data-i='D'")
+        self.assertIn("class='serie' href='Fiches/Expanse.html' data-i='T'", html)
+        self.assertIn("class='serie' href='Fiches/Dark.html' data-i='D'", html)
 
     def test_vignette_ancree_sur_le_dossier_de_la_serie(self):
         # C'est l'ancre que la fiche vise à son retour : elle ne dépend que du nom du dossier, pas du titre.
         fiche(self.racine / "Dark")
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
-        self.assertIn(f"<a id='{showindex.anchor('Dark')}' class='serie' href='../Dark/index.html#", html)
+        self.assertIn(f"<a id='{showindex.anchor('Dark')}' class='serie' href='Fiches/Dark.html'", html)
         self.assertNotEqual(showindex.anchor("Dark"), showindex.anchor("Fargo"))
 
-    def test_lien_de_la_vignette_dit_quel_sommaire_l_a_ouvert(self):
-        # La fiche en tire son lien de retour et son libellé : « ← Anime » vers Anime.html.
+    def test_retour_de_la_fiche_vers_le_sommaire_ecrit(self):
+        # La fiche écrit son retour d'après le sommaire de __Data__ : « ← Anime » vers Anime.html, pas « ← Séries » vers tv_shows.html.
         fiche(self.racine / "Dark")
-        entries = showindex.find_entries(self.racine)
-        self.assertIn("href='../Dark/index.html#i=Anime.html&amp;t=Anime'", showindex.build_html("Anime", entries, "Anime.html"))
-        self.assertIn("href='../Dark/index.html#i=tv_shows.html&amp;t=S%C3%A9ries'", showindex.build_html("Séries", entries))
+        self.assertEqual(showindex.back_target(self.racine), ("tv_shows.html", "Séries"))      # rien d'écrit encore : le sommaire par défaut
         showindex.write(self.racine, True, title="Anime")
-        self.assertIn("#i=Anime.html&amp;t=Anime'", (self.racine / "__Data__" / "Anime.html").read_text(encoding="utf-8"))
+        self.assertEqual(showindex.back_target(self.racine), ("Anime.html", "Anime"))
+        showindex.write(self.racine, True)
+        self.assertEqual(showindex.back_target(self.racine), ("tv_shows.html", "Séries"))      # plusieurs : le sommaire par défaut passe devant
+        self.assertEqual(showindex.back_target(self.racine, "Mes animes"), ("Mes animes.html", "Mes animes"))   # --title est prioritaire
+
+    def test_lien_de_retour_encode_et_ancre(self):
+        self.assertEqual(showindex.back_href("Mes animes.html", "Dark"), f"../Mes%20animes.html#{showindex.anchor('Dark')}")
+        self.assertEqual(showindex.back_href("tv_shows.html"), "../tv_shows.html")
 
     def test_genres_ecrits_dans_la_fiche_et_proposes_au_sommaire(self):
         fiche(self.racine / "Dark", show={**SHOW, "genres": [{"name": "Drame"}, {"name": "Science-Fiction"}]})
@@ -110,7 +126,7 @@ class TestLectureDesFiches(unittest.TestCase):
     def test_lien_relatif_encode(self):
         fiche(self.racine / "Dark & Co #1", show={**SHOW, "name": "Dark & Co"})
         html = showindex.build_html("Series", showindex.find_entries(self.racine))
-        self.assertIn("href='../Dark%20%26%20Co%20%231/index.html#", html)
+        self.assertIn("href='Fiches/Dark%20%26%20Co%20%231.html'", html)
         self.assertIn("Dark &amp; Co", html)
 
     def test_ancienne_fiche_sans_meta(self):
@@ -122,11 +138,27 @@ class TestLectureDesFiches(unittest.TestCase):
         self.assertEqual((entry.title, entry.poster), ("Lost", ""))
 
     def test_ancienne_fiche_encore_lue(self):
-        # Une fiche pas encore régénérée garde son ancien nom : le sommaire la trouve, et pointe vers elle.
-        fiche(self.racine / "Dark")
-        (self.racine / "Dark" / "index.html").rename(self.racine / "Dark" / "recap.html")
+        # Une fiche pas encore régénérée est restée dans le dossier de la série, sous son ancien nom : le sommaire la trouve, et pointe vers elle.
+        for nom in ("index.html", "recap.html"):
+            with self.subTest(nom=nom):
+                ancienne_fiche(self.racine / "Dark", nom)
+                [entry] = showindex.find_entries(self.racine)
+                self.assertEqual((entry.href, entry.title), (f"../Dark/{nom}", "Dark"))
+                (self.racine / "Dark" / nom).unlink()
+
+    def test_la_fiche_de_data_passe_devant_l_ancienne(self):
+        ancienne_fiche(self.racine / "Dark")
+        fiche(self.racine / "Dark", show={**SHOW, "name": "Dark (à jour)"})
         [entry] = showindex.find_entries(self.racine)
-        self.assertEqual(entry.href, "../Dark/recap.html")
+        self.assertEqual((entry.href, entry.title), ("Fiches/Dark.html", "Dark (à jour)"))
+        self.assertTrue((self.racine / "Dark" / "index.html").exists())          # l'ancienne reste en place
+
+    def test_fiche_d_une_serie_retiree_ignoree(self):
+        # Les fiches sont dans __Data__ : celle d'une série dont le dossier a disparu y reste, sans plus de lien pour y mener.
+        fiche(self.racine / "Dark")
+        fiche(self.racine / "Lost")
+        (self.racine / "Lost").rmdir()
+        self.assertEqual([e.folder for e in showindex.find_entries(self.racine)], ["Dark"])
 
     def test_titre_par_defaut_puis_conserve(self):
         fiche(self.racine / "Dark")
@@ -145,17 +177,17 @@ class TestLectureDesFiches(unittest.TestCase):
     def test_le_sommaire_va_dans_data_sous_le_nom_du_titre(self):
         fiche(self.racine / "Dark")
         showindex.write(self.racine, True, title="Anime")
-        self.assertEqual(sorted(p.name for p in (self.racine / "__Data__").iterdir()), ["Anime.html"])
+        self.assertEqual(sorted(p.name for p in (self.racine / "__Data__").iterdir()), ["Anime.html", "Fiches"])
         self.assertIn("<title>Anime</title>", (self.racine / "__Data__" / "Anime.html").read_text(encoding="utf-8"))
         self.assertFalse((self.racine / "index.html").exists())          # rien n'est écrit à la racine de la médiathèque
 
-    def test_les_liens_remontent_de_data_jusqu_aux_fiches(self):
-        # Le sommaire est dans __Data__, les fiches dans les dossiers de série : un lien relatif doit sortir de __Data__.
+    def test_les_liens_descendent_de_data_jusqu_aux_fiches(self):
+        # Le sommaire et le dossier des fiches sont tous deux dans __Data__ : le lien est relatif à lui.
         fiche(self.racine / "Dark")
         showindex.write(self.racine, True)
         html = (self.racine / "__Data__" / "tv_shows.html").read_text(encoding="utf-8")
-        self.assertIn("href='../Dark/index.html#", html)
-        self.assertTrue((self.racine / "__Data__" / "../Dark/index.html").exists())
+        self.assertIn("href='Fiches/Dark.html'", html)
+        self.assertTrue((self.racine / "__Data__" / "Fiches/Dark.html").exists())
 
     def test_le_dossier_data_n_est_pas_une_serie(self):
         fiche(self.racine / "Dark")
@@ -188,8 +220,8 @@ class TestLectureDesFiches(unittest.TestCase):
         self.assertEqual(showindex.find_entries(self.racine), [])
 
     def test_affiche_reprise_comme_cache(self):
-        fiche(self.racine / "Dark")
-        self.assertEqual(showindex.recap_poster(self.racine / "Dark" / "index.html"), dict([POSTER]))
+        page = fiche(self.racine / "Dark")
+        self.assertEqual(showindex.recap_poster(page), dict([POSTER]))
 
     def test_classement_article_compris(self):
         self.assertGreater(showindex.sort_key("The Expanse"), showindex.sort_key("Fargo"))
@@ -223,8 +255,8 @@ class TestIndexPy(unittest.TestCase):
         fiche(self.bib / "Ma Serie", show={**SHOW, "name": "Ma Serie"})
         self.assertIn("tv_shows.html écrit (2 série(s))", self.indexer("--apply"))
         html = self.index.read_text(encoding="utf-8")
-        self.assertIn("href='../Ma%20Serie/index.html#", html)
-        self.assertIn("href='../Dark/index.html#", html)
+        self.assertIn("href='Fiches/Ma%20Serie.html'", html)
+        self.assertIn("href='Fiches/Dark.html'", html)
 
     def test_sommaire_identique_pas_reecrit(self):
         self.indexer("--apply")
@@ -234,7 +266,7 @@ class TestIndexPy(unittest.TestCase):
     def test_simulation_n_ecrit_rien(self):
         self.assertIn("écrirait tv_shows.html", self.indexer())
         self.assertFalse(self.index.exists())
-        self.assertFalse((self.bib / "__Data__").exists())
+        self.assertEqual([d.name for d in (self.bib / "__Data__").iterdir()], ["Fiches"])      # le sommaire n'a rien ajouté
 
     def test_titre_donne_le_nom_du_fichier(self):
         self.assertIn("Anime.html écrit (1 série(s))", self.indexer("--apply", "--title", "Anime"))
@@ -243,7 +275,7 @@ class TestIndexPy(unittest.TestCase):
         self.assertIn("<title>Anime</title>", (self.bib / "__Data__" / "Anime.html").read_text(encoding="utf-8"))
 
     def test_sommaire_etranger_jamais_touche(self):
-        self.index.parent.mkdir()
+        self.index.parent.mkdir(exist_ok=True)
         self.index.write_text("<html>a moi</html>", encoding="utf-8")
         with self.assertRaises(SystemExit):
             self.indexer("--apply")
@@ -272,6 +304,8 @@ class TestAfficheDesFiches(FluxTestCase):
             [entry] = showindex.find_entries(Path(d))
             self.assertTrue(entry.poster.startswith("data:image/jpeg;base64,"))
             self.assertFalse((Path(d) / "index.html").exists())   # Metadata.py n'y touche pas
+            self.assertEqual(sorted(p.name for p in serie.iterdir()), ["Saison 1"])         # ni au dossier de la série : la fiche est dans __Data__
+            self.assertTrue((Path(d) / "__Data__" / "Fiches" / "Ma Serie.html").is_file())
 
 
 class TestMarqueDuSommaire(unittest.TestCase):

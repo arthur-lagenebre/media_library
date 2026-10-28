@@ -27,6 +27,12 @@ def season_number(name):
         return int(m.group(1))
     return 0 if SPECIALS_RE.match(stem) else None
 
+def series_folder(directory):
+    """Dossier de la série : `directory` lui-même, ou son parent quand il pointe sur un dossier de saison."""
+    path = Path(directory).resolve()
+    return path.parent if season_number(path.name) is not None else path
+
+
 def find_seasons(root):
     """[(dossier_saison, numéro), ...] pour chaque sous-dossier 'Saison N'.
 

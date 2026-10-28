@@ -1,8 +1,8 @@
 """Sommaire des séries d'une médiathèque, construit à partir de leurs fiches.
 
-Chaque fiche de série (index.html dans le dossier de la série, autrefois recap.html) porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
+Chaque fiche de série (__Data__/Fiches/<dossier de la série>.html, autrefois index.html ou recap.html dans le dossier de la série) porte dans son en-tête de quoi la présenter : titre, année, saisons, et l'affiche encodée. Le sommaire n'est donc que la lecture de ces en-têtes - ni TMDB, ni réseau, ni dépendance -, assez léger pour tourner en tâche planifiée sur le NAS qui héberge la médiathèque : les fiches sont souvent écrites ailleurs, sur un disque local, puis transférées, et seul le NAS voit la médiathèque entière.
 
-Le sommaire est rangé dans le dossier __Data__ de la médiathèque, sous le nom du titre qu'on lui donne (--title "Anime" l'écrit dans Anime.html), à défaut tv_shows.html : la médiathèque elle-même n'est pas touchée, et ses liens remontent d'un cran jusqu'aux fiches. Une page qui n'a pas été écrite par ce module n'est jamais remplacée.
+Le sommaire est rangé dans le dossier __Data__ de la médiathèque, sous le nom du titre qu'on lui donne (--title "Anime" l'écrit dans Anime.html), à défaut tv_shows.html, avec le dossier Fiches à côté : la médiathèque elle-même n'est pas touchée, et fiches et sommaire se répondent par des liens d'un cran. Une page qui n'a pas été écrite par ce module n'est jamais remplacée.
 """
 
 import hashlib
@@ -10,18 +10,18 @@ import re
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 from libraries.common import favicon, layout, textfile
 from libraries.common.filenames import safe_name
 
-DATA_DIR = "__Data__"                 # là où le sommaire est écrit, à la racine de la médiathèque
+DATA_DIR = "__Data__"                 # là où le sommaire et les fiches sont écrits, à la racine de la médiathèque
+DIR = "Fiches"                        # le dossier des fiches, à côté du sommaire : une par série, nommée d'après le dossier de la série
 DEFAULT_INDEX = "tv_shows.html"       # son nom quand on ne lui donne pas de titre
 LEGACY_INDEX = "index.html"           # là où les versions précédentes l'écrivaient, à la racine : lu pour son titre, jamais effacé
-# La fiche de chaque série reste dans le dossier de la série, sous le nom qu'un navigateur ou un serveur ouvre de lui-même dans un dossier. recap.html est l'ancien nom, lu tant que la fiche n'a pas été régénérée.
-PAGE_NAME = "index.html"
-LEGACY_NAME = "recap.html"
+# Ce que les versions précédentes écrivaient dans le dossier de chaque série : lu tant que la fiche n'a pas été régénérée, jamais effacé.
+LEGACY_NAMES = ("index.html", "recap.html")
 DEFAULT_TITLE = "Séries"
 
 # Signe qu'un index.html est bien le nôtre, et peut être réécrit sans demander.
@@ -101,13 +101,13 @@ class Entry:
     seasons_total: int = 0
     poster: str = ""
     overview: str = ""
-    page: str = PAGE_NAME
+    page: str = ""                    # le nom de la fiche quand elle est encore dans le dossier de la série ; vide pour celle de __Data__/Fiches
     genres: tuple = ()
 
     @property
     def href(self):
-        """Lien relatif vers la fiche, encodé : les noms de séries ont des espaces, des accents, des #. Le sommaire est dans __Data__ : il remonte d'un cran."""
-        return quote(f"../{self.folder}/{self.page}")
+        """Lien relatif vers la fiche, encodé : les noms de séries ont des espaces, des accents, des #. Le sommaire est dans __Data__, avec Fiches ; une fiche d'avant est dans le dossier de la série, un cran plus haut."""
+        return quote(f"../{self.folder}/{self.page}" if self.page else f"{DIR}/{self.folder}.html")
 
     @property
     def seasons_label(self):
@@ -122,8 +122,8 @@ def _int(value):
     return int(value) if (value or "").isdigit() else 0
 
 
-def read_entry(recap):
-    """Entry décrite par une fiche, ou None si ce n'en est pas une.
+def read_entry(recap, folder, page=""):
+    """Entry décrite par la fiche `recap` de la série `folder`, ou None si ce n'en est pas une. `page` : son nom, si elle est dans le dossier de la série.
 
     Une fiche écrite avant que les fiches portent ces <meta> n'a que son titre : elle figure quand même, sans affiche, jusqu'à ce qu'elle soit régénérée.
     """
@@ -133,13 +133,18 @@ def read_entry(recap):
         return None
     metas = _metas(head)
     poster = metas.get("poster", "")
-    return Entry(folder=Path(recap).parent.name, page=Path(recap).name, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip(), genres=tuple(g for g in metas.get("genres", "").split(layout.GENRE_SEP) if g))
+    return Entry(folder=folder, page=page, title=unescape(title.group(1)).strip(), year=metas.get("first-air-date", "")[:4], seasons=_int(metas.get("seasons")), seasons_total=_int(metas.get("seasons-total")), poster=poster if poster.startswith("data:image/") else "", overview=metas.get("overview", "").strip(), genres=tuple(g for g in metas.get("genres", "").split(layout.GENRE_SEP) if g))
+
+
+def sheet_path(root, folder):
+    """Où la fiche du dossier de série `folder` est écrite : dans __Data__/Fiches de la médiathèque `root`."""
+    return Path(root) / DATA_DIR / DIR / f"{folder}.html"
 
 
 def series_page(folder):
-    """La fiche d'un dossier de série - index.html, à défaut l'ancien recap.html -, ou None s'il n'en a pas."""
-    for name in (PAGE_NAME, LEGACY_NAME):
-        page = Path(folder) / name
+    """La fiche d'un dossier de série - celle de __Data__/Fiches, à défaut index.html ou recap.html dans le dossier lui-même -, ou None s'il n'en a pas."""
+    folder = Path(folder)
+    for page in (sheet_path(folder.parent, folder.name), *(folder / name for name in LEGACY_NAMES)):
         if page.is_file():
             return page
     return None
@@ -155,7 +160,7 @@ def find_entries(root):
     for sub in subs:
         recap = series_page(sub)
         if recap:
-            entry = read_entry(recap)
+            entry = read_entry(recap, sub.name, recap.name if recap.parent == sub else "")
             if entry:
                 entries.append(entry)
     return entries
@@ -174,17 +179,25 @@ def sort_key(title):
     return layout.fold((title or "").strip())
 
 
-def source_fragment(library_name, page):
-    """Ce que le lien d'une vignette dit de son sommaire - son fichier et son titre - pour que la fiche sache où et comment revenir : « ← Anime » vers Anime.html, pas « ← Séries » vers tv_shows.html. Dans le lien plutôt que déduit de la page d'origine, que le navigateur ne donne pas toujours (file://)."""
-    return "#" + urlencode({"i": page, "t": library_name}, quote_via=quote)
+def back_target(root, title=None):
+    """(fichier, titre) du sommaire où la fiche d'une série de `root` renvoie : celui de `title` ; à défaut le sommaire écrit dans __Data__ (tv_shows.html s'il y en a plusieurs) ; à défaut tv_shows.html, intitulé "Séries"."""
+    if title:
+        return index_name(title), title
+    found = our_indexes(root)
+    page = next((p for p in found if p.name == DEFAULT_INDEX), found[0] if found else None)
+    return (page.name, textfile.title_of(page) or DEFAULT_TITLE) if page else (DEFAULT_INDEX, DEFAULT_TITLE)
 
 
-def build_html(library_name, entries, page=DEFAULT_INDEX):
+def back_href(page, folder=None):
+    """Lien, relatif à une fiche de __Data__/Fiches, vers le sommaire `page` - à la vignette de la série `folder`, si on la donne."""
+    return quote(f"../{page}") + (f"#{anchor(folder)}" if folder else "")
+
+
+def build_html(library_name, entries):
     """Rend le sommaire (pur rendu : ni réseau ni disque). Classement par titre, article compris : "The Expanse" à T.
 
-    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. `library_name` titre l'onglet et le h1 ; `page` est le nom du fichier du sommaire, que les fiches rappellent à leur retour."""
+    Le résumé est coupé à trois lignes sous l'affiche : un résumé TMDB fait souvent plusieurs centaines de caractères, et en entier il rendrait la grille illisible. L'en-tête (titre, recherche, menu des genres, bouton de largeur, index A-Z) reste fixe en haut de page. `library_name` titre l'onglet et le h1."""
     cards = []
-    source = source_fragment(library_name, page)
     genres = {}
     for entry in sorted(entries, key=lambda e: sort_key(e.title)):
         for genre in entry.genres:
@@ -193,7 +206,7 @@ def build_html(library_name, entries, page=DEFAULT_INDEX):
                if entry.poster else "<div class='noimg'></div>")
         meta = " · ".join(t for t in (entry.year, entry.seasons_label) if t)
         overview = f"<div class='o'>{esc(entry.overview)}</div>" if entry.overview else ""
-        cards.append(f"<a id='{anchor(entry.folder)}' class='serie' href='{esc(entry.href + source)}' data-i='{layout.initial(sort_key(entry.title))}'{layout.genre_attr(entry.genres)}>"
+        cards.append(f"<a id='{anchor(entry.folder)}' class='serie' href='{esc(entry.href)}' data-i='{layout.initial(sort_key(entry.title))}'{layout.genre_attr(entry.genres)}>"
                      f"<div class='aff'>{img}</div>"
                      f"<div class='t'>{esc(entry.title)}</div>"
                      f"<div class='y'>{esc(meta)}</div>{overview}</a>")
@@ -282,7 +295,7 @@ def write(root, apply, title=None, out=None):
     entries = find_entries(root)
     legacy = Path(root) / LEGACY_INDEX
     previous = textfile.title_of(out) or (textfile.title_of(legacy) if is_ours(legacy) else None)
-    html = build_html(title or previous or DEFAULT_TITLE, entries, out.name)
+    html = build_html(title or previous or DEFAULT_TITLE, entries)
     if textfile.same(out, html):
         return f"{out.name} inchangé ({len(entries)} série(s))"
     if not apply:
