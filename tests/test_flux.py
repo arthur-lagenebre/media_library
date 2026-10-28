@@ -13,7 +13,6 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import showindex
 from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 from scripts.TV_Shows import Rename_Episodes as rename
@@ -111,11 +110,6 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.assertFalse((self.film / "folder.jpg").exists())
         self.assertIn("écrirait folder.jpg", sortie)
 
-    def test_recap_ecrit_sous_no_tag(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "__Data__" / "movies.html").exists())
-        self.assertFalse((self.racine / "index.html").exists())          # plus rien n'est écrit à la racine de la médiathèque
-
     def lancer_peu_vote(self, *options):
         """Un film que presque personne n'a noté : l'association est suspecte."""
         class PeuVote(FauxTmdb):
@@ -137,132 +131,14 @@ class TestAnnexesDesFilms(FluxTestCase):
         self.assertNotIn("À VÉRIFIER", (self.racine / "metadata.log").read_text(encoding="utf-8"))
         self.assertIn("1 film(s) validé(s)", sortie)
 
-    def test_chaque_film_a_sa_fiche(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        fiche = (self.racine / "__Data__" / "Fiches" / "1.html").read_text(encoding="utf-8")
-        self.assertIn("<title>Dune (2021)</title>", fiche)
-        self.assertIn("href='../movies.html#f1'", fiche)
-        self.assertIn("href='Fiches/1.html'", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
-
-    def test_simulation_n_ecrit_aucune_fiche_ni_dossier(self):
-        self.lancer_films("--no-tag", "--recap")
-        self.assertFalse((self.racine / "__Data__").exists())
-
-    def test_les_fiches_sont_rangees_a_cote_de_movies_html_et_pas_a_la_racine(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertFalse((self.racine / "Fiches").exists())
-        self.assertEqual(sorted(p.name for p in (self.racine / "__Data__").iterdir()), ["Fiches", "movies.html"])
-
-    def test_l_option_recap_out_n_existe_plus(self):
-        with self.assertRaises(SystemExit):
-            with mock.patch("sys.stderr", io.StringIO()):
-                self.lancer_films("--no-tag", "--recap", "--recap-out", str(self.racine / "ailleurs"), "--apply")
-
-    def test_fiches_identiques_pas_reecrites(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        fiche = self.racine / "__Data__" / "Fiches" / "1.html"
-        avant = fiche.stat().st_mtime_ns
-        _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("(0 écrite(s), 1 inchangée(s))", sortie)
-        self.assertEqual(fiche.stat().st_mtime_ns, avant)
-
-    def test_recap_identique_pas_reecrit(self):
-        # Lancée chaque nuit sur un NAS, la fiche ne doit pas changer de date tant que rien ne bouge.
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        _, sortie = self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("movies.html inchangé", sortie)
-        self.assertIn("metadata.log inchangé", sortie)
-
-    def test_le_journal_reste_a_la_racine(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "metadata.log").exists())
-        self.assertFalse((self.racine / "__Data__" / "metadata.log").exists())
-
-    def test_ancienne_fiche_lue_pour_son_titre_et_jamais_effacee(self):
-        # index.html (ou recap.html avant lui) était écrit à la racine : movies.html reprend son titre, et elle reste en place.
-        for ancien in ("index.html", "recap.html"):
-            with self.subTest(ancien):
-                shutil.rmtree(self.racine / "__Data__", ignore_errors=True)
-                (self.racine / ancien).write_text("<html><head><title>Ma videotheque</title></head></html>", encoding="utf-8")
-                self.lancer_films("--no-tag", "--recap", "--apply")
-                self.assertTrue((self.racine / ancien).exists())
-                self.assertIn("<title>Ma videotheque</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
-                (self.racine / ancien).unlink()
-
-    def test_titre_par_defaut_puis_choisi(self):
-        self.lancer_films("--no-tag", "--recap", "--apply")
-        self.assertIn("<title>Films</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
-        self.lancer_films("--no-tag", "--recap", "--title", "Cinematheque", "--apply")
-        self.lancer_films("--no-tag", "--recap", "--apply")       # la tache de nuit, sans --title
-        self.assertIn("<title>Cinematheque</title>", (self.racine / "__Data__" / "movies.html").read_text(encoding="utf-8"))
-
     def test_no_tag_relit_l_id_inscrit_dans_le_film(self):
         # Régression : sous --no-tag, rien n'était lu - "Mortal Kombat" (1995), pourtant identifié dans son fichier, redevenait par recherche celui de 2021.
         read = films.mkv.Reading(info={}, tags={(50, "TMDB", "movie/438631")})
         self.lecture = lambda paths: {p: read for p in paths}
         with mock.patch.object(films.mkv, "inspect_all", side_effect=AssertionError("MKVToolNix sollicite")):
-            _, sortie = self.lancer_films("--no-tag", "--recap")
+            _, sortie = self.lancer_films("--no-tag", "--artwork")
         self.assertIn("id lu dans le fichier", sortie)
 
-
-class TestAnnexesDesSeries(FluxTestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.bib = Path(self._tmp.name)                            # la médiathèque : la fiche est écrite dans son __Data__
-        self.racine = self.bib / "Ma Serie"
-        saison = self.racine / "Saison 1"
-        saison.mkdir(parents=True)
-        (saison / "01 - Pilote.mkv").write_text("x", encoding="utf-8")
-        self.addCleanup(self._tmp.cleanup)
-        self.fiche = self.bib / "__Data__" / "Fiches" / "Ma Serie.html"
-
-    def lancer_serie(self, *options):
-        with mock.patch.object(series.mkv, "check_tools", lambda **k: False):
-            return self.lancer(series, ["--dir", str(self.racine), "--tmdb-id", "42",
-                                        "--no-tag", *options], tmdb=FauxTmdbSerie())
-
-    def test_le_recap_porte_l_onglet_casting(self):
-        tmdb, _ = self.lancer_serie("--recap", "--apply")
-        html = self.fiche.read_text(encoding="utf-8")
-        self.assertEqual(tmdb.castings, [1])            # une saison, un appel
-        self.assertIn("data-s='cast'", html)
-        self.assertIn("A. Acteur", html)
-        self.assertIn("<img data-img='w185/a.jpg'", html)
-
-    def test_la_fiche_va_dans_data_sans_toucher_la_serie(self):
-        self.lancer_serie("--recap", "--apply")
-        self.assertTrue(self.fiche.is_file())
-        self.assertEqual(sorted(p.name for p in self.racine.iterdir()), ["Saison 1"])        # ni index.html ni quoi que ce soit dans le dossier de la série
-        self.assertIn("href='../tv_shows.html#", self.fiche.read_text(encoding="utf-8"))
-
-    def test_ancienne_fiche_reprise_comme_cache_sans_etre_effacee(self):
-        # Une fiche d'avant est restée dans le dossier de la série : ses images servent de cache, mais elle n'est ni renommée ni effacée.
-        ancienne = self.racine / "recap.html"
-        ancienne.write_text("<html><head><title>Ma Serie</title></head></html>", encoding="utf-8")
-        _, sortie = self.lancer_serie("--recap", "--apply")
-        self.assertTrue(ancienne.exists())
-        self.assertTrue(self.fiche.is_file())
-        self.assertNotIn("renommé", sortie)
-
-    def test_le_retour_suit_le_sommaire_ecrit_ou_le_titre(self):
-        (self.bib / "__Data__").mkdir()
-        (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
-        self.lancer_serie("--recap", "--apply")
-        self.assertIn("<a class='back' href='../Anime.html#", self.fiche.read_text(encoding="utf-8"))
-        self.lancer_serie("--recap", "--apply", "--title", "Mes animes")
-        self.assertIn("href='../Mes%20animes.html#", self.fiche.read_text(encoding="utf-8"))
-
-    def test_dir_sur_une_saison_ecrit_la_fiche_de_la_serie(self):
-        self.lancer(series, ["--dir", str(self.racine / "Saison 1"), "--tmdb-id", "42", "--no-tag", "--recap", "--apply"], tmdb=FauxTmdbSerie())
-        self.assertTrue(self.fiche.is_file())
-        self.assertEqual(sorted(p.name for p in (self.racine / "Saison 1").iterdir()), ["01 - Pilote.mkv"])
-
-    def test_la_simulation_n_interroge_pas_le_casting(self):
-        tmdb, sortie = self.lancer_serie("--recap")
-        self.assertEqual(tmdb.castings, [])
-        self.assertFalse(self.fiche.exists())
-        self.assertFalse((self.bib / "__Data__").exists())              # même le dossier n'est pas créé
-        self.assertIn("écrirait __Data__/Fiches/Ma Serie.html", sortie)
 
 
 class TestDoublons(FluxTestCase):

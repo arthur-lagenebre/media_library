@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.music import coverfile, library, mp3
 from libraries.music.tags import AudioError
 from scripts.Music import Cover as cover
-from scripts.Music import Recap as recap
 from tests.test_flac import image
 from tests.test_music_metadata import AlbumTestCase, FauxMusicBrainz, Mp3AlbumTestCase
 from tests.test_music_programmes import faux
@@ -136,27 +135,6 @@ class TestMediatheque(MediathequeTestCase):
         self.assertEqual(len(release.tracks), 3)
         self.assertIsNone(release.cover_file)
 
-
-class TestFiche(MediathequeTestCase):
-    """Recap.py : la fiche montre le fichier cover du dossier, pas la pochette embarquée."""
-
-    def vignette(self):
-        (release,) = self.releases()
-        with mock.patch.object(recap.thumbs, "thumbnail", side_effect=lambda data, width: data):
-            return recap.cover_uri(release, 480)
-
-    def test_la_fiche_prefere_le_fichier(self):
-        self.poser(images=[image(b"EMBARQUEE")])
-        (self.dossier / "cover.jpg").write_bytes(FICHIER)
-        self.assertEqual(self.vignette(), recap.thumbs.data_uri(FICHIER))
-
-    def test_sans_fichier_la_fiche_montre_l_embarquee(self):
-        self.poser(images=[image(b"EMBARQUEE")])
-        self.assertEqual(self.vignette(), recap.thumbs.data_uri(b"EMBARQUEE"))
-
-    def test_sans_aucune_pochette(self):
-        self.poser()
-        self.assertIsNone(self.vignette())
 
 
 class TestMetadata(AlbumTestCase):

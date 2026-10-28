@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from libraries.common import layout
+from libraries.common.text import fold
 
 from . import album as albums
 from . import audio
@@ -122,7 +122,7 @@ class Track:
 
     @property
     def order(self):
-        return (self.number is None, self.number or 0, layout.fold(self.path.stem))
+        return (self.number is None, self.number or 0, fold(self.path.stem))
 
 
 def _most_common(values):
@@ -263,7 +263,7 @@ class Release:
 
 
 def artist_id(name):
-    return hashlib.sha1(layout.fold(name).encode("utf-8")).hexdigest()[:8]
+    return hashlib.sha1(fold(name).encode("utf-8")).hexdigest()[:8]
 
 
 @dataclass
@@ -361,14 +361,14 @@ def read_release_cover(release):
 # Rangement
 # ----------------------------------------------------------------------------
 def order(release):
-    return (release.year or "9999", layout.fold(release.title))
+    return (release.year or "9999", fold(release.title))
 
 
 def artists(releases, wanted=None):
     """[Artist], rangés sans accents ni casse ; les albums de chacun par année, puis par titre. 'wanted' = {id d'artiste: [Wanted]} (voir wanted.find)."""
     by_artist = {}
     for release in releases:
-        by_artist.setdefault(layout.fold(release.artist), []).append(release)
+        by_artist.setdefault(fold(release.artist), []).append(release)
     wanted = wanted or {}
     found = [Artist(sorted(by_artist[key], key=order)) for key in sorted(by_artist)]
     for artist in found:

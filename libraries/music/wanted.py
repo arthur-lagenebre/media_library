@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from libraries.common import layout
+from libraries.common.text import fold
 
 from . import album as albums
 from . import coverfile
@@ -36,7 +36,7 @@ class Wanted:
     @property
     def order(self):
         """Où il se range parmi les albums possédés : par année, puis par titre (voir library.order)."""
-        return (self.year, layout.fold(self.title))
+        return (self.year, fold(self.title))
 
     @property
     def key(self):

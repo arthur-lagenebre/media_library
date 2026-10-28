@@ -19,7 +19,7 @@ Usage :
 
 Options : --apply --verify --extract
 
-Aucune dépendance, aucun outil externe, aucune clé. Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py ; pour que la fiche montre les nouvelles pochettes, Recap.py --apply.
+Aucune dépendance, aucun outil externe, aucune clé. Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
 """
 
 import argparse

@@ -163,38 +163,6 @@ class TestIdentifiantsLusDansLesFichiers(unittest.TestCase):
         self.assertEqual(ids, {Path("a.mkv"): "42", Path("b.mkv"): None})
 
 
-class TestDossiersSansRienADire(ProgrammeTestCase):
-    """Un dossier sans fiche ou sans série n'est pas un succès : le script le dit et sort en erreur."""
-
-    def lancer_script(self, script, *options):
-        ligne = [str(RACINE / "scripts" / script), "--dir", str(self.racine), *options]
-        with mock.patch.object(sys, "argv", ligne), redirect_stdout(io.StringIO()) as texte:
-            with self.assertRaises(SystemExit) as sortie:
-                runpy.run_path(ligne[0], run_name="__main__")
-        return sortie.exception.code, texte.getvalue()
-
-    def test_index_sans_aucune_fiche(self):
-        message, _ = self.lancer_script("TV_Shows/Index.py")
-        self.assertIn("Aucune fiche dans", message)
-
-    def test_index_n_ecrase_pas_une_page_etrangere(self):
-        page = self.racine / "__Data__" / "tv_shows.html"
-        page.parent.mkdir()
-        page.write_text("<html>à moi</html>", encoding="utf-8")
-        message, _ = self.lancer_script("TV_Shows/Index.py", "--apply")
-        self.assertIn("n'a pas été écrit par ce script", message)
-        self.assertEqual(page.read_text(encoding="utf-8"), "<html>à moi</html>")
-
-    def test_recap_all_sans_serie(self):
-        message, _ = self.lancer_script("TV_Shows/Recap_All.py")
-        self.assertIn("Aucune série dans", message)
-        self.assertIn("un sous-dossier par série", message)
-
-    def test_recap_all_filtre_sans_resultat(self):
-        (self.racine / "Breaking Bad" / "Saison 1").mkdir(parents=True)
-        message, _ = self.lancer_script("TV_Shows/Recap_All.py", "--only", "Dexter")
-        self.assertIn("dont le nom contient 'Dexter'", message)
-
 
 if __name__ == "__main__":
     unittest.main()

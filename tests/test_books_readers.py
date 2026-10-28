@@ -12,7 +12,6 @@ from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.books import archive, cbz, comicinfo, epub
-from libraries.common import thumbs
 
 COMICINFO = """<?xml version="1.0"?>
 <ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -267,30 +266,6 @@ class TestEpub(unittest.TestCase):
         self.assertEqual(epub.plain_text(None), "")
 
 
-@unittest.skipUnless(thumbs.available(), "Pillow n'est pas installé")
-class TestMiniatures(unittest.TestCase):
-    def dimensions(self, data):
-        from PIL import Image
-        with Image.open(io.BytesIO(data)) as image:
-            return image.format, image.size
-
-    def test_reduit_en_gardant_les_proportions(self):
-        jpeg = thumbs.thumbnail(png(1000, 1500), width=100)
-        self.assertEqual(self.dimensions(jpeg), ("JPEG", (100, 150)))
-
-    def test_une_petite_image_n_est_pas_agrandie(self):
-        self.assertEqual(self.dimensions(thumbs.thumbnail(png(40, 60), width=100))[1], (40, 60))
-
-    def test_image_illisible(self):
-        self.assertIsNone(thumbs.thumbnail(b"pas une image"))
-
-
-class TestSansPillow(unittest.TestCase):
-    def test_pas_de_miniature(self):
-        from unittest import mock
-        with mock.patch.object(thumbs, "Image", None):
-            self.assertFalse(thumbs.available())
-            self.assertIsNone(thumbs.thumbnail(png()))
 
 
 if __name__ == "__main__":

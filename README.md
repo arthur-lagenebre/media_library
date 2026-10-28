@@ -4,21 +4,19 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Généré par Claude Code](https://img.shields.io/badge/G%C3%A9n%C3%A9r%C3%A9%20par-Claude%20Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
-Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://www.themoviedb.org) pour les films et les séries, en français, et de [MusicBrainz](https://musicbrainz.org) pour la musique : les métadonnées sont écrites **directement dans les fichiers** — `.mkv`, `.flac`, `.mp3` — (sans ré-encodage ni remux, c'est quasi instantané), pour que chaque fichier reste autonome. Les livres, BD, comics et mangas portent déjà leur fiche (`ComicInfo.xml`, `.opf`) : ils sont seulement **lus**, pour en tirer une fiche de la bibliothèque.
+Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://www.themoviedb.org) pour les films et les séries, en français, et de [MusicBrainz](https://musicbrainz.org) pour la musique : les métadonnées sont écrites **directement dans les fichiers** — `.mkv`, `.flac`, `.mp3` — (sans ré-encodage ni remux, c'est quasi instantané), pour que chaque fichier reste autonome. Les livres, BD, comics et mangas portent déjà leur fiche (`ComicInfo.xml`, `.opf`) : ils ne sont pas modifiés.
+
+**media_library est l'atelier** : il nettoie, renomme, convertit et étiquette, mais ne produit **aucune page**. La médiathèque se *lit* depuis [media_hub](../media_hub), le serveur du NAS, qui réutilise les lecteurs de tags de `libraries/` (MKV, FLAC, MP3, CBZ, EPUB) sans rien écrire dans les fichiers.
 
 | Script | Rôle |
 | --- | --- |
-| [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes ; fiche récap de la médiathèque |
-| [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, plus une fiche récap HTML |
+| [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes  |
+| [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
 | [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet |
-| [scripts/Music/Recap.py](scripts/Music/Recap.py) | Fiche HTML d'une médiathèque musicale, lue dans les tags des `.flac` et `.mp3` : un mur de pochettes par artiste, une fiche par album avec ses pistes et celles qui manquent, une fiche par artiste (membres, liens, résumé Wikipédia, via MusicBrainz) ; rien n'est écrit dans les fichiers |
-| [scripts/TV_Shows/Recap_All.py](scripts/TV_Shows/Recap_All.py) | Régénère la fiche de toutes les séries d'une médiathèque, sans toucher aux épisodes |
-| [scripts/TV_Shows/Index.py](scripts/TV_Shows/Index.py) | Sommaire de toutes les séries (dans `__Data__`, sous le nom de `--title`), chacune menant à sa fiche (dans `__Data__/Fiches`) ; fait pour une tâche planifiée sur le NAS |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
-| [scripts/Books/Recap.py](scripts/Books/Recap.py) | Fiche HTML d'une bibliothèque de livres, BD, comics et mangas, lue dans les fiches intégrées aux `.cbz` et `.epub` : une page par série, couvertures, auteurs, tomes manquants ; rien n'est écrit dans les livres |
 | [scripts/Maintenance/Verify_Files.py](scripts/Maintenance/Verify_Files.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
 | [scripts/Converters/Video/Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
 | [scripts/Converters/Video/Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
@@ -29,32 +27,30 @@ Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine ; 
 ```text
 scripts/Movies/        étiquetage et renommage des films
 scripts/TV_Shows/      la même chose pour les séries
-scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, et leur fiche HTML
-scripts/Books/         fiche HTML des livres, BD, comics et mangas
+scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, pochettes
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
 scripts/Converters/    conversions qui précèdent l'étiquetage : Video/ (conteneur .mkv) et Music/ (.wav en .flac)
 libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage
 libraries/video/       tout ce qui touche aux films et aux séries
 libraries/music/       tout ce qui touche à la musique
-libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère, pages HTML
+libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
 tests/                 les tests
 ```
 
-[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, miniatures d'images, mise en page des fiches. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers et les fiches HTML. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums et leur fiche HTML. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
 - Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
 - [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son
-- [Pillow](https://pypi.org/project/pillow/) (`pip install pillow`) — facultatif : réduit les couvertures de `Books/Recap.py` et les pochettes de `Music/Recap.py`. Sans lui, les pages montrent un monogramme à la place (une note de musique grise pour la musique).
 
 ```powershell
 winget install MoritzBunkus.MKVToolNix
 winget install Gyan.FFmpeg
 ```
 
-`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` et les `.mp3` lui-même, et MusicBrainz ne demande aucune clé. `Books/Recap.py` ne demande ni outil, ni clé, ni réseau ; `Music/Recap.py` non plus pour ses pages d'albums, et n'interroge MusicBrainz et Wikipédia (sans clé) que pour enrichir les fiches d'artiste — `--no-artist-info` l'en empêche.
+`Rename_Episodes.py` et `Rename_Tracks.py` n'ont besoin d'aucun de ces outils : ils ne touchent qu'aux noms de fichiers. `Music/Metadata.py` non plus : il lit et écrit les `.flac` et les `.mp3` lui-même, et MusicBrainz ne demande aucune clé.
 
 ## Clé TMDB
 
@@ -90,7 +86,7 @@ Un dossier de saga n'est pas une réunion de fichiers indépendants : c'est une 
 python scripts\Movies\Metadata.py --dir "D:\Films"                    # simulation
 python scripts\Movies\Metadata.py --dir "D:\Films" --apply            # applique
 python scripts\Movies\Metadata.py --dir "D:\Films\Dune (2021)" --tmdb-id 438631 --apply   # force l'id
-python scripts\Movies\Metadata.py --dir "D:\Films" --no-tag --recap --apply   # fiche seule
+python scripts\Movies\Metadata.py --dir "D:\Films" --no-tag --artwork --apply   # folder.jpg seul, sans toucher aux .mkv
 ```
 
 L'identifiant TMDB retenu est **inscrit dans le film** (tag Matroska `TMDB`, au format `movie/1234`) : au passage suivant il est relu, plus rien n'est cherché, et l'association survit au renommage. La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags — une médiathèque jamais étiquetée ne paie rien. Priorité : `--tmdb-id`, puis l'identifiant épinglé dans le **nom**, puis celui lu dans le **fichier**, puis la recherche.
@@ -106,10 +102,6 @@ python scripts\Movies\Rename_Movies.py --dir "D:\Films" --apply --pin-id   # ren
 
 Un préfixe d'ordre de saga est conservé (`1 - Iron Man` → `1 - Iron Man (2008)`), les sous-titres suivent leur film en mode « `.mkv` à plat », et un identifiant déjà épinglé n'est jamais retiré.
 
-`--recap` écrit `movies.html` dans le dossier `__Data__` de `--dir` (créé au besoin : la médiathèque elle-même n'est pas touchée), avec le dossier `Fiches` de ses fiches de film à côté, intitulé « Films », ou ce que `--title` lui donne (le titre choisi est repris aux passages suivants) : un mur d'affiches groupé par saga, avec **les films qui manquent à chaque saga** — TMDB connaît la composition des collections, donc une trilogie possédée aux deux tiers se voit. Seuls les films déjà sortis peuvent manquer : une suite annoncée (*Avatar 4*, 2029) ou sans date n'apparaît qu'une fois sa date passée. Comme pour les séries, la page est un fichier unique (affiches encodées dedans) et la précédente sert de cache. `--no-tag` produit les annexes sans rien modifier dans les `.mkv`. Les versions précédentes écrivaient `index.html` et `Fiches/` à la racine de `--dir` (ou ailleurs, avec `--recap-out`, qui n'existe plus) : ils ne sont **pas effacés**, mais `movies.html` reprend leur titre et leurs affiches au premier passage, et on peut les supprimer. Le journal `metadata.log` reste à la racine.
-
-Une **zone de recherche** filtre les films par titre (sans accents ni casse) et masque les sagas qui n'ont plus rien à montrer. Un **index A–Z** dans l'en-tête fixe mène à la saga ou au film seul qui commence par la lettre (`#` pour un chiffre) ; pressée de nouveau, la lettre passe à l'occurrence suivante, et les lettres sans film sont grisées. Un bouton bascule entre **7 affiches par ligne** (par défaut) et la **pleine largeur** de l'écran ; le choix est gardé par le navigateur. Les sagas portent leur seul nom (`Iron Man`, pas `Iron Man - Saga`). Chaque film possédé mène à **sa propre fiche** — affiche, résumé, réalisateur et casting avec portraits —, un fichier par film rangé dans un dossier `Fiches` à côté de `movies.html` (`__Data__/Fiches/<id TMDB>.html`) : l'index reste léger, et la fiche n'est ouverte que pour le film qu'on clique, et « ← Films » ramène à sa vignette, pas en haut de la liste. Elle ne coûte aucune requête TMDB de plus (le casting est déjà dans la réponse du film), seulement des images, téléchargées une seule fois : la fiche précédente en sert de cache, et une fiche inchangée n'est pas réécrite. `--profile-size` (`w185`) règle la taille des portraits du casting. Les films manquants d'une saga n'ont pas de fiche, et celle d'un film sorti de la médiathèque reste sur le disque, sans plus de lien pour y mener.
-
 Sous `--no-tag`, les films ne sont lus que pour leurs tags et leur durée, en Python pur : **ni MKVToolNix ni FFmpeg** ne sont nécessaires, et l'identifiant TMDB inscrit dans chaque film est repris sans recherche. La fiche n'est réécrite que si son contenu change, et le journal `metadata.log` reste à la racine de `--dir`. De quoi la tenir à jour en tâche planifiée sur le NAS qui héberge les films.
 
 ### Séries
@@ -118,67 +110,14 @@ Un sous-dossier `Saison N` par saison, les `.mkv` dedans, préfixés par leur nu
 
 ```powershell
 python scripts\TV_Shows\Rename_Episodes.py --dir "D:\Series\Ma Serie" --apply
-python scripts\TV_Shows\Metadata.py --dir "D:\Series\Ma Serie" --apply --recap
+python scripts\TV_Shows\Metadata.py --dir "D:\Series\Ma Serie" --apply
 ```
 
 Les sous-titres posés à côté d'une vidéo (`.srt`, `.ass`, `.idx`/`.sub`…) sont renommés avec elle, en conservant ce qui suit le nom : `S01E02.fr.forced.srt` → `02 - Titre.fr.forced.srt`.
 
 La série est identifiée par une recherche TMDB sur le nom du dossier (celui du parent si `--dir` pointe sur une saison) : le résultat retenu est affiché, et les cas douteux — reboot portant le même nom, titre éloigné de la recherche — sont signalés. `--tmdb-id 1234` force l'identifiant quand la recherche se trompe ou ne trouve rien — et pour que ce soit **durable**, écris-le dans le nom du dossier : `Ma Serie [tmdbid-1396]` (ou `{tmdb-1396}`). Même chose côté films : `Dune (2021) [tmdbid-438631]`.
 
-`--recap` produit une fiche unique (onglets par saison, vignettes encodées dans la page : rien à conserver à côté), écrite dans `__Data__/Fiches/<dossier de la série>.html` à la racine de la médiathèque — le **dossier parent** de la série (celui de la série elle-même si `--dir` pointe sur une saison) : comme pour les films, les livres et la musique, la médiathèque elle-même n'est pas touchée. Son lien « ← » ramène au sommaire de `__Data__` (celui qu'Index.py y a écrit, ou celui que `--title` nomme), à la vignette de la série. Les `index.html` et `recap.html` que les versions précédentes écrivaient dans le dossier de chaque série ne sont **pas effacés** : ils servent de cache d'images au premier passage, et on peut les supprimer. Les épisodes dont TMDB n'a pas de vignette reprennent l'affiche de leur saison (à défaut, celle de la série), encodée une seule fois pour toute la page. Les épisodes absents du disque y sont grisés et étiquetés, avec un compteur par saison — l'inventaire se lit dans les noms de fichiers, tous formats vidéo confondus, donc il reste juste même avec `--no-tag`. Un dernier onglet **Casting** rassemble les acteurs vus dans plusieurs saisons, puis, saison par saison, ceux qui n'appartiennent qu'à elle — ce qui rend lisible une série longue dont la distribution change (aucun acteur n'est écarté ; une saison en crédite facilement une centaine). `--artwork` écrit les `folder.jpg` (affiche anglaise) de la série et de chaque saison. `--no-tag` génère ces annexes sans toucher aux épisodes, pour une série qui n'est pas en `.mkv`.
-
 Un dossier `Specials` (ou `Hors-serie`) est traité comme la saison 0 de TMDB, où vivent les épisodes spéciaux.
-
-Quand la fiche évolue, [Recap_All.py](scripts/TV_Shows/Recap_All.py) remet toute la médiathèque à niveau d'une seule commande : il lance `Metadata.py --no-tag --recap` sur chaque série — les épisodes ne sont **jamais** modifiés. L'identifiant TMDB inscrit dans la fiche existante est repris (sauf s'il est épinglé dans le nom du dossier), si bien qu'une série identifiée autrefois avec `--tmdb-id` ne retombe pas sur un homonyme. Les images déjà dans une fiche sont reprises, une série en échec n'arrête pas les suivantes et figure au bilan, et le sommaire de `__Data__`, s'il y en a un, est réécrit à la fin (`--title` nomme celui où chaque fiche revient, comme pour Index.py). `--only` restreint aux séries dont le nom contient un texte ; toute autre option (`--no-cache`, `--profile-size`, `--artwork`…) est transmise à `Metadata.py`.
-
-```powershell
-python scripts\TV_Shows\Recap_All.py --dir "D:\Series"            # simulation
-python scripts\TV_Shows\Recap_All.py --dir "D:\Series" --apply    # régénère toutes les fiches
-```
-
-Pour passer d'une fiche à l'autre, [Index.py](scripts/TV_Shows/Index.py) écrit un sommaire dans le dossier `__Data__` de la médiathèque (créé au besoin) : un mur d'affiches, une par série, chacune menant à sa fiche, dans `__Data__/Fiches` à côté de lui (ou l'ancien `index.html` / `recap.html` du dossier de la série, tant que la fiche n'a pas été régénérée). Une fiche dont le dossier de série a disparu reste dans `Fiches`, sans plus de lien pour y mener ; une série renommée a une nouvelle fiche, l'ancienne est à supprimer à la main. **Le fichier porte le nom du titre** : `--title "Anime"` écrit `__Data__/Anime.html`, intitulé « Anime » (onglet et titre de la page) ; sans `--title`, c'est `__Data__/tv_shows.html`, intitulé « Séries » ou comme le sommaire déjà écrit. L'`index.html` que les versions précédentes écrivaient à la racine n'est ni réécrit ni effacé : on en reprend le titre, et on peut le supprimer. [Recap_All.py](scripts/TV_Shows/Recap_All.py) réécrit à la fin tous les sommaires qu'Index.py a écrits dans `__Data__`, ou seulement celui d'un `--title`. Tout est lu dans l'en-tête des fiches, qui portent titre, année, saisons (`2/5 saisons` quand il en manque), affiche et résumé — trois lignes sous l'affiche : ni TMDB, ni clé, ni réseau, ni outil externe — seulement Python 3 et `libraries/`. Il est donc fait pour tourner **en tâche planifiée sur le NAS** : les fiches s'écrivent sur un disque local puis sont transférées, et seul le NAS voit toutes les séries. Le sommaire n'est réécrit que si son contenu change, une page qu'il n'a pas écrite n'est jamais remplacée, et les dossiers cachés (`.recycle`…) sont ignorés. Une fiche antérieure à cette version figure sans affiche jusqu'à sa régénération. Chaque fiche porte un lien de retour dans son en-tête fixe (« ← Séries », ou « ← Anime » pour `--title "Anime"`), qui ramène à **sa vignette** dans le sommaire, pas en haut de la liste : le lien de chaque vignette dit à la fiche quel sommaire l'a ouverte (son fichier et son titre), et venu de lui c'est un vrai retour en arrière, qui garde aussi la recherche en cours. Une fiche ouverte directement, ou écrite avant cette version, mène à `__Data__/tv_shows.html`. Classement alphabétique sur le titre tel qu'il s'écrit, article compris (*The Expanse* à T, *Les Motards de l'espace* à L), filtre de recherche en tête, liens relatifs (le sommaire et `Fiches` sont tous deux dans `__Data__`) : la médiathèque peut être déplacée sans rien casser. Chaque fiche porte une icône d'onglet à ses initiales, sur une couleur propre à la série (*BB* pour *Breaking Bad*), et le sommaire un petit téléviseur : des SVG écrits dans la page, sans fichier à côté — Safari, qui gère mal les icônes SVG, affiche la sienne par défaut.
-
-```powershell
-python scripts\TV_Shows\Index.py --dir "D:\Series" --apply
-```
-
-#### Mettre le sommaire à jour sur TrueNAS SCALE
-
-Dans ce qui suit, `<pool>` est le pool de stockage, `<outils>` le dataset où ranger le script, `<series>` celui de la médiathèque, `<utilisateur>` le compte propriétaire du partage et `<nas>` / `<partage>` le nom réseau du NAS et du partage SMB. Les chemins réels se lisent dans *Datasets* (champ *Mountpoint*) et dans *Shares*.
-
-1. **Copier les fichiers** sur un dataset, depuis l'Explorateur Windows par le partage SMB par exemple — jamais sur le pool système (`boot-pool`), qui est effacé aux mises à jour. Le dépôt entier convient ; à défaut, ces deux éléments suffisent, à condition de garder l'arborescence :
-
-   ```text
-   /mnt/<pool>/<outils>/media_library/
-   ├── libraries/                     (le dossier entier)
-   └── scripts/TV_Shows/Index.py
-   ```
-
-2. **Vérifier Python**, dans *System → Shell* : `python3 --version` doit répondre (Python est fourni avec le système, rien à installer).
-
-3. **Essayer en simulation**, toujours dans le shell — rien n'est écrit, la liste des séries trouvées s'affiche :
-
-   ```sh
-   python3 /mnt/<pool>/<outils>/media_library/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series>
-   ```
-
-   `Aucune fiche` signifie que `--dir` ne pointe pas sur le dossier qui contient un sous-dossier par série, ou qu'aucune série n'a encore de fiche.
-
-4. **Créer la tâche**, dans *System → Advanced Settings → Cron Jobs → Add* :
-
-   | Champ | Valeur |
-   | --- | --- |
-   | Description | `Sommaire des séries` |
-   | Command | `python3 /mnt/<pool>/<outils>/media_library/scripts/TV_Shows/Index.py --dir /mnt/<pool>/<series> --apply` |
-   | Run As User | `<utilisateur>` — pas `root` : un dossier `__Data__` créé par `root` pourrait ne plus être modifiable ni supprimable depuis le partage |
-   | Schedule | *Hourly* (toutes les heures) |
-   | Hide Standard Output | coché — sans quoi chaque passage enverrait un courriel |
-   | Hide Standard Error | décoché — une erreur, elle, mérite d'être signalée |
-   | Enabled | coché |
-
-5. **Lancer la tâche une première fois** depuis la liste des Cron Jobs (*Run Now*), puis ouvrir `\<nas>\<partage>\__Data__\tv_shows.html` (ou `<titre>.html`, avec `--title`) depuis Windows.
-
-Ensuite, plus rien à faire : une série traitée sur le disque local puis copiée sur le NAS apparaît dans le sommaire au passage suivant, au plus tard une heure après. Le fichier n'est réécrit que si la liste a changé. `Permission denied` dans le courriel d'erreur veut dire que `<utilisateur>` ne peut pas écrire à la racine de `<series>` ; une série sans affiche, que sa fiche date d'avant cette version — la régénérer avec `--recap` suffit.
 
 ### Musique
 
@@ -225,9 +164,9 @@ python scripts\Music\Cover.py --dir "D:\Musique" --extract            # simulati
 python scripts\Music\Cover.py --dir "D:\Musique" --extract --apply    # écrit les cover.jpg manquants
 ```
 
-Le chemin pour corriger les mauvaises pochettes (recto-verso, mal cadrées) : extraire, ouvrir les `cover.jpg`, remplacer à la main ceux qui ne vont pas, puis embarquer avec `Cover.py --apply` et régénérer la fiche avec `Recap.py --apply`.
+Le chemin pour corriger les mauvaises pochettes (recto-verso, mal cadrées) : extraire, ouvrir les `cover.jpg`, remplacer à la main ceux qui ne vont pas, puis embarquer avec `Cover.py --apply`.
 
-Une piste qui porte déjà exactement cette image n'est pas réécrite ; une autre image de face est remplacée, les images d'un autre type (dos, livret) sont gardées. Les albums sans fichier cover sont listés à la fin, pour savoir où en poser un. Seuls le JPEG et le PNG s'embarquent dans une piste : un `.webp`, `.gif` ou `.bmp` sert à la fiche mais pas aux fichiers audio (signalé). Une image de plus de 4 Mio est signalée, car l'Explorateur de Windows ne lit plus rien d'un `.flac` dont l'en-tête la dépasse. Pour que la fiche montre les nouvelles pochettes, relancer `Recap.py --apply`.
+Une piste qui porte déjà exactement cette image n'est pas réécrite ; une autre image de face est remplacée, les images d'un autre type (dos, livret) sont gardées. Les albums sans fichier cover sont listés à la fin, pour savoir où en poser un. Seuls le JPEG et le PNG s'embarquent dans une piste : un `.webp`, `.gif` ou `.bmp` ne s'embarque pas dans un fichier audio (signalé). Une image de plus de 4 Mio est signalée, car l'Explorateur de Windows ne lit plus rien d'un `.flac` dont l'en-tête la dépasse.
 
 L'identifiant de l'édition (`MUSICBRAINZ_ALBUMID`) est inscrit dans chaque fichier et relu au passage suivant. Priorité : `--mbid`, puis l'identifiant épinglé dans le nom du dossier (`2013 - Outrun [mbid-4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6]`), puis celui que **tous** les fichiers déclarent, puis la recherche.
 
@@ -242,94 +181,11 @@ python scripts\Music\Rename_Tracks.py --dir "D:\Musique" --apply         # renom
 
 L'album est reconnu exactement comme par `Metadata.py` — mêmes éditions, même placement des fichiers, mêmes questions en fin de passage — et un album dont un seul fichier ne trouve pas sa piste n'est pas renommé du tout. Passé après `Metadata.py`, il ne cherche plus rien : l'identifiant est dans les fichiers. Un album en plusieurs disques rangés à plat préfixe le disque (`2-01 - Alive 1997.flac`) ; rangés dans `CD1`, `CD2`…, chaque dossier repart de `01`. Un `/` dans un titre devient `-` (`Robot Rock - Oh Yeah`), et les paroles `.lrc` posées à côté suivent leur piste. Les dossiers ne bougent pas : leur nom reste celui qu'on leur a donné.
 
-#### Fiche de la médiathèque
-
-Les albums passés par `Metadata.py` portent déjà tout ce qu'une fiche montre : titre, artiste, année, genres, label, numéros de piste et leurs totaux, identifiant MusicBrainz, pochette. Il n'y a donc **rien à chercher en ligne** pour les albums : [Recap.py](scripts/Music/Recap.py) lit ces tags — sans clé, sans rien écrire dans les fichiers — et en fait une fiche de la médiathèque, dans le style de celle des films. Elle marche aussi sur des albums qui n'ont pas été étiquetés (le nom du dossier remplace alors les tags), et le journal dit lesquels sont à passer par `Metadata.py`.
-
-```powershell
-python scripts\Music\Recap.py --dir "D:\Musique"            # simulation : lit les fichiers, ne montre que le bilan
-python scripts\Music\Recap.py --dir "D:\Musique" --apply    # écrit la fiche dans D:\Musique\__Data__
-```
-
-Tout est écrit dans `__Data__` à la racine de `--dir` (ou dans `--out`) :
-
-| Fichier | Contenu |
-| --- | --- |
-| `music.html` | Le sommaire **et le lecteur**, en un seul fichier : un mur de pochettes **groupé par artiste** — chaque artiste a sa section, même avec un seul album, classée sans tenir compte des accents ni de la casse —, avec une **zone de recherche** (album, artiste, label, genre), un **filtre de genre**, le bouton *7 par ligne* / *Pleine largeur* et un **index A–Z** dans l'en-tête fixe, au-dessus d'une **barre de lecture** (voir plus bas) |
-| `Albums/` | Une fiche par album : pochette, artiste, année, label et numéro de catalogue, genres, durée, format, lien vers la fiche MusicBrainz, pistes avec leur durée (une section par disque), **les pistes qui manquent**, et un **lecteur** (voir plus bas) |
-| `Artistes/` | Une fiche par artiste ou groupe, où mène son nom — dans le sommaire comme sur la fiche d'un album : ses albums, ses genres, et ce que MusicBrainz et Wikipédia en disent (voir plus bas) |
-| `artists.json` | Ce que MusicBrainz et Wikipédia ont dit des artistes (voir plus bas) : redemandé au bout d'un mois seulement |
-| `catalog.json` | Ce qu'on a lu dans chaque fichier, avec sa taille et sa date : aux passages suivants, seules les pistes **nouvelles ou modifiées** sont rouvertes |
-| `recap.log` | Le journal : les albums pas encore étiquetés, les pistes qui manquent, les fichiers illisibles et ceux d'un format non pris en charge |
-
-Les **pistes manquantes** viennent du total que les tags annoncent (`TRACKTOTAL`, `DISCTOTAL`) comparé aux numéros possédés : `Manque : pistes 3, 5–7 (sur 13)`, et chaque piste absente est grisée à sa place dans la liste. Rien n'est dit d'un disque dont une piste n'a pas de numéro — c'est peut-être elle qui manque. Sur le sommaire, la pochette d'un album incomplet affiche `11/13 pistes` en orange.
-
-Un album est reconnu comme par `Metadata.py` — un dossier qui contient de l'audio, lui ou ses dossiers de disque —, et les mêmes règles tranchent quand les tags manquent : le disque et le numéro viennent des tags, puis du dossier de disque, puis du nom du fichier. Les dossiers dont le nom commence par `__`, `#` ou `@` (`__Data__`, `#recycle`, `@eaDir`) sont ignorés. Les artistes se regroupent sans tenir compte des accents ni de la casse, et les albums d'un artiste se rangent par année. Le lien MusicBrainz d'un artiste vient du tag `MUSICBRAINZ_ALBUMARTISTID`, écrit par `Metadata.py` : il manque aux albums pas encore étiquetés, et à ceux dont l'artiste en porte plusieurs (`Kavinsky feat. Havoc`), où aucun ne dit seul qui est l'artiste. Les albums d'« Artiste inconnu » n'ont pas de fiche commune.
-
-**Ce que dit la fiche d'un artiste.** Pour chaque artiste dont les tags portent l'identifiant MusicBrainz, `Recap.py --apply` demande à MusicBrainz son **type** (groupe, artiste solo, orchestre…), son **pays**, ses **dates** (`depuis 1993`, `1950 – 2016`, `né en 1970`), sa description courte, ses **membres** — les actuels, puis les anciens, en deux listes **repliées par défaut** (un clic les déplie ; la liste des albums, elle, est dépliée et se replie de même), avec leurs rôles et leur période, chacun lié à sa fiche MusicBrainz — et ses **liens officiels** (site, Bandcamp, YouTube, réseaux sociaux, plateformes ; les bases de données et les boutiques sont écartées). Le **résumé** vient de Wikipédia, que MusicBrainz désigne par un identifiant Wikidata : l'article en français, à défaut en anglais, coupé à la fin d'une phrase et suivi de sa source. Les noms de pays, les rôles des membres et la description courte restent ceux de MusicBrainz, donc en anglais.
-
-**Les albums qui manquent.** Pour qu'une fiche d'artiste montre sa discographie complète, on le dit dans son dossier par une **image nommée comme un album rangé** : `1997 - OK Computer.jpg` (ou `.png`, `.webp`…) à côté de `1995 - The Bends/`. C'est la pochette : la vignette la montre, grisée comme le reste. Un fichier vide `1997 - OK Computer.txt` dit la même chose, sans pochette (image générique), et l'image de même nom, s'il y en a une, la lui donne. La fiche de l'artiste **et le sommaire** rangent ces albums parmi les autres, par année, en vignettes grisées marquées « manquant » (sans lien ni lecture) ; le sommaire ne les compte pas dans ses totaux, ajoute « · 4 manquants » au titre de la section, les trouve par la recherche (titre, artiste) et les masque dès qu'un genre est choisi — on n'en sait rien. La fiche compte `Albums 8/12` et ajoute « 4 manquants » à ses chiffres ; le journal `recap.log` les liste (`[ABSENT]`). Un `.txt` dont l'album a été rangé depuis (même titre, même année) est ignoré : il peut rester sans fausser la fiche. Les signes qu'un nom de fichier ne peut pas porter (`?`, `:`) ne comptent pas dans la comparaison, et une image ou un `.txt` dans un dossier sans aucun album n'affiche rien — l'artiste n'a pas de fiche.
-
-C'est le seul endroit où le script sort sur le réseau, à raison d'**une requête par seconde** pour MusicBrainz — comptez un quart d'heure pour 500 artistes au premier passage. Les réponses sont gardées dans `artists.json`, à côté des pages, et redemandées au bout d'un mois : aux passages suivants, seuls les **nouveaux artistes** coûtent une requête, et un artiste sans fiche MusicBrainz (supprimée ou fusionnée) n'est pas redemandé. Sans réseau, le script abandonne après **trois échecs d'affilée** et garde ce qu'il avait ; le reste est repris au passage suivant. La simulation n'interroge personne et annonce combien d'artistes elle interrogerait. `--no-artist-info` n'interroge jamais, et les fiches gardent alors ce qu'on savait déjà ; `--no-cache` redemande tous les artistes.
-
-**Écouter depuis la fiche.** Chaque piste d'une fiche d'album a un bouton ▶ qui joue le fichier lui-même, dans un lecteur fixé en bas de page. **Tout lire**, en tête de fiche, lit l'album du début à la fin, disques à la suite (le même bouton met en pause, puis reprend) ; une piste finie lance la suivante, la barre porte ⏮ et ⏭ et la position (`3/12`), ⏮ relance la piste si elle a plus de 3 secondes ou si c'est la première, recliquer sur la piste en cours la met en pause, et un fichier introuvable le dit dans la barre. **`music.html` est aussi le lecteur** : le sommaire porte sa barre de lecture, à la manière de Qobuz, fixée en bas de la fenêtre : à gauche la **pochette**, le **titre** et « artiste – album » de la piste en cours (un clic y ouvre la fiche de l'album) ; au centre le temps écoulé et la durée (`00:30 - 03:17`), **aléatoire**, **précédent**, **lecture/pause**, **suivant** et **répéter** (rien, l'album, la piste) ; à droite le **volume** et la coupure du son ; et en travers de son bord haut la **barre de progression**, qu'on clique ou qu'on tire (flèches du clavier : ±5 s). La file de lecture est l'album : l'aléatoire le mélange en gardant la piste choisie en tête, et il reste actif d'un album à l'autre. La barre est là **dès l'arrivée**, au repos (« Aucune lecture », lecture, précédent et suivant grisés) : le bouton du volet reste actif, ce qui permet de lancer une playlist avant d'avoir joué quoi que ce soit. Un bouton ▶ au milieu de chaque pochette lit l'album (le même bouton met en pause). Le bouton ☰♪ de la barre ouvre la **file d'attente**, un volet à droite : le titre en cours, puis **ce qui suit dans l'ordre de lecture** — celui de l'album, ou le tirage de l'aléatoire, qui s'y reflète. Un clic sur un titre saute dessus, un clic sur le titre en cours le met en pause, la croix au bout d'un titre à venir le **retire** de la file, « Vider » retire tout ce qui suit, `Échap` ou la croix du haut referment le volet. Ouvert, le volet **pousse la page** (et la fiche ouverte) au lieu de la recouvrir : les durées et les menus ⋯ du bord droit restent à portée ; sur un écran étroit, il passe par-dessus.
-
-**Les playlists** vivent dans le deuxième onglet du volet, *Playlists*. On y crée une playlist (**＋ Nouvelle playlist**), on voit la liste, et un clic en ouvre le contenu : **▶ Lire** en fait la file, **À la file** l'ajoute à la fin de la file en cours, **Renommer** et **Supprimer** font ce qu'ils disent, un clic sur un titre lit la playlist à partir de lui, et la croix d'un titre le retire. Pour y ranger des titres, le menu ⋯ d'un titre (ou celui de l'album, à côté de « Tout lire ») propose **Ajouter à une playlist…** : une fenêtre liste vos playlists et « Nouvelle playlist » ; un titre déjà présent n'est pas doublé, et un message le dit. Dans l'onglet de la file, **Enregistrer en playlist** garde toute la file, dans l'ordre de lecture.
-
-**Réordonner.** Dans une playlist, chaque titre porte une poignée **⋮⋮** à gauche : on l'attrape (à la souris ou au doigt) et on la dépose à sa place, un trait bleu montrant où elle tombera, et la liste défile quand on approche de son bord. Au clavier, la poignée prend le focus avec Tab, et **↑** / **↓** déplacent le titre d'un cran. Réordonner une playlist ne touche pas à la file en cours : celle-ci est une copie.
-
-**Exporter et importer.** Dans la liste des playlists, **Exporter** télécharge toutes les playlists dans un fichier `playlists.json` (le format de l'export, versionné, ne contient que des noms, des chemins relatifs et des titres), et **Importer** en lit un. L'import **ajoute sans rien écraser** : une playlist identique (même nom, mêmes titres) n'est pas doublée, un nom déjà pris reçoit un numéro (« Ma liste (2) »), et un message dit ce qui a été fait ; un fichier qui n'est pas du JSON, ou sans playlist valable, est refusé. C'est le moyen de sauvegarder ses playlists, de les passer d'un navigateur à l'autre, ou de les retrouver entre `file://` et `https://`, qui ne partagent pas leur stockage.
-
-Les playlists sont gardées **dans le navigateur** (`localStorage`), pas sur le NAS : elles ne se partagent pas d'un navigateur à l'autre, ni entre `file://` et `https://` — qui sont deux « sites » pour lui. Chaque titre y est enregistré par son **chemin relatif à `music.html`** (`../Daft%20Punk/Discovery/01.flac`) plus son titre, jamais par une adresse complète : la même playlist marche donc par le partage réseau comme par le serveur web. La pochette, l'artiste et la fiche d'un titre sont retrouvés dans la page ; un fichier déplacé ou supprimé reste dans la playlist, barré et marqué *Introuvable*, et n'est pas lu. Si le navigateur refuse le stockage (navigation privée), la page le dit et marche sans playlists. Chaque titre de la file porte son propre artiste, album, pochette et fiche : la file n'est plus liée à un seul album. Cliquer un nom d'artiste ou une pochette ouvre la fiche **par-dessus** le sommaire, dans une iframe, au-dessus de la barre : la musique ne s'arrête jamais. La fiche n'y joue plus elle-même, elle envoie ses pistes à la barre et marque celle qui joue ; « ← Musique » la ferme et ramène au groupe qu'on a quitté, le sommaire n'ayant pas bougé ; cliquer le nom de l'album dans la barre rouvre sa fiche. Un clic avec Ctrl ou Maj, ou un clic du milieu, ouvre la fiche dans un onglet comme d'habitude. L'adresse du navigateur reste celle de `music.html` pendant qu'on navigue, donc un favori ou un rechargement ramène au sommaire. Ouvertes seules (depuis l'Explorateur ou un lien direct), les fiches jouent comme avant, avec leur barre simple (⏮ ⏭ et le lecteur du navigateur), et la musique s'arrête quand on change de page. Rien n'est copié ni encodé dans la page : le bouton pointe vers le fichier par un **lien relatif** (`../../Daft%20Punk/Discovery/01.flac`), donc la fiche ne lit que là où les fichiers sont joignables depuis elle — ouverte depuis le disque ou le partage réseau (`file://`), ou servie avec la musique par un serveur web du NAS. Écrite ailleurs avec `--out`, le lien est recalculé vers la médiathèque ; **copiée sans la musique**, elle ne lit rien, et `--no-player` retire alors les boutons et la barre : `music.html` n'est plus qu'un sommaire, dont les liens se suivent dans l'onglet. Les `.flac` et `.mp3` se lisent dans les navigateurs récents, et dans l'ordre de la fiche : les pistes manquantes ou illisibles n'ont pas de bouton. Un menu **⋯** en bout de chaque piste (visible au survol, toujours au doigt) propose **Lire ce titre seul** : la file ne contient alors que lui, la lecture s'arrête à sa fin, et « suivant » est grisé. Dans `music.html` la fiche l'envoie à la barre comme une file d'un seul titre, que le panneau de la file d'attente montre ; sur une fiche ouverte seule, c'est sa propre barre qui s'arrête. Dans `music.html`, le même menu propose aussi **Lire ensuite** (juste après le titre en cours, derrière ceux déjà ajoutés ainsi : ils passent dans l'ordre où on les a demandés) et **Ajouter à la fin** ; un menu **⋯** à côté de « Tout lire » fait de même pour **l'album entier**. Un message le confirme au-dessus de la barre, et quand rien ne joue encore, l'ajout lance la lecture. Les titres ajoutés restent à leur place si on coupe puis remet l'aléatoire. Une fiche ouverte seule n'a pas de file : elle ne propose que « Lire ce titre seul ».
-
-**Le retour sur le sommaire** (quand une fiche est ouverte seule, ou avec `--no-player`) se cale sur le **nom du groupe** de l'album qu'on quitte, juste sous l'en-tête fixe, plutôt que de remettre la page là où elle était — presque toujours en travers d'une rangée de pochettes coupée par l'en-tête. Ça vaut pour le retour du navigateur comme pour le lien « Musique ».
-
-Les pochettes sont celles que portent les fichiers, réduites et encodées dans la page, qui reste un fichier unique : il faut [Pillow](https://pypi.org/project/pillow/) pour les réduire, et sans lui les pages montrent une image générique à la place — une note de musique grise, la même pour tous les albums sans pochette. Une page déjà écrite sert de cache — rien n'est rouvert pour une pochette déjà dedans, et une page qui n'a pas changé n'est pas réécrite —, de quoi la tenir à jour chaque nuit sur le NAS sans réveiller les disques pour rien. Le script sort en **code 1** s'il y a des fichiers illisibles. `--no-cache` rouvre toutes les pistes, `--no-player` retire les boutons de lecture, `--title` donne son titre à la fiche (« Musique » par défaut, et le choix est repris aux passages suivants), `--cover-width` règle la taille des pochettes des fiches et `--workers` le nombre de fichiers lus en parallèle (8 par défaut).
-
-Les versions précédentes écrivaient `index.html` (le sommaire) et `lecteur.html` (la coque qui l'affichait dans une iframe), puis `musique.html` : `music.html` les remplace tous. Ils ne sont **pas effacés** — ce script n'efface jamais rien dans `__Data__` — mais plus rien n'y mène ; le titre choisi avec `--title` y est repris la première fois. Les supprimer à la main est sans conséquence.
-
-Pour la mettre à jour sur un NAS, la tâche planifiée est celle de [la fiche des livres](#mettre-la-fiche-à-jour-sur-truenas-scale), avec `Music/Recap.py` et le dossier de la musique : `XDG_CACHE_HOME=/mnt/<pool>/<outils>/cache python3 /mnt/<pool>/<outils>/media_library/scripts/Music/Recap.py --dir /mnt/<pool>/<musique> --apply`. Ouvrir ensuite `\<nas>\<partage>\__Data__\music.html`.
-
 ### Livres, BD, comics et mangas
 
 La bibliothèque est rangée **par section** — un dossier `Manga`, `BD`, `Comics`, `Artbook`, `Romans`… — et chaque section par **série** : un dossier par série (par auteur pour les romans) qui contient ses volumes, `.cbz` pour les bandes dessinées, `.epub` pour le reste. Un fichier posé seul dans une section (`Manuels/Un guide.epub`) est sa propre série, ceux de la racine forment la section « Autres », et les sous-dossiers d'une série (cycles, intégrales) en groupent les volumes à l'affichage.
 
-Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, numéro, résumé, auteurs, éditeur, date, genres…), le `.opf` d'un `.epub` quand Calibre est passé par là. Il n'y a donc **rien à chercher en ligne** : [Recap.py](scripts/Books/Recap.py) lit ces fiches — sans réseau, sans clé, sans rien écrire dans les livres — et en fait une fiche de la bibliothèque, dans le style de celle des films.
-
-```powershell
-python scripts\Books\Recap.py --dir "\\TRUENAS\Livres"            # simulation : lit les livres, ne montre que le bilan
-python scripts\Books\Recap.py --dir "\\TRUENAS\Livres" --apply    # écrit la fiche dans \\TRUENAS\Livres\__Data__
-```
-
-Tout est écrit dans `__Data__` à la racine de `--dir` (ou dans `--out`) :
-
-| Fichier | Contenu |
-| --- | --- |
-| `books.html` | Le sommaire : une vignette par série, groupées par section, avec une **zone de recherche** (titre, auteur, éditeur, genre) et le bouton *7 par ligne* / *Pleine largeur* des films, un **index A–Z** (la même lettre, pressée de nouveau, passe à la série suivante) et un raccourci par section (*Manga*, *BD*…) dans l'en-tête fixe |
-| `Series/` | Une page par série : couverture, auteurs, éditeur, années, genres, résumé, une carte par volume avec sa couverture, et **les tomes qui manquent** |
-| `catalog.json` | Ce qu'on a lu dans chaque livre, avec sa taille et sa date : aux passages suivants, seuls les livres **nouveaux ou modifiés** sont rouverts |
-| `recap.log` | Le journal : par section, les livres **sans fiche** et les fichiers illisibles |
-
-Les **tomes manquants** viennent du champ `Count` des fiches (« la série compte 37 tomes ») comparé aux numéros possédés : `Manque : 3, 5–7, 12`. Rien n'est dit d'une série dont un volume n'a pas de numéro, car c'est peut-être lui qui manque. Un dossier qui réunit plusieurs cycles se compte cycle par cycle. Quand il en manque, la vignette affiche `12/22 tomes` en orange.
-
-Un dossier dont le nom commence par `__` — `__Data__`, `__En cours` — n'est pas encore rangé : il est ignoré, comme `#recycle`, `@eaDir` et les dossiers cachés. Tout ce qui n'est pas un livre (`.txt`, `.db`, `.jpg`, `.opf` voisin d'un livre, tableur) l'est aussi, et **les `.pdf` le sont par défaut** : ils n'ont ni fiche ni couverture à lire. `--include-pdf` les compte, avec un monogramme.
-
-Les couvertures sont celles que la fiche désigne (`FrontCover`), sinon la première page, réduites à 240 pixels et encodées dans la page, qui reste un fichier unique. Il faut [Pillow](https://pypi.org/project/pillow/) pour les réduire ; sans lui, les pages montrent un monogramme à la place. Une page déjà écrite sert de cache : rien n'est rouvert pour une couverture déjà dedans, et une page qui n'a pas changé n'est pas réécrite — la fiche ne change pas de date tant que la bibliothèque ne bouge pas.
-
-Le script sort en **code 1** s'il y a des fichiers illisibles (un `.cbz` tronqué par un transfert interrompu, typiquement), signalés dans `recap.log` et sur la page de leur série. `--no-cache` rouvre tous les livres, `--cover-width` règle la taille des couvertures et `--workers` le nombre de livres lus en parallèle (8 par défaut : sur un partage réseau, chaque archive paie son aller-retour).
-
-#### Mettre la fiche à jour sur TrueNAS SCALE
-
-Le premier passage ouvre chaque archive, ce qui prend un moment ; les suivants ne rouvrent que ce qui a changé. C'est fait pour une tâche planifiée, comme [le sommaire des séries](#mettre-le-sommaire-à-jour-sur-truenas-scale) — mêmes étapes, avec ces valeurs :
-
-| Champ | Valeur |
-| --- | --- |
-| Description | `Fiche des livres` |
-| Command | `XDG_CACHE_HOME=/mnt/<pool>/<outils>/cache python3 /mnt/<pool>/<outils>/media_library/scripts/Books/Recap.py --dir /mnt/<pool>/<livres> --apply` |
-| Run As User | `<utilisateur>`, pas `root` |
-| Schedule | *Daily* (la nuit) |
-
-Le dépôt entier doit être copié sur le NAS (`libraries/` et `scripts/Books/Recap.py` suffisent). Pillow n'y est en général pas installé : sans lui la fiche s'écrit quand même, avec des monogrammes. Ouvrir ensuite `\\<nas>\<partage>\__Data__\books.html`. Les versions précédentes écrivaient `index.html` : il n'est pas effacé, mais `books.html` en reprend le titre.
+Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, numéro, résumé, auteurs, éditeur, date, genres…), le `.opf` d'un `.epub` quand Calibre est passé par là. Il n'y a donc **rien à étiqueter** ici : media_library ne les modifie pas, et [media_hub](../media_hub) les lit (`libraries/books/`).
 
 ### Convertir les AVI
 
@@ -404,24 +260,9 @@ Les réponses de TMDB et de MusicBrainz sont gardées **7 jours** dans `%LOCALAP
 
 `--skip-done` saute ce qui est déjà conforme, `--language` change la langue TMDB (défaut `fr-FR` ; c'est elle qui détermine le pays de la date de sortie retenue pour les films), et les `--no-*` (`--no-cover`, `--no-date`, `--no-audio-names`, `--no-sub-names`, `--no-flags`, `--no-stats`) désactivent chacun une catégorie d'écriture. Pour les séries, `--match-threshold` (de 0 à 1, `0.55` par défaut) règle le score minimal d'une association par titre — `Metadata.py` comme `Rename_Episodes.py` — et `--series-name` impose le nom de la série. La taille des images TMDB se règle par `--image-size` (jaquette), `--still-size` (vignettes d'épisodes), `--profile-size` (portraits du casting) et, pour les films, `--poster-size` (affiches du récap). `--help` liste le reste.
 
-## Pistes à explorer
+## Lire la médiathèque
 
-Rien de tout ça n'est fait ; c'est ce qu'on a retenu en y réfléchissant.
-
-### Lire films et séries depuis leurs fiches
-
-La musique se lit déjà depuis ses fiches (voir [Musique](#musique)), parce que `<audio>` lit le FLAC et le MP3 tels quels. Pour la vidéo le blocage est le **format**, pas la page :
-
-- le `.mkv` n'est lu que par Chrome et Edge, et pas toujours ; Firefox et Safari ne le lisent pas ;
-- l'audio AC-3, E-AC-3 et DTS ne passe pas dans `<video>`, le HEVC est aléatoire, les sous-titres PGS ne s'affichent pas.
-
-Seul un **transcodage à la volée** (ffmpeg, HLS) lirait tout dans le navigateur. Il demande un serveur qui tourne en permanence, ce qui sort du principe actuel — pages statiques écrites par une tâche planifiée, sans dépendance — et ffmpeg est aujourd'hui facultatif. Trois voies, de la plus simple à la plus lourde :
-
-1. **Un bouton « Lire » qui sort du navigateur** : un `.m3u` à télécharger, ou un lien `vlc://`. Ça lit tout, et ça se fait avec les mêmes liens relatifs que la musique (`music.html` pourrait aussi porter un `<video>`, mais le format reste le blocage) (`libraries/video/filmpage.py` connaît déjà les chemins des fichiers, `paths=`). C'est la voie recommandée pour commencer.
-2. **Un lien vers Jellyfin, Plex ou Video Station** si le NAS en héberge un : la fiche pointerait vers le titre correspondant, et le transcodage est déjà fait par eux. À voir : retrouver un titre par son identifiant TMDB, que les fiches portent déjà.
-3. **Un `<video>` direct, sans transcodage** : à écarter, il ne marcherait que pour les rares fichiers compatibles, sans dire pourquoi aux autres.
-
-À décider avant : où les fiches sont servies (`file://`, partage réseau, serveur web du NAS) et s'il y a déjà un serveur de médias.
+media_library ne génère plus de pages. La lecture (web, TV, lecteur audio et visionneuse de livres) est le travail de **media_hub**, un serveur qui tourne sur le NAS : il indexe les dossiers en lisant les tags que ces scripts ont écrits (identifiant TMDB, synopsis, casting, jaquette, `MUSICBRAINZ_ALBUMID`, `ComicInfo.xml`…) et sert films, séries, animations, musique et livres. Le contrat entre les deux est donc **les fichiers eux-mêmes** : un fichier bien étiqueté ici se présente bien là-bas.
 
 ## Tests
 
@@ -437,9 +278,9 @@ Ils couvrent la partie qui casse en silence — analyse des noms, tags produits,
 
 Le code est publié sous licence [MIT](LICENSE).
 
-Les données qu'il écrit dans les fichiers et dans les fiches HTML ont leurs propres conditions :
+Les données qu'il écrit dans les fichiers ont leurs propres conditions :
 
 - This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org). Les titres, synopsis, affiches et portraits des films et des séries viennent de TMDB.
 - Les métadonnées musicales viennent de [MusicBrainz](https://musicbrainz.org), les pochettes de [Cover Art Archive](https://coverartarchive.org) (chacune garde la licence que son auteur lui a donnée).
-- Les résumés d'artistes viennent de Wikipédia, sous licence CC BY-SA ; chaque fiche en cite la source.
+- Les résumés d'artistes (`libraries/music/artistinfo.py`) viennent de Wikipédia, sous licence CC BY-SA.
 - MKVToolNix et FFmpeg sont lancés comme programmes séparés, jamais intégrés au code : leurs licences ne s'appliquent pas à ce dépôt.
