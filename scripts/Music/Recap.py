@@ -12,7 +12,7 @@ Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wik
 
 Les pistes qui manquent à un album viennent du total que les tags annoncent (TRACKTOTAL, DISCTOTAL), comparé aux numéros possédés : "Manque : pistes 3, 5-7 (sur 13)". Rien n'est dit d'un disque dont une piste n'a pas de numéro.
 
-Les albums qui manquent à un artiste se disent dans son dossier, par un fichier vide nommé comme un album rangé : "1997 - OK Computer.txt". Sa fiche les montre à leur place parmi ses albums, grisés et marqués « manquant », et le journal les liste ([ABSENT]). Un album qui figure aussi en dossier n'est pas déclaré manquant. Seul le nom du fichier est lu.
+Les albums qui manquent à un artiste se disent dans son dossier, par une image nommée comme un album rangé : "1997 - OK Computer.jpg" (ou .png, .webp...), qui est sa pochette. Sa fiche les montre à leur place parmi ses albums, grisés et marqués « manquant », et le journal les liste ([ABSENT]). Un album qui figure aussi en dossier n'est pas déclaré manquant. Un fichier vide "1997 - OK Computer.txt" dit la même chose, sans pochette. Seul le nom du fichier compte, et l'image est réduite comme celles du sommaire.
 
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
   music.html   le sommaire et le lecteur : recherche (album, artiste, label, genre), filtre de genre, index A-Z, et une barre de lecture ; les fiches s'ouvrent par-dessus sans couper la musique
@@ -41,7 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, layout, textfile, thumbs  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.music import artistinfo, library, librarypage, player, wanted  # noqa: E402
+from libraries.music import artistinfo, coverfile, library, librarypage, player, wanted  # noqa: E402
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError  # noqa: E402
 from libraries.music.tags import AudioError  # noqa: E402
 
@@ -159,6 +159,23 @@ def update_artist_info(artists, path, args):
     return entries
 
 
+def wanted_covers(artist, page):
+    """{Wanted.key: data-URI} des albums manquants de l'artiste qui ont une image, réduite comme celles du sommaire. La fiche précédente sert de cache : l'image d'un album déjà dedans n'est pas rouverte (sa clé change avec le fichier)."""
+    known = librarypage.read_embedded(page) if any(w.cover for w in artist.wanted) else {}
+    found = {}
+    for wanted in artist.wanted:
+        if not wanted.cover:
+            continue
+        image = known.get(wanted.key)
+        if image is None:
+            raw = coverfile.read(wanted.cover)
+            jpeg = thumbs.thumbnail(raw, INDEX_COVER_WIDTH, INDEX_COVER_QUALITY) if raw else None
+            image = thumbs.data_uri(jpeg) if jpeg else None
+        if image:
+            found[wanted.key] = image
+    return found
+
+
 def write_artist_pages(artists, entries, covers, pages, out, library_name, base=None):
     """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. 'base' = media_base de ce dossier (le même que celui des fiches d'albums), pour que les pochettes lisent leur album. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites)."""
     folder = out / librarypage.ARTIST_DIR
@@ -166,7 +183,7 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name, base=
     done, written = {}, 0
     for artist in artists.values():
         page = folder / librarypage.artist_page_name(artist)
-        html = librarypage.build_artist(artist, covers, f"../{PAGE_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base)
+        html = librarypage.build_artist(artist, covers, f"../{PAGE_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base, wanted_covers(artist, page))
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -267,7 +284,7 @@ def write_log(path, root, releases, args, report, lacking=None):
                 lines.append(f"[MANQUE] {release.rel or release.folder.name} : disque {disc}, piste(s) {layout.ranges(lacking)} (sur {total})")
         lines.append("")
     if absent:
-        lines.append(f"# --- {len(absent)} album(s) qui manquent à la médiathèque (fichiers .txt dans le dossier de l'artiste) ---")
+        lines.append(f"# --- {len(absent)} album(s) qui manquent à la médiathèque (images ou fichiers .txt dans le dossier de l'artiste) ---")
         lines += [f"[ABSENT] {artist} : {w.year} - {w.title}" for artist, w in sorted(absent, key=lambda p: (layout.fold(p[0]), p[1].order))]
         lines.append("")
     if broken:
@@ -330,7 +347,7 @@ def main():
     sections = library.sections(releases)
     lacking = wanted.find(root, releases)
     if lacking:
-        print(f"  {sum(len(w) for w in lacking.values())} album(s) manquant(s) chez {len(lacking)} artiste(s) (fichiers .txt)\n")
+        print(f"  {sum(len(w) for w in lacking.values())} album(s) manquant(s) chez {len(lacking)} artiste(s)\n")
     if args.apply:
         out.mkdir(parents=True, exist_ok=True)
         catalog = library.dump_catalog(tracks)

@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import re
 import shutil
 import sys
@@ -223,6 +224,41 @@ class TestRecapMusique(unittest.TestCase):
         self.assertIn("<div class='al gone'>", html)
         self.assertIn("Human After All", html)
         self.assertEqual(html.count("<div class='al gone'>"), 1)
+
+    @unittest.skipUnless(thumbs.available(), "Pillow n'est pas installé")
+    def test_pochette_d_un_album_manquant(self):
+        dossier = self.racine / "Daft Punk"
+        (dossier / "2005 - Human After All.txt").write_text("", encoding="utf-8")
+        (dossier / "2005 - Human After All.PNG").write_bytes(png())
+        (dossier / "2013 - Random Access Memories.txt").write_text("", encoding="utf-8")        # sans image : la vignette générique
+        self.lancer("--apply")
+        html = self.fiche_daft_punk()
+        gone = html.split("<div class='al gone'>")[1:]
+        self.assertEqual(len(gone), 2)
+        avec, sans = (next(g for g in gone if titre in g) for titre in ("Human After All", "Random Access"))
+        self.assertIn("<img data-img=", avec)
+        self.assertIn("<div class='noimg'></div>", sans)
+        # Deuxième passage : la fiche sert de cache, l'image n'est pas rouverte.
+        with mock.patch.object(recap.coverfile, "read", side_effect=AssertionError("image rouverte")):
+            self.lancer("--apply")
+        self.assertEqual(self.fiche_daft_punk(), html)
+        # Une image remplacée est reprise.
+        (dossier / "2005 - Human After All.PNG").write_bytes(png() + b" ")
+        os.utime(dossier / "2005 - Human After All.PNG", (1, 1))
+        self.lancer("--apply")
+        self.assertNotEqual(self.fiche_daft_punk(), html)
+
+    @unittest.skipUnless(thumbs.available(), "Pillow n'est pas installé")
+    def test_album_manquant_dit_par_son_image_seule(self):
+        dossier = self.racine / "Daft Punk"
+        (dossier / "2005 - Human After All.jpg").write_bytes(png())
+        code, sortie = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("1 album(s) manquant(s) chez 1 artiste(s)", sortie)
+        self.assertIn("[ABSENT] Daft Punk : 2005 - Human After All", (self.data / "recap.log").read_text(encoding="utf-8"))
+        html = self.fiche_daft_punk()
+        self.assertEqual(html.count("<div class='al gone'>"), 1)
+        self.assertIn("<img data-img=", html.split("<div class='al gone'>")[1])
 
     def test_journal(self):
         self.lancer("--apply")

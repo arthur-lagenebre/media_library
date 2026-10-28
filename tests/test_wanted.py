@@ -43,6 +43,23 @@ class TestRecherche(test_librarypage.PageTestCase):
         albums, trouves = self.trouver()
         self.assertEqual(trouves, {albums[0].artist_id: [Wanted("1997", "OK Computer"), Wanted("2000", "Kid A")]})
 
+    def test_l_image_de_meme_nom_est_la_pochette(self):
+        self.album("Radiohead", "The Bends", annee="1995")
+        self.dire("Radiohead/1997 - OK Computer.txt", "Radiohead/1997 - OK Computer.png", "Radiohead/1997 - OK Computer.JPG",
+                  "Radiohead/2000 - Kid A.txt", "Radiohead/2000 - Kid A.pdf", "Radiohead/cover.jpg")
+        _, trouves = self.trouver()
+        ok, kid = next(iter(trouves.values()))
+        self.assertEqual(ok.cover.name, "1997 - OK Computer.JPG")          # le .jpg l'emporte sur le .png
+        self.assertTrue(ok.stamp)
+        self.assertIsNone(kid.cover)
+
+    def test_une_image_seule_dit_qu_un_album_manque(self):
+        self.album("Radiohead", "The Bends", annee="1995")
+        self.dire("Radiohead/1997 - OK Computer.jpg", "Radiohead/cover.jpg", "Radiohead/artist.png", "Radiohead/1995 - The Bends.jpg")
+        albums, trouves = self.trouver()
+        manquant, = trouves[albums[0].artist_id]
+        self.assertEqual((manquant.year, manquant.title, manquant.cover.name), ("1997", "OK Computer", "1997 - OK Computer.jpg"))          # The Bends est possédé
+
     def test_un_album_deja_possede_n_est_pas_manquant(self):
         self.album("Radiohead", "The Bends", annee="1995")
         self.dire("Radiohead/1995 - The Bends.txt", "Radiohead/1997 - OK Computer.txt")
