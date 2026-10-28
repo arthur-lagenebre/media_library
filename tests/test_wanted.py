@@ -137,5 +137,47 @@ class TestFiche(test_librarypage.PageTestCase):
         self.assertNotIn("manquant", html)
 
 
+class TestSommaire(test_librarypage.PageTestCase):
+    def sommaire(self):
+        self.album("Radiohead", "The Bends", annee="1995")
+        self.album("Radiohead", "Kid A", annee="2000")
+        self.album("Portishead", "Dummy", annee="1994")
+        for nom in ("1997 - OK Computer.txt", "2001 - Amnesiac.txt"):
+            (self.racine / "Radiohead" / nom).write_text("", encoding="utf-8")
+        albums = self.albums()
+        manquants = wanted.find(self.racine, albums)
+        ok = next(w for liste in manquants.values() for w in liste if w.title == "OK Computer")
+        return albums, librarypage.build_index("Musique", library.sections(albums), {}, {r.id for r in albums}, None, None, manquants, {ok.key: "data:image/jpeg;base64,AAAA"})
+
+    def test_les_manquants_se_rangent_parmi_les_albums_de_leur_artiste(self):
+        _, html = self.sommaire()
+        radiohead = html[html.index(">Radiohead<"):]
+        radiohead = radiohead[:radiohead.index("</section>")]
+        ordre = [radiohead.index(t) for t in ("The Bends", "OK Computer", "Kid A", "Amnesiac")]
+        self.assertEqual(ordre, sorted(ordre))
+        self.assertEqual(len(re.findall(r"<div class='al gone'", html)), 2)
+        self.assertIn("2 albums · 2 manquants", html)
+        self.assertEqual(html.count("manquant</span>"), 2)
+
+    def test_pochette_et_recherche_des_manquants(self):
+        _, html = self.sommaire()
+        tuiles = html.split("<div class='al gone'")[1:]
+        avant_titre = {t.split("class='t'>")[1].split("<")[0]: t.split("class='t'>")[0] for t in tuiles}      # ce qui précède le titre : la pochette
+        self.assertIn("<img data-img=", avant_titre["OK Computer"])
+        self.assertIn("<div class='noimg'>", avant_titre["Amnesiac"])
+        self.assertIn("data-s='Amnesiac Radiohead'", html)
+
+    def test_les_manquants_ne_comptent_pas_dans_le_sommaire(self):
+        _, html = self.sommaire()
+        self.assertIn("3 albums · 2 artistes", html)
+        self.assertIn("Portishead<span class='cnt'>1 album</span>", html)
+
+    def test_sans_manquant_rien_ne_change(self):
+        albums = [self.un()]
+        html = librarypage.build_index("Musique", library.sections(albums), {}, {albums[0].id})
+        self.assertNotIn("gone", html.replace(".al.gone", ""))
+        self.assertNotIn("manquant", html)
+
+
 if __name__ == "__main__":
     unittest.main()

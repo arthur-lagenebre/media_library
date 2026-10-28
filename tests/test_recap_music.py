@@ -260,6 +260,14 @@ class TestRecapMusique(unittest.TestCase):
         self.assertEqual(html.count("<div class='al gone'>"), 1)
         self.assertIn("<img data-img=", html.split("<div class='al gone'>")[1])
 
+    def test_albums_manquants_dans_le_sommaire(self):
+        (self.racine / "Daft Punk" / "2005 - Human After All.jpg").write_bytes(png())
+        self.lancer("--apply")
+        index = (self.data / "music.html").read_text(encoding="utf-8")
+        self.assertEqual(index.count("<div class='al gone'"), 1)
+        self.assertIn("Human After All", index)
+        self.assertIn("1 manquant<", index)
+
     def test_journal(self):
         self.lancer("--apply")
         journal = (self.data / "recap.log").read_text(encoding="utf-8")
