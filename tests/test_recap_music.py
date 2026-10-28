@@ -225,6 +225,7 @@ class TestRecapMusique(unittest.TestCase):
         self.assertIn("Human After All", html)
         self.assertEqual(html.count("<div class='al gone'>"), 1)
 
+    @unittest.skipUnless(thumbs.available(), "Pillow n'est pas installé")
     def test_pochette_d_un_album_manquant(self):
         dossier = self.racine / "Daft Punk"
         (dossier / "2005 - Human After All.txt").write_text("", encoding="utf-8")
@@ -247,6 +248,7 @@ class TestRecapMusique(unittest.TestCase):
         self.lancer("--apply")
         self.assertNotEqual(self.fiche_daft_punk(), html)
 
+    @unittest.skipUnless(thumbs.available(), "Pillow n'est pas installé")
     def test_album_manquant_dit_par_son_image_seule(self):
         dossier = self.racine / "Daft Punk"
         (dossier / "2005 - Human After All.jpg").write_bytes(png())
