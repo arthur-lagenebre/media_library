@@ -244,6 +244,15 @@ class TestLectureDesMetadonnees(unittest.TestCase):
         tags, _ = self.lire(with_metadata())
         self.assertNotIn("BPS", {name for _, name, _ in tags})
 
+    def test_ordre_du_fichier_conserve_sur_demande(self):
+        # Un casting se lit du premier rôle au dernier : un ensemble n'en garde pas l'ordre.
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "film.mkv"
+            path.write_bytes(with_metadata())
+            ordered, _ = ebml.read_metadata(path, ordered=True)
+        self.assertIsInstance(ordered, list)
+        self.assertEqual([name for _, name, _ in ordered], ["TMDB", "TITLE", "TITLE"])
+
     def test_duree_en_minutes(self):
         _, minutes = self.lire(with_metadata(minutes=95.5))
         self.assertAlmostEqual(minutes, 95.5, places=3)
@@ -269,3 +278,36 @@ class TestLectureDesMetadonnees(unittest.TestCase):
                "<Simple><Name>BPS</Name><String>640000</String></Simple></Tag></Tags>")
         tags, _ = self.lire(with_metadata())
         self.assertEqual(tags, mkv.parse_tags(xml))
+
+
+def with_cover(indexed=True, name="cover.jpg", data=b"\xff\xd8JPEG"):
+    """Un .mkv dont la jaquette vit en QUEUE, après les clusters, comme mkvpropedit la pose."""
+    header = element(ebml.ENTETE_EBML, element(0x4282, b"matroska"))
+    info = element(ebml.INFO, element(ebml.TIMESTAMP_SCALE, (1000000).to_bytes(4, "big")))
+    clusters = b"".join(element(ebml.CLUSTER, element(0xE7, bytes([n + 1]))) for n in range(3))
+    attached = element(ebml.ATTACHMENTS, element(ebml.ATTACHED_FILE, element(ebml.FILE_NAME, name.encode())
+                                                 + element(ebml.FILE_MIME, b"image/jpeg") + element(ebml.FILE_DATA, data)))
+    targets = [ebml.INFO, ebml.ATTACHMENTS] if indexed else [ebml.INFO]
+    seek_length = len(index([(t, 0) for t in targets]))
+    places = {ebml.INFO: seek_length, ebml.ATTACHMENTS: seek_length + len(info) + len(clusters)}
+    return header + element(ebml.SEGMENT, index([(t, places[t]) for t in targets]) + info + clusters + attached)
+
+
+class TestLectureDeLaJaquette(unittest.TestCase):
+    def lire(self, data):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "film.mkv"
+            path.write_bytes(data)
+            return ebml.read_cover(path)
+
+    def test_jaquette_en_queue_trouvee_par_l_index(self):
+        self.assertEqual(self.lire(with_cover()), (b"\xff\xd8JPEG", "image/jpeg"))
+
+    def test_autre_piece_jointe_ignoree(self):
+        self.assertIsNone(self.lire(with_cover(name="police.ttf")))
+
+    def test_sans_index_on_ne_cherche_pas(self):
+        self.assertIsNone(self.lire(with_cover(indexed=False)))
+
+    def test_fichier_qui_n_est_pas_un_mkv(self):
+        self.assertIsNone(self.lire(b"RIFF" + b"\x00" * 64))

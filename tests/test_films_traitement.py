@@ -187,45 +187,6 @@ class TestJournal(unittest.TestCase):
         self.assertIn("metadata.log non écrit", self.ecrire(self.racine / "absent"))
 
 
-class TestPagesDeFilms(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.racine = Path(self._tmp.name)
-
-    def ecrire(self, out, movies=(DUNE,), **patches):
-        with redirect_stdout(io.StringIO()) as sortie:
-            pages = films.write_film_pages(out, "Films", list(movies), arguments(), FauxTmdb())
-        return pages, sortie.getvalue()
-
-    def test_une_fiche_par_film_et_une_seule_pour_deux_dossiers(self):
-        pages, sortie = self.ecrire(self.racine / "index.html", movies=(DUNE, dict(DUNE)))
-        self.assertEqual(pages, {438631})
-        self.assertIn("1 fiche(s)", sortie)
-        self.assertEqual(len(list((self.racine / "Fiches").glob("*.html"))), 1)
-
-    def test_seconde_ecriture_ne_reecrit_rien(self):
-        self.ecrire(self.racine / "index.html")
-        _, sortie = self.ecrire(self.racine / "index.html")
-        self.assertIn("(0 écrite(s), 1 inchangée(s))", sortie)
-
-    def test_dossier_des_fiches_impossible_a_creer(self):
-        (self.racine / "fichier").write_text("x", encoding="utf-8")
-        pages, sortie = self.ecrire(self.racine / "fichier" / "index.html")
-        self.assertEqual(pages, set())
-        self.assertIn("pas de fiche par film", sortie)
-
-    def test_fiche_impossible_a_ecrire_n_est_pas_rendue(self):
-        # Rendue, elle donnerait un lien vers une page qui n'existe pas.
-        with mock.patch.object(films.textfile, "write", side_effect=PermissionError(13, "Accès refusé")):
-            pages, sortie = self.ecrire(self.racine / "index.html")
-        self.assertEqual(pages, set())
-        self.assertIn("non écrite", sortie)
-
-    def test_film_sans_identifiant_ignore(self):
-        pages, _ = self.ecrire(self.racine / "index.html", movies=({"title": "Sans id"},))
-        self.assertEqual(pages, set())
-
 
 # ----------------------------------------------------------------------------
 # Les sagas
@@ -432,7 +393,7 @@ class TestFilmsDeBoutEnBout(ProgrammeTestCase):
 
     def test_no_tag_sans_annexe_ne_produit_rien(self):
         _, texte = self.films(None, "--no-tag")
-        self.assertIn("--no-tag sans --artwork ni --recap ne produit rien", texte)
+        self.assertIn("--no-tag sans --artwork ne produit rien", texte)
 
     def test_titre_a_plusieurs_versions_attend_la_fin_du_passage(self):
         class Quatre(FauxTmdb):
@@ -442,20 +403,10 @@ class TestFilmsDeBoutEnBout(ProgrammeTestCase):
         for nom in ("Les Quatre Fantastiques", "Blade"):         # un film seul n'est jamais soumis à la question
             (self.racine / nom).mkdir()
             (self.racine / nom / "film.mkv").write_text("x", encoding="utf-8")
-        code, texte = self.films(Quatre(), "--no-tag", "--recap", **{"cli.can_ask": lambda: False})
+        code, texte = self.films(Quatre(), "--no-tag", **{"cli.can_ask": lambda: False})
         self.assertEqual(code, 1)
         self.assertIn("[À CONFIRMER] plusieurs versions portent ce titre", texte)
         self.assertIn("[À CONFIRMER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
-
-    def test_dossier_des_pages_cree_au_besoin(self):
-        self.assertFalse((self.racine / "__Data__").exists())
-        self.films(None, "--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "__Data__").is_dir())
-
-    def test_fiche_et_fiches_de_films_ecrites(self):
-        _, texte = self.films(None, "--no-tag", "--recap", "--apply")
-        self.assertTrue((self.racine / "__Data__" / "movies.html").is_file())
-        self.assertTrue((self.racine / "__Data__" / "Fiches" / "1.html").is_file())
 
 
 if __name__ == "__main__":

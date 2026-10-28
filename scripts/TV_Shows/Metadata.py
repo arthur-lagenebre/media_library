@@ -51,20 +51,10 @@ Options principales :
   --apply          applique réellement (défaut : simulation)
   --verify         vérifie seulement (aucune écriture)
   --skip-done      saute les fichiers déjà conformes
-  --no-tag         ne modifie aucun épisode ; genere seulement folder.jpg / récap (séries non-MKV)
+  --no-tag         ne modifie aucun épisode ; avec --artwork, écrit seulement folder.jpg
   --no-cover / --no-date / --no-audio-names / --no-sub-names / --no-flags / --no-stats
   --artwork        écrit folder.jpg (vignette de dossier) en anglais (série et chaque saison)
-  --recap          genere la fiche HTML de la série (onglets par saison), dans __Data__/Fiches à la racine de la médiathèque
-                   (le dossier parent de la série) : les dossiers de la médiathèque ne sont pas touchés
-                   -> son lien de retour mène au sommaire de __Data__ (Index.py) ; --title nomme celui-ci
-                   -> fichier UNIQUE : les vignettes sont encodées dedans, rien à côté
-                   -> les épisodes absents du disque sont grises et comptes par saison
-                   -> un épisode dont TMDB n'a pas de vignette reprend l'affiche de sa saison
-                   -> dernier onglet "Casting" : les acteurs vus dans plusieurs saisons,
-                      puis, saison par saison, ceux qui n'appartiennent qu'à elle
   --image-size STR taille TMDB jaquette / folder.jpg : w300 / w780 / original (défaut : w780)
-  --still-size STR taille TMDB des vignettes du récap (défaut : w300)
-  --profile-size STR taille TMDB des portraits du casting (défaut : w185)
 """
 
 from __future__ import annotations
@@ -73,17 +63,12 @@ import argparse
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, favicon, layout  # noqa: E402
+from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, cast, embed, lookup, mkv, naming, showindex  # noqa: E402
+from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
-
-PROFILE_SIZE = "w185"   # portraits du casting : la taille TMDB faite pour un visage
-POSTER_SIZE = "w185"    # affiche que la fiche porte pour le sommaire des séries
-
 
 # ----------------------------------------------------------------------------
 # 1. État vise pour un épisode : tags Matroska + titre + date + jaquette
@@ -128,12 +113,10 @@ def episode_target(season, ep, series_name, opts):
 # ----------------------------------------------------------------------------
 @dataclass
 class SeasonRun:
-    """Une saison traitée : son dossier, ses données TMDB, et les numéros d'épisode effectivement présents sur le disque (pour la fiche récap)."""
+    """Une saison traitée : son dossier, son numéro et ses données TMDB."""
     folder: Path
     number: int
     data: dict
-    owned: set = field(default_factory=set)
-    paths: dict = field(default_factory=dict)    # {numéro d'épisode: [chemins, relatifs au dossier de la série]} - affichés sous l'épisode
 
     @property
     def episodes(self):
@@ -141,13 +124,7 @@ class SeasonRun:
 
 
 def season_run(folder, number, data, args):
-    """Assemble une saison traitée, avec l'inventaire de ce qui est sur le disque.
-
-    L'inventaire se lit dans les noms de fichiers, tous formats vidéo confondus : il reste donc juste même avec --no-tag, pour une série qui n'est pas en .mkv.
-    """
-    found = naming.owned_files(folder, data.get("episodes", []), args.match_threshold)
-    paths = {n: sorted(layout.relative_path(f, getattr(args, "dir", "")) for f in files) for n, files in found.items()}
-    return SeasonRun(Path(folder), number, data, set(found), paths)
+    return SeasonRun(Path(folder), number, data)
 
 
 @dataclass
@@ -242,289 +219,20 @@ def process_season(mkv_dir, season, args, opts, tmdb):
 
 
 # ----------------------------------------------------------------------------
-# 3. Fiche récap HTML : vignettes encodées dans la page
+# 3. Annexes : affiches de dossier
 # ----------------------------------------------------------------------------
-def esc(value):
-    """Texte prêt à poser dans la page : TMDB écrit des titres avec des & et des <, et des apostrophes qui fermeraient un attribut."""
-    return escape(str(value or ""), {"'": "&#39;"})
-
-
-def episode_image(ep, run, show):
-    """Image d'un épisode dans la fiche : sa vignette, sinon l'affiche de la saison, sinon celle de la série.
-
-    TMDB ne fournit pas de vignette pour tous les épisodes (séries peu documentées, saisons récentes) : une saison entière peut n'en avoir aucune. Une affiche répétée dit au moins de quelle saison il s'agit, là où une case vide ne dit rien. Retourne (chemin TMDB, repli ?).
-    """
-    still = ep.get("still_path")
-    if still:
-        return still, False
-    return run.data.get("poster_path") or show.get("poster_path"), True
-
-
-def collect_stills(runs, show, size):
-    """Retourne {clé: chemin TMDB} pour toutes les images de la fiche, replis compris."""
-    needed = {}
-    for run in runs:
-        for ep in run.episodes:
-            path, _ = episode_image(ep, run, show)
-            key = embed.image_key(path, size)
-            if key:
-                needed[key] = path
-    return needed
-
-
-# ----------------------------------------------------------------------------
-# 3 bis. Onglet Casting : l'ensemble récurrent, puis ce que chaque saison amène
-# ----------------------------------------------------------------------------
-def collect_cast(runs, args, tmdb):
-    """Casting cumulé de chaque saison traitée : [(numéro de saison, cast TMDB), ...].
-
-    Une saison dont le casting échoue est simplement absente de la liste : une fiche amputée d'une section vaut mieux qu'une fiche non écrite.
-    """
-    casts = []
-    for run in runs:
-        try:
-            casts.append((run.number, tmdb.aggregate_credits(args.tmdb_id, run.number).get("cast", [])))
-        except TmdbError as e:
-            print(f"  [récap] casting de la saison {run.number} ignoré : {e}")
-    return casts
-
-
-def collect_profiles(casting, size):
-    """Retourne {clé: chemin TMDB} pour les portraits du casting."""
-    needed = {}
-    for actor in casting.actors:
-        key = embed.image_key(actor.profile, size)
-        if key:
-            needed[key] = actor.profile
-    return needed
-
-
-def cast_sections(casting, runs):
-    """[(titre, [Actor, ...]), ...] dans l'ordre d'affichage.
-
-    Les saisons reprennent le nom que TMDB leur donne, comme les onglets - "Specials" ne doit pas devenir "Saison 0" ici alors qu'il s'affiche autrement à côté.
-    """
-    names = {run.number: run.data.get("name") or f"Saison {run.number}" for run in runs}
-    # Sans découpage par saison, "récurrent" n'oppose plus rien : c'est tout le casting.
-    head = "Acteurs récurrents" if casting.per_season else "Casting"
-    sections = [(head, casting.recurring)] if casting.recurring else []
-    return sections + [(names.get(number, f"Saison {number}"), actors)
-                       for number, actors in casting.per_season]
-
-
-def build_cast_panel(casting, runs, images, size):
-    """Le contenu de l'onglet Casting : un mur de portraits par section.
-
-    Une ligne dit la règle du découpage : sans elle, une section "Saison 3" qui ne montre que les acteurs propres à la saison 3 se lirait comme son casting complet.
-    """
-    blocks = ["<p class='note'>Les acteurs vus dans plusieurs saisons sont regroupés en tête ; "
-              "chaque saison ne montre ensuite que les siens.</p>"] if casting.per_season else []
-    for title, actors in cast_sections(casting, runs):
-        cards = []
-        for actor in actors:
-            key = embed.image_key(actor.profile, size)
-            uri = images.get(key) if key else None
-            face = embed.tag(key, uri) if uri else "<div class='noimg'></div>"
-            cards.append(f"<div class='actor'><div class='ph'>{face}</div>"
-                         f"<div class='n'>{esc(actor.name)}</div>"
-                         f"<div class='c'>{esc(actor.character)}</div>"
-                         f"<div class='e'>{esc(cast.coverage(actor))}</div></div>")
-        blocks.append(f"<h2>{esc(title)}</h2><div class='grid'>{''.join(cards)}</div>")
-    return "".join(blocks)
-
-
-def build_recap_html(series_name, show, runs, tmdb_id, images, size, casting=None, profile_size=PROFILE_SIZE, poster=None, folder=None, index=None):
-    """Rend la page HTML (pur rendu : ni réseau ni disque).
-
-    'images' = {clé: data-URI}, vignettes d'épisode et portraits du casting mêlés ; un épisode sans vignette propre retombe sur l'affiche de sa saison (voir episode_image), et n'a un emplacement vide que si celle-ci manque aussi. Une affiche de repli revient sur beaucoup d'épisodes : elle est écrite une seule fois, dans une règle CSS, et non recopiée dans chaque balise.
-
-    Les épisodes absents du disque sont grises et étiquetés, avec un compteur par saison. Une saison dont on ne connaît aucun fichier n'est pas marquée du tout : mieux vaut ne rien dire que tout déclarer manquant.
-
-    Le casting, s'il y en a un, prend le dernier onglet.
-
-    L'en-tête porte de quoi présenter la série dans le sommaire de la médiathèque (voir showindex) : année, saisons, et l'affiche 'poster' = (clé, data-URI) encodée - le sommaire se construit sans rien demander à TMDB.
-
-    La fiche est dans __Data__/Fiches, le sommaire dans __Data__ : le lien de retour monte d'un cran, jusqu'à la vignette de 'folder' (le dossier de la série). 'index' = (fichier, titre) du sommaire, tv_shows.html et "Séries" par défaut. Quand on vient d'une page de __Data__, le retour est un vrai retour en arrière, qui rend aussi la recherche en cours."""
-    page, library = index or (showindex.DEFAULT_INDEX, showindex.DEFAULT_TITLE)
-    back = showindex.back_href(page, folder)
-    tabs, panels, partagees = [], [], {}
-    for i, run in enumerate(runs):
-        label = run.data.get("name") or f"Saison {run.number}"
-        episodes = run.episodes
-        marque = bool(run.owned)          # sans inventaire, on ne juge pas
-        compteur = (f"<span class='cnt'>{len(run.owned)}/{len(episodes)}</span>" if marque and episodes else "")
-        tabs.append(f"<button class='tab{' active' if i == 0 else ''}' "
-                    f"data-s='{run.number}'>{esc(label)}{compteur}</button>")
-        cards = []
-        for ep in episodes:
-            path, repli = episode_image(ep, run, show)
-            key = embed.image_key(path, size)
-            uri = images.get(key) if key else None
-            if not uri:
-                img = "<div class='noimg'></div>"
-            elif repli:
-                partagees[key] = uri
-                img = embed.shared_slot(key, "fb")
-            else:
-                img = embed.tag(key, uri)
-
-            absent = marque and ep.get("episode_number") not in run.owned
-            manque = "<span class='miss'>manquant</span>" if absent else ""
-            rt = f" · {ep['runtime']} min" if ep.get("runtime") else ""
-            cards.append(
-                f"<div class='ep{' absent' if absent else ''}'>"
-                + img
-                + "<div class='meta'>"
-                + f"<div><span class='n'>{ep.get('episode_number', 0):02d}</span> "
-                + f"<span class='t'>{esc(ep.get('name'))}</span>{manque}</div>"
-                + f"<div class='d'>{esc(naming.fr_date(ep.get('air_date')))}{rt}</div>"
-                + f"<div class='o'>{esc(ep.get('overview'))}</div>"
-                + layout.paths_block(run.paths.get(ep.get("episode_number")))
-                + "</div></div>")
-        resume = f"<div class='so'>{esc(run.data['overview'])}</div>" if run.data.get("overview") else ""
-        panels.append(f"<section class='season' data-s='{run.number}'"
-                      f"{'' if i == 0 else ' hidden'}>{resume}{''.join(cards)}</section>")
-
-    if casting:
-        tabs.append("<button class='tab' data-s='cast'>Casting</button>")
-        panels.append("<section class='season cast' data-s='cast' hidden>"
-                      + build_cast_panel(casting, runs, images, profile_size) + "</section>")
-
-    return (
-        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        + favicon.monogram_link(series_name)
-        + showindex.recap_metas(show, tmdb_id, sum(1 for run in runs if run.number > 0), poster)
-        + layout.BOOT +
-        f"<meta name='still-size' content='{esc(size)}'>"
-        f"<meta name='profile-size' content='{esc(profile_size)}'>"
-        f"<title>{esc(series_name)}</title>"
-        "<style>"
-        "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
-        ".wrap{max-width:1000px;margin:0 auto;padding:32px}"
-        "h1{margin:0}.lnk{margin-top:4px}"
-        + layout.CSS +
-        ".back{display:inline-block;margin-bottom:6px;color:#7cc4ff;text-decoration:none;font-size:14px}"
-        ".back:hover{text-decoration:underline}"
-        ".hd{display:flex;gap:16px;align-items:flex-start}.hd .main{flex:1;min-width:0}"
-        ".hd .aff{flex:none;width:96px;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:#21232b}"
-        ".hd .aff img{width:100%;height:100%;object-fit:cover;display:block}"
-        ".syn{color:#c7ccd4;font-size:14px;line-height:1.45;margin-top:6px}"
-        ".tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}"
-        ".tab{cursor:pointer;border:1px solid #2a2c34;background:#1c1e26;color:#c7ccd4;"
-        "padding:7px 16px;border-radius:999px;font:inherit;font-size:14px}"
-        ".tab:hover{background:#252833}"
-        ".tab.active{background:#7cc4ff;border-color:#7cc4ff;color:#0d0e12;font-weight:600}"
-        ".ep{display:flex;gap:16px;padding:14px 0;border-bottom:1px solid #21232b}"
-        ".ep img,.ep .noimg{width:160px;height:90px;object-fit:cover;border-radius:8px;"
-        "background:#21232b;flex:none}"
-        # Emplacement de repli : l'affiche est en portrait, recadrée en 16/9 comme une vignette. Le cadrage est pris aux trois dixièmes du haut, pas au centre : une affiche place ses personnages dans sa moitié haute et son titre en bas, et un cadrage centre les coupe tous à la taille. 'background-color' et non le raccourci 'background', qui effacerait l'image posée par la règle de chaque affiche.
-        ".ep .fb{width:160px;height:90px;border-radius:8px;flex:none;"
-        "background-color:#21232b;background-size:cover;background-position:center 30%;"
-        "background-repeat:no-repeat}"
-        + "".join(embed.shared_rule(cle, uri) for cle, uri in partagees.items()) +
-        ".so{color:#c7ccd4;font-size:15px;padding:6px 0 16px;border-bottom:1px solid #21232b}"
-        ".ep.absent{opacity:.42}"
-        ".miss{margin-left:8px;padding:1px 7px;border-radius:999px;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:.04em;background:#3a2a2e;color:#ff9aa6;"
-        "vertical-align:1px}"
-        ".cnt{margin-left:7px;font-size:12px;opacity:.65;font-variant-numeric:tabular-nums}"
-        ".ep .meta{flex:1}.ep .n{color:#7cc4ff;font-weight:600}"
-        ".ep .t{font-weight:600}.ep .d{color:#9aa0aa;font-size:14px;margin:2px 0 6px}"
-        ".ep .o{color:#c7ccd4;font-size:14px}"
-        + layout.PATH_CSS + layout.TMDB_CSS +
-        # Casting : des portraits en portrait (2/3), comme les affiches du récap des films.
-        ".cast h2{font-size:17px;margin:26px 0 14px;padding-bottom:8px;"
-        "border-bottom:1px solid #21232b}"
-        ".cast h2:first-of-type{margin-top:14px}"
-        ".cast .note{color:#9aa0aa;font-size:14px;margin:0}"
-        ".cast .grid{display:grid;gap:18px;"
-        "grid-template-columns:repeat(auto-fill,minmax(124px,1fr))}"
-        ".actor .ph{aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:#21232b}"
-        ".actor img,.actor .noimg{width:100%;height:100%;object-fit:cover;display:block}"
-        ".actor .n{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
-        ".actor .c{color:#c7ccd4;font-size:13px;line-height:1.35}"
-        ".actor .e{color:#9aa0aa;font-size:12px;font-variant-numeric:tabular-nums}"
-        + cast.noface_rule() +
-        "</style></head><body>"
-        + layout.header(f"<a class='back' href='{esc(back)}'>← {esc(library)}</a><div class='hd'>" + (f"<div class='aff'>{embed.tag(*poster)}</div>" if poster else "")
-                        + f"<div class='main'><div class='row'><h1>{esc(series_name)}</h1>" + layout.mode_button(layout.SHEET_LABELS) + "</div>"
-                        + (f"<div class='syn'>{esc(show['overview'])}</div>" if show.get("overview") else "")
-                        + (f"<div class='lnk'>{layout.tmdb_link('tv', tmdb_id)}</div>" if tmdb_id else "")
-                        + f"</div></div><nav class='tabs'>{''.join(tabs)}</nav>") +
-        f"{''.join(panels)}"
-        "<script>"
-        "document.querySelectorAll('.tab').forEach(function(b){"
-        "b.onclick=function(){"
-        "document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});"
-        "document.querySelectorAll('.season').forEach(function(s){s.hidden=s.dataset.s!==b.dataset.s})"
-        "}});"
-        # Venu d'un sommaire (n'importe lequel, dans __Data__), on y retourne par l'historique ; sinon, ou hors serveur (file://) où le navigateur ne donne pas toujours la page d'origine, le lien et son ancre prennent le relais.
-        "var b=document.querySelector('.back');"
-        "b.onclick=function(e){"
-        "var from=document.referrer.split(/[?#]/)[0];"
-        f"if(history.length>1&&/\\/{showindex.DATA_DIR}\\/[^\\/]+\\.html$/.test(from)){{e.preventDefault();history.back()}}}};"
-        + layout.mode_script(layout.SHEET_LABELS) +
-        "</script></div></body></html>"
-    )
-
-
-def _write_text(path, text, apply, shown=None):
-    """Écrit la page (en créant ses dossiers) ; `shown` : comment la nommer dans le compte rendu, par défaut son nom."""
-    shown = shown or Path(path).name
-    if not apply:
-        return f"écrirait {shown}"
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(text, encoding="utf-8")
-    return f"{shown} écrit"
-
-
-def fill_season_overviews(runs, show, tmdb):
-    """Complète le résumé des saisons que TMDB n'a pas en français (une mini-série n'en a souvent pas) : le résumé de la série d'abord, à défaut la version anglaise de la saison."""
-    for run in runs:
-        if not run.data.get("overview"):
-            run.data["overview"] = show.get("overview") or tmdb.season(show["id"], run.number, artwork.ARTWORK_LANG).get("overview") or ""
-
-
 def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
-    """Écrit posters de dossier (affiche EN) / fiche récap selon les options. processed = [SeasonRun, ...]."""
-    if not (args.artwork or args.recap):
+    """Écrit les affiches de dossier (folder.jpg, en anglais) si --artwork. processed = [SeasonRun, ...]."""
+    if not args.artwork:
         return
     apply = args.apply and not args.verify
     print("--- annexes ---")
-
-    if args.artwork:
-        for run in processed:
-            poster = artwork.english_poster(lambda: tmdb.season(args.tmdb_id, run.number, artwork.ARTWORK_LANG), run.data.get("poster_path"))
-            print(f"  [saison {run.number}] affiche (EN) : "
-                  f"{artwork.write_poster(poster, run.folder, apply, tmdb)}")
-        poster = artwork.english_poster(lambda: tmdb.series(args.tmdb_id, artwork.ARTWORK_LANG), show.get("poster_path"))
-        print(f"  [série] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
-
-    if args.recap:
-        # La fiche va dans __Data__/Fiches, à la racine de la médiathèque (le parent du dossier de la série) : la médiathèque elle-même n'est pas touchée.
-        folder = naming.series_folder(root_dir)
-        out = showindex.sheet_path(folder.parent, folder.name)
-        # La fiche précédente sert de cache d'images ; celle que les versions précédentes écrivaient dans le dossier de la série est lue, pas effacée.
-        previous = showindex.series_page(folder) or out
-        known = {**embed.read_embedded(previous), **showindex.recap_poster(previous)}
-        # En simulation on n'interroge ni ne télécharge rien : la page est rendue sans image ni casting.
-        if apply:
-            fill_season_overviews(processed, show, tmdb)
-        stills = (embed.fetch(collect_stills(processed, show, args.still_size), known, args.still_size, tmdb, label="vignette") if apply else {})
-        casting = cast.split(collect_cast(processed, args, tmdb)) if apply else cast.Casting()
-        profiles = (embed.fetch(collect_profiles(casting, args.profile_size), known, args.profile_size, tmdb, label="portrait") if apply else {})
-        images = {**stills, **profiles}
-        poster_key = embed.image_key(show.get("poster_path"), POSTER_SIZE)
-        poster_uri = (embed.fetch({poster_key: show["poster_path"]}, known, POSTER_SIZE, tmdb, label="affiche").get(poster_key) if apply and poster_key else None)
-        html = build_recap_html(series_name, show, processed, args.tmdb_id, images, args.still_size, casting, args.profile_size, (poster_key, poster_uri) if poster_uri else None, folder.name, showindex.back_target(folder.parent, args.title))
-        tally = ", ".join(t for t in (f"{len(stills)} vignette(s)" if stills else "",
-                                      f"{len(profiles)} portrait(s)" if profiles else "") if t)
-        print(f"  [série] {_write_text(out, html, apply, out.relative_to(folder.parent).as_posix())}"
-              + (f"  ({len(html) / 1_048_576:.1f} Mo, {tally} integre(s))" if tally else ""))
-        legacy = Path(root_dir) / "assets"
-        if legacy.is_dir():
-            print(f"  [série] note : le dossier '{legacy.name}' n'est plus utilisé "
-                  "(vignettes désormais intégrées au HTML) -> tu peux le supprimer")
+    for run in processed:
+        poster = artwork.english_poster(lambda: tmdb.season(args.tmdb_id, run.number, artwork.ARTWORK_LANG), run.data.get("poster_path"))
+        print(f"  [saison {run.number}] affiche (EN) : "
+              f"{artwork.write_poster(poster, run.folder, apply, tmdb)}")
+    poster = artwork.english_poster(lambda: tmdb.series(args.tmdb_id, artwork.ARTWORK_LANG), show.get("poster_path"))
+    print(f"  [série] affiche (EN) : {artwork.write_poster(poster, root_dir, apply, tmdb)}")
 
 
 # ----------------------------------------------------------------------------
@@ -543,7 +251,7 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement l'état des fichiers (aucune écriture)")
     ap.add_argument("--skip-done", action="store_true", help="Saute les fichiers déjà conformes")
-    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun épisode ; génère seulement folder.jpg / recap (séries non-MKV)")
+    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun épisode ; avec --artwork, écrit seulement folder.jpg")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque pas la jaquette")
     ap.add_argument("--no-date", action="store_true", help="Ne modifie pas la date du segment")
     ap.add_argument("--no-audio-names", action="store_true", help="Ne renomme pas les pistes audio")
@@ -552,14 +260,7 @@ def parse_args():
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques de piste")
     # --- Générateurs annexes (option, écrivent des fichiers à côté des .mkv) ---
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (vignette de dossier) en anglais")
-    ap.add_argument("--recap", action="store_true", help="Génère la fiche HTML de la série, dans __Data__/Fiches à la racine de la médiathèque")
-    ap.add_argument("--title", help="Titre du sommaire vers lequel la fiche revient, comme pour Index.py (défaut : le sommaire déjà écrit dans __Data__, sinon 'Séries')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquée / folder.jpg : w300 / w780 / original")
-    ap.add_argument("--still-size", default="w300",
-                    help="Taille TMDB des vignettes du recap (défaut : w300 ; w400 = plus net "
-                         "sur écran HiDPI mais fiche plus lourde)")
-    ap.add_argument("--profile-size", default=PROFILE_SIZE,
-                    help=f"Taille TMDB des portraits du casting (défaut : {PROFILE_SIZE})")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
     return ap.parse_args()
 
@@ -587,9 +288,8 @@ def main():
 
     print(f"    série : {args.series_name}   |   source : TMDB {args.language} (id {args.tmdb_id})\n")
 
-    if args.no_tag and not (args.artwork or args.recap):
-        print("Astuce : --no-tag sans --artwork ni --recap ne produit rien. "
-              "Ajoute --artwork et/ou --recap.\n")
+    if args.no_tag and not args.artwork:
+        print("Astuce : --no-tag sans --artwork ne produit rien. Ajoute --artwork.\n")
 
     seasons = naming.find_seasons(args.dir)
     if seasons:

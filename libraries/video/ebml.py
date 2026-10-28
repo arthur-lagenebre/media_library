@@ -338,6 +338,12 @@ TAG_NAME = 0x45A3
 TAG_STRING = 0x4487
 DEFAULT_SCALE = 1_000_000       # ns par unité de temps, quand Info ne le précise pas
 MAX_METADATA = 1 << 24          # au-delà, une taille annoncée pour Info ou Tags est aberrante
+ATTACHMENTS = 0x1941A469
+ATTACHED_FILE = 0x61A7
+FILE_NAME = 0x466E
+FILE_MIME = 0x4660
+FILE_DATA = 0x465C
+MAX_ATTACHMENT = 1 << 25        # 32 Mo : une jaquette en fait quelques centaines de Ko
 
 
 def _float(block, start, size):
@@ -364,12 +370,14 @@ def parse_info(block):
     return duration * scale / 60e9
 
 
-def parse_tags(block):
+def parse_tags(block, ordered=False):
     """{(niveau de cible, nom, valeur)} d'après le contenu d'un élément Tags.
 
     Même forme que mkv.parse_tags, qui lit la sortie XML de mkvextract : les tags de PISTE sont écartés (statistiques de mkvpropedit), un bloc sans TargetTypeValue vaut 50, et seuls les SimpleTag de premier niveau comptent.
+
+    `ordered=True` rend une liste, dans l'ordre du fichier : celui d'un casting (ACTOR, du premier rôle au dernier), qu'un ensemble perdrait.
     """
-    tags = set()
+    tags = []
     for ident, start, size in _elements(block):
         if ident != TAG:
             continue
@@ -390,12 +398,12 @@ def parse_tags(block):
                         value = _text(block, pos, n)
                 simples.append((name, value))
         if not of_track:
-            tags.update((level, name, value) for name, value in simples)
-    return tags
+            tags.extend((level, name, value) for name, value in simples)
+    return tags if ordered else set(tags)
 
 
-def _locate(f, start, end):
-    """{identifiant: position absolue} des éléments Info et Tags du Segment.
+def _locate(f, start, end, wanted=(INFO, TAGS)):
+    """{identifiant: position absolue} des éléments cherchés du Segment (Info et Tags par défaut).
 
     Les premiers éléments du Segment sont regardés directement - Info y est presque toujours -, puis l'index SeekHead, et un second index si le premier y renvoie (mkvmerge en pose parfois un en queue). On s'arrête au premier Cluster : au-delà, il faudrait sauter de cluster en cluster, des milliers de lectures sur un partage réseau.
     """
@@ -404,7 +412,7 @@ def _locate(f, start, end):
         ident, size, header, _ = lire_entete(f, position)
         if ident is None or ident == CLUSTER or size is None or size < 0:
             break
-        if ident in (INFO, TAGS):
+        if ident in wanted:
             found.setdefault(ident, position)
         elif ident == SEEK_HEAD:
             heads.append(position)
@@ -422,7 +430,7 @@ def _locate(f, start, end):
             continue
         f.seek(position + header)
         for target, at in reperes_seekhead(lire_exact(f, size), start):
-            if target in (INFO, TAGS):
+            if target in wanted:
                 found.setdefault(target, at)
             elif target == SEEK_HEAD:
                 heads.append(at)
@@ -438,10 +446,10 @@ def _content(f, position, expected):
     return lire_exact(f, size)
 
 
-def read_metadata(path):
+def read_metadata(path, ordered=False):
     """(tags, durée en minutes) d'un .mkv, sans MKVToolNix ; (None, None) s'il est illisible.
 
-    `tags` a la forme de mkv.parse_tags - un ensemble vide si le fichier n'en porte pas.
+    `tags` a la forme de mkv.parse_tags - un ensemble vide si le fichier n'en porte pas ; avec `ordered`, une liste dans l'ordre du fichier.
     """
     try:
         file_size = os.path.getsize(path)
@@ -454,4 +462,48 @@ def read_metadata(path):
             tags = _content(f, where[TAGS], TAGS) if TAGS in where else None
     except OSError:
         return None, None
-    return (parse_tags(tags) if tags else set()), (parse_info(info) if info else None)
+    return (parse_tags(tags, ordered) if tags else ([] if ordered else set())), (parse_info(info) if info else None)
+
+
+def parse_attachments(block):
+    """[(nom, type MIME, octets)] d'après le contenu d'un élément Attachments."""
+    files = []
+    for ident, start, size in _elements(block):
+        if ident != ATTACHED_FILE:
+            continue
+        name = mime = ""
+        data = b""
+        for sub, at, length in _elements(block, start, start + size):
+            if sub == FILE_NAME:
+                name = _text(block, at, length)
+            elif sub == FILE_MIME:
+                mime = _text(block, at, length)
+            elif sub == FILE_DATA:
+                data = bytes(block[at:at + length])
+        files.append((name, mime, data))
+    return files
+
+
+def read_cover(path):
+    """(octets, type MIME) de la jaquette d'un .mkv (la pièce jointe `cover.*`, posée par Metadata.py), sans MKVToolNix ; None s'il n'y en a pas ou si le fichier est illisible."""
+    try:
+        file_size = os.path.getsize(path)
+        with open(path, "rb", buffering=0) as f:
+            start, end, fault = _segment(f, file_size)
+            if fault and not start:
+                return None
+            where = _locate(f, start, end, wanted=(ATTACHMENTS,))
+            if ATTACHMENTS not in where:
+                return None
+            position = where[ATTACHMENTS]
+            ident, size, header, _ = lire_entete(f, position)
+            if ident != ATTACHMENTS or size is None or not 0 <= size < MAX_ATTACHMENT:
+                return None
+            f.seek(position + header)
+            block = lire_exact(f, size)
+    except OSError:
+        return None
+    for name, mime, data in parse_attachments(block):
+        if name.lower().startswith("cover") and data:
+            return data, mime or "image/jpeg"
+    return None

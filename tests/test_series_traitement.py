@@ -260,7 +260,7 @@ class TestSeriesDeBoutEnBout(ProgrammeTestCase):
 
     def test_astuce_quand_no_tag_ne_produit_rien(self):
         _, texte = self.lancer(series, FauxTmdbSerie(), "--tmdb-id", "42", "--no-tag")
-        self.assertIn("--no-tag sans --artwork ni --recap ne produit rien", texte)
+        self.assertIn("--no-tag sans --artwork ne produit rien", texte)
 
     def test_affiches_de_dossier_pour_chaque_saison_et_la_serie(self):
         tmdb = FauxTmdbSerie()
@@ -287,16 +287,6 @@ class TestSeriesDeBoutEnBout(ProgrammeTestCase):
         code, texte = self.lancer(series, FauxTmdbSerie(), "--tmdb-id", "42", "--no-tag", "--artwork")
         self.assertIn("écrirait folder.jpg", texte)
         self.assertFalse((self.racine / "folder.jpg").exists())
-
-    def test_ancien_dossier_assets_signale(self):
-        (self.racine / "assets").mkdir()
-        _, texte = self.lancer(series, FauxTmdbSerie(), "--tmdb-id", "42", "--no-tag", "--recap", "--apply")
-        self.assertIn("le dossier 'assets' n'est plus utilisé", texte)
-
-    def test_recap_ecrit_pendant_un_etiquetage_normal(self):
-        code, _ = self.metadata(None, "--apply", "--recap")
-        self.assertEqual(code, 0)
-        self.assertTrue((self.bib / "__Data__" / "Fiches" / "Ma Serie.html").is_file())
 
 
 if __name__ == "__main__":

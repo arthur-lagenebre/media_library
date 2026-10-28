@@ -54,16 +54,12 @@ Usage :
   python Metadata.py --dir "D:\Films\Inception (2010)" --tmdb-id 27205 --apply   # force l'id (1 film)
   python Metadata.py --dir "D:\Films" --verify                # vérifie seulement
 
-Options : --apply --verify --skip-done --artwork --recap --no-tag --no-cache --no-ask
+Options : --apply --verify --skip-done --artwork --no-tag --no-cache --no-ask
           --no-saga
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
 
 À chaque passage, un JOURNAL est écrit à la racine de --dir : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
-
---recap genere une fiche HTML de la médiathèque, movies.html, dans le dossier __Data__ à la racine de --dir (créé au besoin : la médiathèque elle-même n'est pas touchée) : mur d'affiches groupe par saga, avec les films qui MANQUENT à chaque saga (TMDB en connaît la composition) - les films déjà sortis seulement, pas les suites annoncées.
-Fichier unique, les affiches sont encodées dedans. --no-tag genere les annexes sans rien modifier dans les .mkv.
-Une zone de recherche filtre les films par titre ; chaque film possédé mène à SA fiche (affiche, résumé, réalisateur, casting), un fichier par film dans le dossier Fiches, à côté de movies.html (donc dans __Data__ aussi). Elle n'ajoute aucune requête TMDB : le casting est déjà dans la réponse, seules les images se téléchargent - une seule fois, la fiche précédente sert de cache. --profile-size règle la taille des portraits du casting.
 """
 
 from __future__ import annotations
@@ -74,14 +70,13 @@ import io
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
-from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, favicon, layout, textfile  # noqa: E402
+from libraries.common import cache, cli, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, embed, filmpage, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
 from libraries.video import saga as saga_module  # noqa: E402
 from libraries.video.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
@@ -202,13 +197,12 @@ def write_artwork(entry, movie, args, tmdb):
 @dataclass
 class Library:
     """Ce qui s'accumule au fil du passage, au-delà du Report."""
-    resolved: list          # fiches TMDB retenues, pour la fiche récap
+    resolved: list          # fiches TMDB retenues
     seen: dict              # {id TMDB: film déjà vu} - détection des doublons
     lectures: dict          # {chemin: Reading}
     journal: list = field(default_factory=list)   # (nom affiche, id TMDB, statut)
     doubts: list = field(default_factory=list)    # (nom affiche, fiche TMDB, [raisons]) - associations suspectes
     approved: set = field(default_factory=set)    # identifiants TMDB validés dans metadata.ok
-    paths: dict = field(default_factory=dict)     # {id TMDB: [chemins des fichiers, relatifs à --dir]} - affichés sur la fiche du film
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
@@ -317,11 +311,9 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
     """Traite un film dont l'association est arrêtée. Retourne son Report."""
     jumeau = library.seen.setdefault(movie.get("id"), entry.display)
     if jumeau != entry.display:
-        # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent), mais le récap n'en montrera qu'une vignette.
+        # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent).
         print(f"  [DOUBLON] même film que '{jumeau}' -> les deux seront traités")
     library.resolved.append(movie)
-    root = getattr(args, "dir", "")
-    library.paths.setdefault(movie.get("id"), []).extend(layout.relative_path(f, root) for f in entry.files)
     # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
     doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
@@ -544,319 +536,7 @@ def resolve_movie(rawname, args, tmdb, single, contexts=(), tag_id=None, saga=No
 
 
 # ----------------------------------------------------------------------------
-# 3. Fiche récap de la médiathèque
-# ----------------------------------------------------------------------------
-@dataclass
-class Card:
-    """Une vignette de la fiche : un film possède, ou un film qui manque à une saga."""
-    title: str
-    date: str = ""
-    poster: str | None = None
-    owned: bool = True
-    runtime: int | None = None
-    movie_id: int | None = None     # identifiant TMDB, de quoi retrouver sa fiche (voir filmpage)
-    genres: tuple = ()
-
-    @property
-    def year(self):
-        return (self.date or "")[:4]
-
-
-def _card(movie, owned=True):
-    return Card(title=movie.get("title", ""), date=movie.get("release_date") or "", poster=movie.get("poster_path"), owned=owned, runtime=movie.get("runtime"), movie_id=movie.get("id"), genres=tuple(g["name"] for g in movie.get("genres") or [] if g.get("name")))
-
-
-def fetch_collections(movies, tmdb):
-    """{id de saga: composition TMDB} pour les sagas des films trouvés."""
-    sagas = {}
-    for movie in movies:
-        info = movie.get("belongs_to_collection") or {}
-        ident = info.get("id")
-        if ident is None or ident in sagas:
-            continue
-        try:
-            sagas[ident] = tmdb.collection(ident)
-        except TmdbError as e:
-            print(f"  [récap] saga '{info.get('name')}' ignorée : {e}")
-    return sagas
-
-
-def released(part, today):
-    """Le film est-il déjà sorti ? Sans date, il n'est qu'annoncé."""
-    return bool(part.get("release_date")) and part["release_date"] <= today
-
-
-# Ce que TMDB ajoute au nom d'une saga : "Iron Man - Saga", "Saga Iron Man", "Iron Man Collection". Le titre de section n'a besoin que du nom ; "Saga" y est redit par la section elle-même, et par "Hors saga" en dessous.
-SAGA_SUFFIX_RE = re.compile(r"\s*(?:[-–—:]\s*(?:saga|collection)|collection)\s*$", re.IGNORECASE)
-SAGA_PREFIX_RE = re.compile(r"^(?:saga|collection)\s+(?:[-–—:]\s*)?", re.IGNORECASE)
-
-
-# Un nom qui commencerait ou finirait sur l'un d'eux une fois "collection" retiré ("Star Wars : la collection" -> "Star Wars : la", "Collection of Hope" -> "of Hope") n'était pas habillé : le mot faisait partie de sa phrase.
-DANGLING = {"la", "le", "les", "l'", "de", "du", "des", "d'", "un", "une", "the", "a", "an", "of"}
-
-
-def saga_title(name):
-    """'Iron Man - Saga' -> 'Iron Man'. Un nom qui n'est que "Saga" ou "Collection" reste tel quel.
-
-    Seul un mot séparé par un tiret ou deux-points, ou prêt à lancer le nom, est retiré : "The Twilight Saga" est un nom entier, pas un habillage.
-    """
-    name = (name or "").strip()
-    unsuffixed = SAGA_SUFFIX_RE.sub("", name).strip()
-    short = SAGA_PREFIX_RE.sub("", unsuffixed).strip()
-    if not short:
-        return name
-    # Le mot restant n'est suspect que du côté où on a retiré quelque chose : "Une nuit en enfer - Saga" commençait déjà par "Une".
-    words = short.split()
-    if (unsuffixed != name and words[-1].casefold() in DANGLING) or (short != unsuffixed and words[0].casefold() in DANGLING):
-        return name
-    return short
-
-
-def library_sections(movies, sagas, today=None):
-    """[(titre de section, [Card, ...]), ...] : une section par saga, puis le reste.
-
-    Une saga apparait avec TOUS ses films sortis - ceux qu'on possède et les autres - dans l'ordre de sortie : c'est ce qui rend visible ce qui manque à la collection. Un film pas encore sorti, ou seulement annoncé sans date, ne manque à personne : il n'apparaît pas, sauf si on l'a déjà.
-    """
-    today = today or date.today().isoformat()
-    owned = {m.get("id"): m for m in movies}
-    sections, classes = [], set()
-    # Classées sur le nom court : "Saga Alien" ne doit pas finir à S.
-    for ident, saga in sorted(sagas.items(), key=lambda kv: layout.fold(saga_title(kv[1].get("name")))):
-        cards = []
-        for part in sorted(saga.get("parts", []), key=lambda p: p.get("release_date") or "9999"):
-            mine = owned.get(part.get("id"))
-            if not mine and not released(part, today):
-                continue
-            cards.append(_card(mine, True) if mine else _card(part, False))
-            if mine:
-                classes.add(part.get("id"))
-        if cards:
-            sections.append((saga_title(saga.get("name")) or "Saga", cards))
-    seuls = [m for m in movies if m.get("id") not in classes]
-    if seuls:
-        sections.append(("Hors saga", [_card(m) for m in sorted(seuls, key=lambda m: layout.fold(m.get("title")))]))
-    return sections
-
-
-def collect_posters(sections, size):
-    """{clé: chemin TMDB} pour toutes les affiches de la fiche."""
-    needed = {}
-    for _, cards in sections:
-        for card in cards:
-            key = embed.image_key(card.poster, size)
-            if key:
-                needed[key] = card.poster
-    return needed
-
-
-def build_recap_html(library_name, sections, posters, size, pages=()):
-    """Rend la fiche HTML (pur rendu : ni réseau ni disque).
-
-    Les films manquants d'une saga sont grises et étiquetés, comme les épisodes absents dans la fiche d'une série.
-
-    `pages` = identifiants des films dont la fiche existe (voir filmpage) : leur vignette mène à elle. Un film sans fiche - ou manquant, que TMDB décrit mais qu'on ne possède pas - reste une vignette inerte plutôt qu'un lien cassé.
-
-    L'en-tête (titre, recherche, bouton de largeur) reste fixe en haut de page. La recherche filtre les vignettes sur leur titre, sans accents ni casse, et masque les sagas qui n'ont plus rien à montrer."""
-    def esc(s):
-        # L'apostrophe aussi : les attributs sont entre apostrophes, et un titre qui dit "l'Oeil" fermerait l'attribut en plein milieu.
-        return escape(str(s or ""), {"'": "&#39;"})
-
-    blocs = []
-    total = manquants = 0
-    genres = {}
-    for titre, cards in sections:
-        possedes = sum(1 for c in cards if c.owned)
-        total += possedes
-        manquants += len(cards) - possedes
-        compteur = (f"<span class='cnt'>{possedes}/{len(cards)}</span>" if len(cards) != possedes else "")
-        vignettes = []
-        for card in cards:
-            key = embed.image_key(card.poster, size)
-            uri = posters.get(key) if key else None
-            img = embed.tag(key, uri) if uri else "<div class='noimg'></div>"
-            duree = f" · {card.runtime} min" if card.runtime else ""
-            manque = "<div class='miss'>manquant</div>" if not card.owned else ""
-            lien = (f" href='{esc(filmpage.href(card.movie_id))}'" if card.owned and card.movie_id in pages else "")
-            balise = "a" if lien else "div"
-            # L'ancre : le retour depuis la fiche du film ramène à sa vignette.
-            ancre = f" id='{filmpage.anchor(card.movie_id)}'" if lien else ""
-            # L'index A-Z ne vise que ce qui est rangé par ordre alphabétique : les films seuls, pas ceux d'une saga (classés par date de sortie).
-            lettre = f" data-i='{layout.initial(card.title)}'" if titre == "Hors saga" else ""
-            for genre in card.genres:
-                genres[genre] = genres.get(genre, 0) + 1
-            vignettes.append(
-                f"<{balise} class='film{'' if card.owned else ' absent'}'{ancre}{lien}{lettre}{layout.genre_attr(card.genres)}>"
-                f"<div class='aff'>{img}{manque}</div>"
-                f"<div class='t'>{esc(card.title)}</div>"
-                f"<div class='y'>{esc(card.year)}{duree}</div>"
-                f"</{balise}>")
-        # Une saga se range sous la première lettre de son nom ; "Hors saga" n'est pas un nom, ses films le sont.
-        lettre = f" data-i='{layout.initial(titre)}'" if titre != "Hors saga" else ""
-        blocs.append(f"<section><h2{lettre}>{esc(titre)}{compteur}</h2>"
-                     f"<div class='grid'>{''.join(vignettes)}</div></section>")
-
-    sagas = sum(1 for titre, _ in sections if titre != "Hors saga")
-    resume = f"{total} film(s)" + (f" · {sagas} saga(s)" if sagas else "")
-    if manquants:
-        resume += f" · {manquants} manquant(s) dans les sagas"
-
-    return (
-        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-        + favicon.films_link()
-        + layout.BOOT +
-        f"<meta name='poster-size' content='{esc(size)}'>"
-        f"<title>{esc(library_name)}</title>"
-        "<style>"
-        "body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#14151a;color:#e8e8ea}"
-        ".wrap{max-width:1180px;margin:0 auto;padding:32px}"
-        "h1{margin:0 0 4px}.sub{color:#9aa0aa}"
-        + layout.CSS +
-        ".none{color:#9aa0aa;margin-top:30px}"
-        "[hidden]{display:none!important}"
-        "h2{font-size:17px;margin:30px 0 14px;padding-bottom:8px;"
-        "border-bottom:1px solid #21232b}"
-        ".cnt{margin-left:9px;font-size:13px;font-weight:400;color:#9aa0aa;"
-        "font-variant-numeric:tabular-nums}"
-        # Sept par ligne, pas "autant que la largeur en tient" : c'est ce qu'on regarde, et à 1180 px l'ancien calcul en donnait six. Sous 900 px sept affiches deviennent des timbres-poste : retour au remplissage automatique. En pleine largeur, le remplissage automatique seul décide.
-        ".grid{display:grid;gap:18px;grid-template-columns:repeat(7,1fr)}"
-        "@media(max-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}}"
-        ".wide .grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}"
-        ".film{display:block;color:inherit;text-decoration:none}"
-        ".film .aff{position:relative;aspect-ratio:2/3;border-radius:8px;overflow:hidden;"
-        "background:#21232b;transition:transform .15s,box-shadow .15s}"
-        "a.film:hover .aff,a.film:focus-visible .aff{transform:translateY(-3px);"
-        "box-shadow:0 0 0 2px #7cc4ff}"
-        "a.film:hover .t{color:#7cc4ff}"
-        ".film img,.film .noimg{width:100%;height:100%;object-fit:cover;display:block}"
-        ".film .t{margin-top:8px;font-size:14px;font-weight:600;line-height:1.3}"
-        ".film .y{color:#9aa0aa;font-size:13px}"
-        ".film.absent{opacity:.42}"
-        ".miss{position:absolute;left:6px;bottom:6px;padding:2px 8px;border-radius:999px;"
-        "font-size:11px;text-transform:uppercase;letter-spacing:.04em;"
-        "background:#3a2a2e;color:#ff9aa6}"
-        "</style></head><body>"
-        + layout.header(
-            f"<h1>{esc(library_name)}</h1>"
-            f"<div class='sub'>{esc(resume)}</div>"
-            "<div class='bar'>"
-            "<div class='line'>"
-            "<input class='filter' type='search' placeholder='Rechercher un film…' aria-label='Rechercher un film'>"
-            + layout.genre_select(genres) + "</div>"
-            + layout.mode_button() + "</div>"
-            + layout.index_nav()) +
-        f"{''.join(blocs)}"
-        "<p class='none' hidden>Aucun film ne correspond.</p>"
-        "<script>"
-        "var f=document.querySelector('.filter');"
-        "function n(s){return s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase()}"
-        "f.oninput=function(){var q=n(f.value.trim()),any=false;"
-        "document.querySelectorAll('section').forEach(function(s){var seen=0;"
-        "s.querySelectorAll('.film').forEach(function(c){"
-        "var ok=(!q||n(c.querySelector('.t').textContent).indexOf(q)>=0)&&gok(c);c.hidden=!ok;if(ok)seen++});"
-        "s.hidden=!seen;if(seen)any=true});"
-        "document.querySelector('.none').hidden=any||!(q||picked())};"
-        + layout.genre_script()
-        # Le choix de présentation est gardé dans le navigateur. localStorage peut être refusé (page ouverte hors serveur, navigation privée) : la page marche alors sans, en 7 par ligne.
-        + layout.mode_script() + layout.index_script() +
-        "</script></div></body></html>"
-    )
-
-
-DATA_DIR = "__Data__"           # là où le script écrit ses pages : la médiathèque elle-même n'est pas touchée
-RECAP_NAME = "movies.html"
-LEGACY_NAMES = ("index.html", "recap.html")      # ce que les versions précédentes écrivaient à la racine de --dir : lus pour leur titre et leurs affiches, jamais effacés
-DEFAULT_TITLE = "Films"
-
-
-def recap_path(root_dir):
-    """Où écrire la fiche : movies.html dans le dossier __Data__ de --dir."""
-    return Path(root_dir) / DATA_DIR / RECAP_NAME
-
-
-def previous_recap(root_dir):
-    """La fiche précédente, qui sert de cache d'affiches et de titre : movies.html, à défaut celle que les versions précédentes écrivaient à la racine (index.html, ou recap.html avant elle)."""
-    out = recap_path(root_dir)
-    if out.is_file():
-        return out
-    return next((p for p in (Path(root_dir) / n for n in LEGACY_NAMES) if p.is_file()), out)
-
-
-def recap_title(args, previous):
-    """--title, sinon le titre de la fiche précédente, sinon "Films".
-
-    Pas le nom du dossier : à la racine d'un partage réseau, il n'y en a pas, la page n'avait aucun titre et l'onglet affichait le nom du fichier.
-    """
-    return getattr(args, "title", None) or textfile.title_of(previous) or DEFAULT_TITLE
-
-
-def write_film_pages(out, library_name, movies, args, tmdb, paths=None):
-    """Écrit la fiche de chaque film (voir filmpage) à côté de l'index `out`. Retourne les identifiants des films qui en ont une.
-
-    Une fiche déjà à jour n'est pas réécrite, et ses images sont reprises d'elle : chaque nuit, seul un film nouveau coûte des téléchargements. Une fiche qu'on n'a pas pu écrire n'est pas rendue, pour que l'index ne mène pas à rien. Les fiches de films sortis de la médiathèque restent sur le disque : plus rien n'y mène, et les effacer n'est pas à ce script de décider.
-    """
-    folder = out.parent / filmpage.DIR
-    try:
-        folder.mkdir(exist_ok=True)
-    except OSError as e:
-        print(f"  [fiches] dossier {folder} non créé : {e} -> pas de fiche par film")
-        return set()
-    profile_size = getattr(args, "profile_size", filmpage.PROFILE_SIZE)
-    back = f"../{out.name}"
-    # Deux dossiers pour un même film n'ont qu'une fiche : elle porte l'identifiant, pas le dossier.
-    unique = {m["id"]: m for m in movies if m.get("id")}
-    pages, written = set(), 0
-    for movie_id, movie in unique.items():
-        page = folder / filmpage.name(movie_id)
-        known = embed.read_embedded(page)
-        images = {**embed.fetch(filmpage.poster_images(movie), known, filmpage.POSTER_SIZE, tmdb, label="affiche", quiet=True),
-                  **embed.fetch(filmpage.profile_images(movie, profile_size), known, profile_size, tmdb, label="portrait", quiet=True)}
-        html = filmpage.build_html(movie, images, back, library_name, profile_size, sorted((paths or {}).get(movie_id, [])))
-        try:
-            if not textfile.same(page, html):
-                textfile.write(page, html)
-                written += 1
-        except OSError as e:
-            print(f"  [fiches] {page.name} non écrite : {e}")
-            continue
-        pages.add(movie_id)
-    print(f"  [fiches] {len(pages)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s))")
-    return pages
-
-
-def write_recap(root_dir, movies, args, tmdb, paths=None):
-    """Écrit la fiche (movies.html dans __Data__) et celle de chaque film. Ne télécharge ni n'écrit rien en simulation.
-
-    La fiche précédente sert de cache d'affiches : movies.html, à défaut l'index.html (ou recap.html) que les versions précédentes écrivaient à la racine de --dir, qui reste en place."""
-    apply = args.apply and not args.verify
-    out = recap_path(root_dir)
-    if apply:
-        try:
-            out.parent.mkdir(exist_ok=True)
-        except OSError as e:
-            print(f"  [médiathèque] dossier {out.parent} non créé : {e} -> fiche non écrite")
-            return
-    print("--- annexes ---")
-    previous = previous_recap(root_dir)
-    sections = library_sections(movies, fetch_collections(movies, tmdb))
-    needed = collect_posters(sections, args.poster_size)
-    posters = (embed.fetch(needed, embed.read_embedded(previous), args.poster_size, tmdb, label="affiche") if apply else {})
-    title = recap_title(args, previous)
-    pages = write_film_pages(out, title, movies, args, tmdb, paths) if apply else set()
-    html = build_recap_html(title, sections, posters, args.poster_size, pages)
-    if not apply:
-        print(f"  [médiathèque] écrirait {out} et une fiche par film dans {filmpage.DIR}/")
-        return
-    # Lancée chaque nuit sur un NAS, la fiche ne doit ni réveiller les disques ni changer de date tant que la médiathèque ne bouge pas.
-    if textfile.same(out, html):
-        print(f"  [médiathèque] {out} inchangé")
-        return
-    textfile.write(out, html)
-    print(f"  [médiathèque] {out} écrit  "
-          f"({len(html) / 1_048_576:.1f} Mo, {len(posters)} affiche(s) intégrée(s))")
-
-
-# ----------------------------------------------------------------------------
-# 4. Programme principal
+# 3. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
@@ -875,12 +555,8 @@ def parse_args():
     ap.add_argument("--no-sub-names", action="store_true", help="Ne renomme pas les pistes de sous-titres")
     ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par défaut'")
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques")
-    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; génère seulement folder.jpg / recap")
+    ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; avec --artwork, écrit seulement folder.jpg")
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (affiche EN) par film")
-    ap.add_argument("--recap", action="store_true", help="Génère la fiche movies.html de la médiathèque (sagas et manquants), dans __Data__ à la racine de --dir")
-    ap.add_argument("--poster-size", default="w185", help="Taille TMDB des affiches du recap (défaut : w185)")
-    ap.add_argument("--profile-size", default=filmpage.PROFILE_SIZE, help=f"Taille TMDB des portraits du casting, dans la fiche de chaque film (défaut : {filmpage.PROFILE_SIZE})")
-    ap.add_argument("--title", help="Titre de la fiche recap (défaut : celui de la fiche existante, sinon 'Films')")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     return ap.parse_args()
 
@@ -902,9 +578,8 @@ def main():
     if args.tmdb_id and len(movies) > 1:
         print(f"Note : --tmdb-id ne s'applique qu'à un seul film ; {len(movies)} détectés "
               "-> id ignoré, recherche par nom.\n")
-    if args.no_tag and not (args.artwork or args.recap):
-        print("Astuce : --no-tag sans --artwork ni --recap ne produit rien. "
-              "Ajoute --artwork et/ou --recap.\n")
+    if args.no_tag and not args.artwork:
+        print("Astuce : --no-tag sans --artwork ne produit rien. Ajoute --artwork.\n")
     if args.artwork and not any(e.owns_folder for e in movies):
         print("Note : --artwork sans effet ici : aucun dossier ne contient un seul film.\n")
 
@@ -944,15 +619,12 @@ def main():
     if attente:
         report += resolve_pending(attente, library, args, opts, tmdb)
 
-    resolved = library.resolved
     print(f"TOTAL : {report.matched}/{report.total} film(s) associé(s).")
     if library.doubts:
         print(f"\nÀ VÉRIFIER : {len(library.doubts)} association(s) suspecte(s)")
         for name, movie, doubts in library.doubts:
             print(f"  {name} -> {lookup.describe(movie)} : {' ; '.join(doubts)}")
         print()
-    if args.recap and resolved:
-        write_recap(args.dir, resolved, args, tmdb, library.paths)
     write_log(args.dir, library, args, report)
     reste = report.epilogue()
     if reste:
