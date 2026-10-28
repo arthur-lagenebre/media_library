@@ -141,6 +141,9 @@ CSS_BASE = (
     ".al .y{color:#9aa0aa;font-size:13px}"
     ".al .y.warn{color:#ffb86b}"
     ".al.bad .aff{box-shadow:0 0 0 2px #ff9aa6}"
+    # Un album qui manque : même vignette, en retrait, avec un simple liseré à la place de la pochette qu'il n'a pas.
+    ".al.gone{opacity:.55}.al.gone .aff{box-shadow:inset 0 0 0 1px #3a3d48}.al.gone .t{font-weight:400}"
+    ".al .lack{color:#ff9aa6}"
 )
 
 
@@ -184,9 +187,9 @@ def _tile(release, uri, link, attrs="", media_base=None):
             "</div>")
 
 
-def _wanted_tile(wanted, uri=None):
-    """La vignette d'un album qu'on n'a pas : grisée, sans lien ni lecture, l'année et « manquant » à la place du nombre de pistes. 'uri' = sa pochette en data-URI, si on en a une."""
-    return ("<div class='al gone'><div class='cv'>"
+def _wanted_tile(wanted, uri=None, attrs=""):
+    """La vignette d'un album qu'on n'a pas : grisée, sans lien ni lecture, l'année et « manquant » à la place du nombre de pistes. 'uri' = sa pochette en data-URI, si on en a une ; 'attrs' = les attributs de la vignette (voir _tile)."""
+    return (f"<div class='al gone'{attrs}><div class='cv'>"
             f"<div class='aff'>{_cover(wanted.key, uri)}</div>"
             f"<div class='t'>{esc(wanted.title)}</div></div>"
             f"<div class='y'>{esc(wanted.year)} · <span class='lack'>manquant</span></div></div>")
@@ -201,9 +204,11 @@ def _group(release, artists):
 # ----------------------------------------------------------------------------
 # Sommaire
 # ----------------------------------------------------------------------------
-def build_index(library_name, sections, covers, pages=(), artists=None, media_base=None):
-    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé) ; 'artists' = {id d'artiste: Artist} de ceux dont la fiche existe, de même ; 'media_base' = le chemin relatif du sommaire à la racine de la médiathèque, terminé par '/' (chaque pochette porte alors un bouton qui lit l'album), ou None pour un sommaire qui ne lit rien."""
+def build_index(library_name, sections, covers, pages=(), artists=None, media_base=None, wanted=None, wanted_covers=None):
+    """Rend le sommaire. 'sections' = [(nom, [Release])] (voir library.sections) ; 'covers' = {id d'album: data-URI} ; 'pages' = ids des albums dont la fiche existe (les autres pochettes restent inertes plutôt que de mener à un lien cassé) ; 'artists' = {id d'artiste: Artist} de ceux dont la fiche existe, de même ; 'media_base' = le chemin relatif du sommaire à la racine de la médiathèque, terminé par '/' (chaque pochette porte alors un bouton qui lit l'album), ou None pour un sommaire qui ne lit rien ; 'wanted' = {id d'artiste: [Wanted]}, les albums qui manquent (voir wanted.find), rangés parmi ceux de leur artiste, grisés, hors des comptes ; 'wanted_covers' = {Wanted.key: data-URI}."""
     artists = artists or {}
+    wanted = wanted or {}
+    wanted_covers = wanted_covers or {}
     playable = False
     blocks = []
     n_albums = n_tracks = 0
@@ -212,6 +217,7 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
     genre_counts = {}
     for name, releases in sections:
         tiles = []
+        lacking = wanted.get(releases[0].artist_id, [])
         for release in releases:
             n_albums += 1
             n_tracks += len(release.tracks)
@@ -219,11 +225,13 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
             names.add(layout.fold(release.artist))
             for genre in release.genres:
                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
-            tiles.append(_tile(
+            tiles.append((library.order(release), _tile(
                 release, covers.get(release.id), href(release) if release.id in pages else "",
                 f" id='{anchor(release)}'{_group(release, artists)} data-s='{esc(_search_text(release))}'{layout.genre_attr(release.genres)}",
-                media_base))
+                media_base)))
             playable = playable or bool(_playlist(release, media_base))
+        # Sans genre, un album qui manque disparaît dès qu'on en choisit un : on ne sait rien de lui.
+        tiles += [(w.order, _wanted_tile(w, wanted_covers.get(w.key), f" data-s='{esc(w.title + ' ' + name)}'")) for w in lacking]
         # C'est le titre de la section que vise l'index A-Z : la pochette ne dit pas de qui elle est.
         shown, ident = esc(name), ""
         letter = f" data-i='{layout.initial(name)}'"
@@ -231,8 +239,9 @@ def build_index(library_name, sections, covers, pages=(), artists=None, media_ba
         if artist is not None:
             ident = f" id='{artist_anchor(artist)}'"
             shown = f"<a href='{esc(artist_href(artist))}'>{shown}</a>"
-        blocks.append(f"<section><h2{ident}{letter}>{shown}<span class='cnt'>{len(releases)} album{'s' if len(releases) != 1 else ''}</span></h2>"
-                      f"<div class='grid'>{''.join(tiles)}</div></section>")
+        missing = f" · {len(lacking)} manquant{'s' if len(lacking) != 1 else ''}" if lacking else ""
+        blocks.append(f"<section><h2{ident}{letter}>{shown}<span class='cnt'>{len(releases)} album{'s' if len(releases) != 1 else ''}{missing}</span></h2>"
+                      f"<div class='grid'>{''.join(tile for _, tile in sorted(tiles, key=lambda pair: pair[0]))}</div></section>")
 
     summary = " · ".join(p for p in (f"{n_albums} album{'s' if n_albums != 1 else ''}", f"{len(names)} artiste{'s' if len(names) != 1 else ''}", tracks_label(n_tracks), length(seconds)) if p)
     return (
@@ -536,9 +545,6 @@ def build_artist(artist, covers, back_href, library_name, pages=(), info=None, m
         ".links{margin-top:6px}"
         ".mb{color:#7cc4ff;font-size:13px;text-decoration:none;white-space:nowrap}.mb:hover{text-decoration:underline}"
         ".grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}"
-        # Un album qui manque : même vignette, en retrait, avec un simple liseré à la place de la pochette qu'il n'a pas.
-        ".al.gone{opacity:.55}.al.gone .aff{box-shadow:inset 0 0 0 1px #3a3d48}.al.gone .t{font-weight:400}"
-        ".al .lack{color:#ff9aa6}"
         + (player.TILE_CSS if playable else "") +
         "</style></head><body>"
         + layout.header(f"<div class='row'><a class='back' href='{esc(back_href)}'>← {esc(library_name)}</a>"

@@ -12,7 +12,7 @@ Les fiches d'artiste, elles, complètent les tags avec ce que MusicBrainz et Wik
 
 Les pistes qui manquent à un album viennent du total que les tags annoncent (TRACKTOTAL, DISCTOTAL), comparé aux numéros possédés : "Manque : pistes 3, 5-7 (sur 13)". Rien n'est dit d'un disque dont une piste n'a pas de numéro.
 
-Les albums qui manquent à un artiste se disent dans son dossier, par une image nommée comme un album rangé : "1997 - OK Computer.jpg" (ou .png, .webp...), qui est sa pochette. Sa fiche les montre à leur place parmi ses albums, grisés et marqués « manquant », et le journal les liste ([ABSENT]). Un album qui figure aussi en dossier n'est pas déclaré manquant. Un fichier vide "1997 - OK Computer.txt" dit la même chose, sans pochette. Seul le nom du fichier compte, et l'image est réduite comme celles du sommaire.
+Les albums qui manquent à un artiste se disent dans son dossier, par une image nommée comme un album rangé : "1997 - OK Computer.jpg" (ou .png, .webp...), qui est sa pochette. Sa fiche et le sommaire les montrent à leur place parmi ses albums, grisés et marqués « manquant », et le journal les liste ([ABSENT]). Un album qui figure aussi en dossier n'est pas déclaré manquant. Un fichier vide "1997 - OK Computer.txt" dit la même chose, sans pochette. Seul le nom du fichier compte, et l'image est réduite comme celles du sommaire.
 
 Tout est écrit dans --out (défaut : __Data__ à la racine de --dir, créé au besoin) :
   music.html   le sommaire et le lecteur : recherche (album, artiste, label, genre), filtre de genre, index A-Z, et une barre de lecture ; les fiches s'ouvrent par-dessus sans couper la musique
@@ -177,13 +177,15 @@ def wanted_covers(artist, page):
 
 
 def write_artist_pages(artists, entries, covers, pages, out, library_name, base=None):
-    """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. 'base' = media_base de ce dossier (le même que celui des fiches d'albums), pour que les pochettes lisent leur album. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites)."""
+    """Écrit la fiche de chaque artiste, d'après les pochettes déjà réduites des albums et ce qu'on sait de lui. 'base' = media_base de ce dossier (le même que celui des fiches d'albums), pour que les pochettes lisent leur album. Retourne ({id: Artist} de ceux dont la fiche existe, nombre de fiches écrites, {Wanted.key: data-URI} des albums manquants : le sommaire les montre aussi)."""
     folder = out / librarypage.ARTIST_DIR
     folder.mkdir(parents=True, exist_ok=True)
-    done, written = {}, 0
+    done, written, lacking_covers = {}, 0, {}
     for artist in artists.values():
         page = folder / librarypage.artist_page_name(artist)
-        html = librarypage.build_artist(artist, covers, f"../{PAGE_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base, wanted_covers(artist, page))
+        shown = wanted_covers(artist, page)
+        lacking_covers.update(shown)
+        html = librarypage.build_artist(artist, covers, f"../{PAGE_NAME}", library_name, pages, (entries.get(artist.mbid) or {}).get("info"), base, shown)
         try:
             if not textfile.same(page, html):
                 textfile.write(page, html)
@@ -193,7 +195,7 @@ def write_artist_pages(artists, entries, covers, pages, out, library_name, base=
             continue
         done[artist.id] = artist
     print(f"  [artistes] {len(done)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(done) - written} inchangée(s))")
-    return done, written
+    return done, written, lacking_covers
 
 
 def write_pages(sections, out, root, args, lacking=None):
@@ -237,11 +239,11 @@ def write_pages(sections, out, root, args, lacking=None):
                 print(f"  [pages] {done}/{len(queue)}")
     print(f"  [pages] {len(pages)} fiche(s) dans {folder.name}/ ({written} écrite(s), {len(pages) - written} inchangée(s)), {fresh} pochette(s) extraite(s)")
 
-    artists, _ = write_artist_pages(artists, entries, covers, pages, out, library_name, base)
+    artists, _, lacking_covers = write_artist_pages(artists, entries, covers, pages, out, library_name, base)
 
     # Le sommaire est à la racine de la sortie, pas dans un dossier : son chemin vers les fichiers n'est pas celui des fiches.
     index_base = None if args.no_player else media_base(out, root)
-    html = librarypage.build_index(library_name, sections, covers, pages, artists, index_base)
+    html = librarypage.build_index(library_name, sections, covers, pages, artists, index_base, lacking, lacking_covers)
     if textfile.same(index, html):
         print(f"  [sommaire] {index} inchangé")
     else:
