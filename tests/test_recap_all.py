@@ -58,6 +58,13 @@ class TestRecapAll(unittest.TestCase):
         self.assertNotIn("--tmdb-id", cmds["Lost"])                  # rien à reprendre : recherche
         self.assertNotIn("--tmdb-id", cmds["Pinned [tmdbid-1396]"])  # l'épinglage passe devant
 
+    def test_title_transmis_aux_fiches(self):
+        # Chaque fiche en tire son lien de retour : « ← Anime » vers Anime.html.
+        for cmd in self.lancer("--title", "Anime")[0]:
+            self.assertEqual(cmd[cmd.index("--title") + 1], "Anime")
+        for cmd in self.lancer()[0]:
+            self.assertNotIn("--title", cmd)
+
     def test_simulation_par_defaut(self):
         for cmd in self.lancer()[0]:
             self.assertNotIn("--apply", cmd)
@@ -75,8 +82,7 @@ class TestRecapAll(unittest.TestCase):
 
     def test_sommaire_reecrit_s_il_existe(self):
         _, _, sortie = self.lancer("--apply")
-        self.assertFalse((self.bib / "__Data__").exists())            # jamais créé ici
-        (self.bib / "__Data__").mkdir()
+        self.assertEqual([p.name for p in (self.bib / "__Data__").iterdir()], ["Fiches"])      # aucun sommaire écrit ici : il n'y en avait pas
         (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
         (self.bib / "__Data__" / "notes.html").write_text("<html>à moi</html>", encoding="utf-8")
         _, _, sortie = self.lancer("--apply")
@@ -84,7 +90,6 @@ class TestRecapAll(unittest.TestCase):
         self.assertEqual((self.bib / "__Data__" / "notes.html").read_text(encoding="utf-8"), "<html>à moi</html>")   # une page qui n'est pas la nôtre n'est pas touchée
 
     def test_title_ne_reecrit_que_le_sommaire_de_ce_titre(self):
-        (self.bib / "__Data__").mkdir()
         (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
         (self.bib / "__Data__" / "Series.html").write_text(showindex.build_html("Series", []), encoding="utf-8")
         _, _, sortie = self.lancer("--apply", "--title", "Anime")

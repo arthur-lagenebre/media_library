@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 r"""
-Recap_All.py — Régénère la fiche (index.html) de toutes les séries d'une médiathèque.
+Recap_All.py — Régénère la fiche de toutes les séries d'une médiathèque (__Data__/Fiches/<série>.html).
 
 Pour chaque série de --dir, lance Metadata.py --no-tag --recap : les épisodes ne sont JAMAIS modifiés, seule la fiche est réécrite. Utile quand la fiche évolue (affiche et année pour le sommaire, icône d'onglet...) : une seule commande remet toute la médiathèque à niveau.
 
-Est une série tout sous-dossier de --dir qui contient des dossiers "Saison N" (ou "Specials"), ou déjà une fiche (index.html, ou l'ancien recap.html, renommé au passage).
+Est une série tout sous-dossier de --dir qui contient des dossiers "Saison N" (ou "Specials"), ou déjà une fiche (dans __Data__/Fiches, ou l'ancien index.html / recap.html du dossier de la série, lu comme cache d'images mais jamais effacé).
 
 L'identifiant TMDB inscrit dans la fiche existante est repris : une série identifiée autrefois avec --tmdb-id reste la même, sans nouvelle recherche qui pourrait tomber sur un homonyme. Un identifiant épinglé dans le nom du dossier ("Ma Série [tmdbid-1396]") passe devant.
 
 Chaque série tourne dans son propre processus : une série en échec est signalée au bilan, et les suivantes sont traitées quand même. Les images déjà dans une fiche sont reprises, seules les nouvelles sont téléchargées.
 
-Si la médiathèque a un sommaire (Index.py : un .html dans son dossier __Data__), il est réécrit à la fin ; --title ne réécrit que celui de ce titre.
+Si la médiathèque a un sommaire (Index.py : un .html dans son dossier __Data__), il est réécrit à la fin ; --title ne réécrit que celui de ce titre, et nomme aussi celui où chaque fiche revient.
 
 Usage :
   python Recap_All.py --dir "D:\Séries"                       # simulation
@@ -38,7 +38,7 @@ def find_series(root):
             if naming.find_seasons(sub) or showindex.series_page(sub)]
 
 
-def series_command(folder, apply, extra):
+def series_command(folder, apply, extra, title=None):
     """Ligne de commande de Metadata.py pour régénérer la fiche d'une série."""
     cmd = [sys.executable, str(METADATA), "--dir", str(folder), "--no-tag", "--recap"]
     if not lookup.pinned_show_id(folder):
@@ -48,16 +48,18 @@ def series_command(folder, apply, extra):
             cmd += ["--tmdb-id", ident]
     if apply:
         cmd.append("--apply")
+    if title:
+        cmd += ["--title", title]
     return cmd + list(extra)
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="Régénère la fiche index.html de toutes les séries d'une médiathèque (épisodes non modifiés).",
+    ap = argparse.ArgumentParser(description="Régénère la fiche (__Data__/Fiches) de toutes les séries d'une médiathèque (épisodes non modifiés).",
                                  epilog="Toute autre option est transmise à Metadata.py.")
     ap.add_argument("--dir", required=True, help="Racine de la médiathèque : un sous-dossier par série")
     ap.add_argument("--apply", action="store_true", help="Écrit réellement les fiches (défaut : simulation)")
     ap.add_argument("--only", help="Ne traite que les séries dont le nom de dossier contient ce texte")
-    ap.add_argument("--title", help="Titre du sommaire à réécrire à la fin, comme pour Index.py (défaut : tous ceux que Index.py a écrits dans __Data__)")
+    ap.add_argument("--title", help="Titre du sommaire où revient chaque fiche, et à réécrire à la fin, comme pour Index.py (défaut : tous ceux que Index.py a écrits dans __Data__)")
     return ap.parse_known_args()
 
 
@@ -77,7 +79,7 @@ def main():
     failed = []
     for i, folder in enumerate(series, 1):
         print(f"\n##### [{i}/{len(series)}] {folder.name}", flush=True)
-        if subprocess.run(series_command(folder, args.apply, extra)).returncode != 0:
+        if subprocess.run(series_command(folder, args.apply, extra, args.title)).returncode != 0:
             failed.append(folder.name)
 
     print(f"\n{len(series) - len(failed)}/{len(series)} fiche(s) "

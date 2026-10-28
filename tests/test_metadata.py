@@ -321,12 +321,17 @@ class TestRecap(unittest.TestCase):
         html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300", folder="Ma Série")
         en_tete = html[html.index("<header class='top'>"):html.index("</header>")]
         ancre = series.showindex.anchor("Ma Série")
-        self.assertIn(f"<a class='back' href='../__Data__/tv_shows.html#{ancre}'>← Séries</a>", en_tete)
+        self.assertIn(f"<a class='back' href='../tv_shows.html#{ancre}'>← Séries</a>", en_tete)     # la fiche est dans __Data__/Fiches, le sommaire dans __Data__
         self.assertLess(en_tete.index("class='back'"), en_tete.index("<h1>"))
         self.assertIn("history.back()", html)                          # venu d'un sommaire, quel que soit son nom
-        self.assertIn("new URLSearchParams(location.hash.slice(1))", html)   # le sommaire se nomme dans le lien de la vignette
         sans = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300")
-        self.assertIn("href='../__Data__/tv_shows.html'>", sans)       # sans dossier, le sommaire seul
+        self.assertIn("href='../tv_shows.html'>", sans)                # sans dossier, le sommaire seul
+
+    def test_retour_vers_le_sommaire_donne(self):
+        run = series.SeasonRun(Path("."), 1, self.SAISON, {1})
+        html = series.build_recap_html("Ma Serie", {}, [run], "1234", {}, "w300", folder="Ma Série", index=("Mes animes.html", "Mes <animes>"))
+        ancre = series.showindex.anchor("Ma Série")
+        self.assertIn(f"<a class='back' href='../Mes%20animes.html#{ancre}'>← Mes &lt;animes&gt;</a>", html)
 
     def test_affiche_de_la_serie_a_gauche_du_titre(self):
         run = series.SeasonRun(Path("."), 1, self.SAISON, {1})

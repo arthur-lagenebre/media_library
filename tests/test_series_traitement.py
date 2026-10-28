@@ -199,6 +199,9 @@ class TestEcriture(SaisonTestCase):
 class TestSeriesDeBoutEnBout(ProgrammeTestCase):
     def setUp(self):
         super().setUp()
+        self.bib = self.racine                      # la médiathèque : la fiche de la série va dans son __Data__
+        self.racine = self.bib / "Ma Serie"
+        self.racine.mkdir()
         for numero in (1, 2):
             saison = self.racine / f"Saison {numero}"
             saison.mkdir()
@@ -293,7 +296,7 @@ class TestSeriesDeBoutEnBout(ProgrammeTestCase):
     def test_recap_ecrit_pendant_un_etiquetage_normal(self):
         code, _ = self.metadata(None, "--apply", "--recap")
         self.assertEqual(code, 0)
-        self.assertTrue((self.racine / "index.html").is_file())
+        self.assertTrue((self.bib / "__Data__" / "Fiches" / "Ma Serie.html").is_file())
 
 
 if __name__ == "__main__":

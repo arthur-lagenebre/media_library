@@ -242,20 +242,14 @@ def series_query(directory):
 
     Si --dir pointe sur un dossier de saison, c'est le dossier parent qui porte le nom de la série.
     """
-    path = Path(directory).resolve()
-    if naming.season_number(path.name) is not None:
-        path = path.parent
-    _, nom = naming.extract_tmdb_id(path.name)
+    _, nom = naming.extract_tmdb_id(naming.series_folder(directory).name)
     title, year, _ = naming.parse_title_year(nom)
     return title, year
 
 
 def pinned_show_id(directory):
     """Id TMDB épinglé dans le nom du dossier de la série, ou None."""
-    path = Path(directory).resolve()
-    if naming.season_number(path.name) is not None:
-        path = path.parent
-    return naming.extract_tmdb_id(path.name)[0]
+    return naming.extract_tmdb_id(naming.series_folder(directory).name)[0]
 
 
 def resolve_show_id(tmdb, directory, forced=None):

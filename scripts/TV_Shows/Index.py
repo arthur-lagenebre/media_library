@@ -2,9 +2,9 @@
 r"""
 Index.py — Sommaire HTML de toutes les séries d'une médiathèque.
 
-Écrit un sommaire dans le dossier __Data__ de --dir (créé au besoin) : un mur d'affiches, une par série, chacune menant à la fiche index.html de son dossier (ou à l'ancien recap.html, tant que la fiche n'a pas été régénérée). Tout est lu dans les fiches elles-mêmes (titre, année, saisons, affiche) : ni clé TMDB ni réseau.
+Écrit un sommaire dans le dossier __Data__ de --dir (créé au besoin) : un mur d'affiches, une par série, chacune menant à sa fiche, dans __Data__/Fiches (ou à l'ancien index.html / recap.html du dossier de la série, tant que la fiche n'a pas été régénérée). Tout est lu dans les fiches elles-mêmes (titre, année, saisons, affiche) : ni clé TMDB ni réseau.
 
-Fait pour tourner en TÂCHE PLANIFIÉE sur le NAS qui héberge la médiathèque : les fiches sont écrites sur un disque local puis transférées, et seul le NAS voit toutes les séries. Le script n'a besoin que de Python 3 et de libraries/ - aucun outil, aucune clé, aucun réseau - et ne réécrit index.html que si son contenu change.
+Fait pour tourner en TÂCHE PLANIFIÉE sur le NAS qui héberge la médiathèque : les fiches sont écrites sur un disque local puis transférées, et seul le NAS voit toutes les séries. Le script n'a besoin que de Python 3 et de libraries/ - aucun outil, aucune clé, aucun réseau - et ne réécrit le sommaire que si son contenu change.
 
 Le sommaire porte le nom du titre : --title "Anime" l'écrit dans __Data__/Anime.html (et lui donne ce titre), sans --title c'est __Data__/tv_shows.html. L'ancien index.html, à la racine, n'est ni réécrit ni effacé : on en reprend le titre, et on peut le supprimer.
 

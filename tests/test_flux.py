@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from libraries.video import showindex
 from scripts.Movies import Metadata as films
 from scripts.TV_Shows import Metadata as series
 from scripts.TV_Shows import Rename_Episodes as rename
@@ -207,11 +208,13 @@ class TestAnnexesDesFilms(FluxTestCase):
 class TestAnnexesDesSeries(FluxTestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.racine = Path(self._tmp.name)
+        self.bib = Path(self._tmp.name)                            # la médiathèque : la fiche est écrite dans son __Data__
+        self.racine = self.bib / "Ma Serie"
         saison = self.racine / "Saison 1"
-        saison.mkdir()
+        saison.mkdir(parents=True)
         (saison / "01 - Pilote.mkv").write_text("x", encoding="utf-8")
         self.addCleanup(self._tmp.cleanup)
+        self.fiche = self.bib / "__Data__" / "Fiches" / "Ma Serie.html"
 
     def lancer_serie(self, *options):
         with mock.patch.object(series.mkv, "check_tools", lambda **k: False):
@@ -220,23 +223,46 @@ class TestAnnexesDesSeries(FluxTestCase):
 
     def test_le_recap_porte_l_onglet_casting(self):
         tmdb, _ = self.lancer_serie("--recap", "--apply")
-        html = (self.racine / "index.html").read_text(encoding="utf-8")
+        html = self.fiche.read_text(encoding="utf-8")
         self.assertEqual(tmdb.castings, [1])            # une saison, un appel
         self.assertIn("data-s='cast'", html)
         self.assertIn("A. Acteur", html)
         self.assertIn("<img data-img='w185/a.jpg'", html)
 
-    def test_ancienne_fiche_renommee(self):
-        (self.racine / "recap.html").write_text("<html><head><title>Ma Serie</title></head></html>", encoding="utf-8")
+    def test_la_fiche_va_dans_data_sans_toucher_la_serie(self):
         self.lancer_serie("--recap", "--apply")
-        self.assertFalse((self.racine / "recap.html").exists())
-        self.assertTrue((self.racine / "index.html").exists())
+        self.assertTrue(self.fiche.is_file())
+        self.assertEqual(sorted(p.name for p in self.racine.iterdir()), ["Saison 1"])        # ni index.html ni quoi que ce soit dans le dossier de la série
+        self.assertIn("href='../tv_shows.html#", self.fiche.read_text(encoding="utf-8"))
+
+    def test_ancienne_fiche_reprise_comme_cache_sans_etre_effacee(self):
+        # Une fiche d'avant est restée dans le dossier de la série : ses images servent de cache, mais elle n'est ni renommée ni effacée.
+        ancienne = self.racine / "recap.html"
+        ancienne.write_text("<html><head><title>Ma Serie</title></head></html>", encoding="utf-8")
+        _, sortie = self.lancer_serie("--recap", "--apply")
+        self.assertTrue(ancienne.exists())
+        self.assertTrue(self.fiche.is_file())
+        self.assertNotIn("renommé", sortie)
+
+    def test_le_retour_suit_le_sommaire_ecrit_ou_le_titre(self):
+        (self.bib / "__Data__").mkdir()
+        (self.bib / "__Data__" / "Anime.html").write_text(showindex.build_html("Anime", []), encoding="utf-8")
+        self.lancer_serie("--recap", "--apply")
+        self.assertIn("<a class='back' href='../Anime.html#", self.fiche.read_text(encoding="utf-8"))
+        self.lancer_serie("--recap", "--apply", "--title", "Mes animes")
+        self.assertIn("href='../Mes%20animes.html#", self.fiche.read_text(encoding="utf-8"))
+
+    def test_dir_sur_une_saison_ecrit_la_fiche_de_la_serie(self):
+        self.lancer(series, ["--dir", str(self.racine / "Saison 1"), "--tmdb-id", "42", "--no-tag", "--recap", "--apply"], tmdb=FauxTmdbSerie())
+        self.assertTrue(self.fiche.is_file())
+        self.assertEqual(sorted(p.name for p in (self.racine / "Saison 1").iterdir()), ["01 - Pilote.mkv"])
 
     def test_la_simulation_n_interroge_pas_le_casting(self):
         tmdb, sortie = self.lancer_serie("--recap")
         self.assertEqual(tmdb.castings, [])
-        self.assertFalse((self.racine / "index.html").exists())
-        self.assertIn("écrirait index.html", sortie)
+        self.assertFalse(self.fiche.exists())
+        self.assertFalse((self.bib / "__Data__").exists())              # même le dossier n'est pas créé
+        self.assertIn("écrirait __Data__/Fiches/Ma Serie.html", sortie)
 
 
 class TestDoublons(FluxTestCase):
