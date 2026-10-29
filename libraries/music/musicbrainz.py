@@ -154,6 +154,10 @@ class MusicBrainz:
         """Release group et ses genres - c'est à ce niveau que la communauté les vote."""
         return self.get(f"release-group/{mbid}?inc=genres")
 
+    def group_releases(self, mbid):
+        """Toutes les sorties d'un release group, sans leurs pistes : de quoi savoir lesquelles ont une pochette de face (`cover-art-archive`)."""
+        return self.get(f"release?release-group={mbid}&inc=media&limit=100").get("releases", [])
+
     # --------------------------------------------------------------- Pochettes
     def _image(self, url):
         body, headers = self._request(url, "image/*", throttle=False)
@@ -178,3 +182,19 @@ class MusicBrainz:
                 if e.code != 404:         # le code, pas le texte : « 404 » peut figurer dans n'importe quel message réseau
                     raise
         return None
+
+    def cover_images(self, release_id):
+        """Les images de face que Cover Art Archive garde pour une sortie (celles de l'index, avec leurs miniatures), [] si elle n'en a pas. Une sortie peut en avoir plusieurs : recto d'origine, nouveau scan..."""
+        try:
+            index = self.external(f"{COVER_ART}/release/{release_id}")
+        except MusicBrainzError as e:
+            if e.code != 404:
+                raise
+            return []
+        return [image for image in index.get("images") or [] if image.get("front")]
+
+    def cover_image(self, image, size="1200"):
+        """Octets d'une image de l'index de `cover_images`, à la taille demandée - l'original quand la miniature manque."""
+        url = None if size == "original" else (image.get("thumbnails") or {}).get(size)
+        url = url or image.get("image")
+        return self._image(url.replace("http://", "https://", 1)) if url else None

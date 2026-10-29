@@ -192,5 +192,40 @@ class TestPochettes(ClientTestCase):
             self.call([FakeResponse(b"JP", {"Content-Length": "4"})], methode="cover", args=("rel",))
 
 
+class TestPochettesAChoisir(ClientTestCase):
+    INDEX = b'{"images": [{"id": 1, "front": true, "image": "http://x/1.jpg", "thumbnails": {"500": "http://x/1-500.jpg", "1200": "http://x/1-1200.jpg"}}, {"id": 2, "front": false, "back": true, "image": "http://x/2.jpg"}]}'
+
+    def test_index_limite_aux_pochettes_de_face(self):
+        images, reqs, attentes = self.call([FakeResponse(self.INDEX)], methode="cover_images", args=("rel",))
+        self.assertEqual([i["id"] for i in images], [1])
+        self.assertTrue(reqs[0].full_url.endswith("/release/rel"))
+        self.assertEqual(attentes, [])
+
+    def test_sortie_sans_aucune_image(self):
+        images, _, _ = self.call([http_error(404)], methode="cover_images", args=("rel",))
+        self.assertEqual(images, [])
+
+    def test_une_panne_n_est_pas_une_absence_d_images(self):
+        with self.assertRaises(MusicBrainzError):
+            self.call([http_error(500)] * 4, methode="cover_images", args=("rel",))
+
+    def test_miniature_a_la_taille_demandee_en_https(self):
+        image = {"image": "http://x/1.jpg", "thumbnails": {"500": "http://x/1-500.jpg"}}
+        data, reqs, _ = self.call([FakeResponse(b"JPEG")], methode="cover_image", args=(image, "500"))
+        self.assertEqual((data, reqs[0].full_url), (b"JPEG", "https://x/1-500.jpg"))
+
+    def test_original_ou_miniature_absente_donne_l_image_d_origine(self):
+        image = {"image": "http://x/1.jpg", "thumbnails": {"500": "http://x/1-500.jpg"}}
+        for taille in ("original", "1200"):
+            with self.subTest(taille):
+                _, reqs, _ = self.call([FakeResponse(b"JPEG")], methode="cover_image", args=(image, taille))
+                self.assertEqual(reqs[0].full_url, "https://x/1.jpg")
+
+    def test_editions_d_un_release_group(self):
+        editions, reqs, _ = self.call([FakeResponse(b'{"releases": [{"id": "a"}]}')], methode="group_releases", args=("grp",))
+        self.assertEqual(editions, [{"id": "a"}])
+        self.assertIn("release?release-group=grp&inc=media&limit=100&fmt=json", reqs[0].full_url)
+
+
 if __name__ == "__main__":
     unittest.main()
