@@ -5,10 +5,13 @@ C'est la pochette que l'on choisit soi-même, et elle l'emporte sur toute autre 
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
-from .tags import FRONT_COVER, AudioError, Picture, front_cover
+from libraries.common import filenames
+from .tags import FRONT_COVER, AudioError, Picture, front_cover, image_dimensions
 
+CANDIDATES_DIR = "_covers"                                     # où Cover.py --candidates dépose les pochettes entre lesquelles choisir
 NAMES = ("cover", "folder", "front", "album", "albumart")      # dans cet ordre : "cover" l'emporte sur "folder"
 EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")      # dans cet ordre : un .jpg l'emporte sur un .png
 # Un .flac ou un .mp3 ne porte que du JPEG ou du PNG, que tous les lecteurs savent afficher : les autres formats servent à la fiche, pas à l'embarquement.
@@ -83,6 +86,36 @@ def write(folder, picture):
     with open(path, "xb") as f:
         f.write(picture.data)
     return path
+
+
+def candidate_name(rank, release, data):
+    """Nom d'une pochette candidate : "01_FR-2013-CD_1200x1200.jpg" - l'ordre, puis ce qui distingue l'édition et l'image, pour choisir sans rien ouvrir de plus."""
+    media = release.get("media") or []
+    label = [release.get("country"), (release.get("date") or "")[:4], next((m["format"] for m in media if m.get("format")), "")]
+    width, height, _ = image_dimensions(data)
+    parts = [f"{rank:02d}", filenames.safe_name("-".join(x for x in label if x)), f"{width}x{height}" if width else ""]
+    return "_".join(p for p in parts if p) + extension(data)
+
+
+def write_candidate(folder, name, data):
+    """Dépose une pochette candidate dans _covers/ (créé au besoin), sans jamais écraser un fichier. Retourne le chemin écrit. OSError si l'écriture échoue, FileExistsError si le fichier est déjà là."""
+    place = Path(folder) / CANDIDATES_DIR
+    place.mkdir(exist_ok=True)
+    with open(place / name, "xb") as f:
+        f.write(data)
+    return place / name
+
+
+def candidates_present(folder):
+    """Vrai quand le dossier de l'album a ses pochettes candidates."""
+    path = Path(folder) / CANDIDATES_DIR
+    return path.is_dir() and not path.is_symlink()
+
+
+def remove_candidates(folder):
+    """Supprime _covers/ et ce qu'il contient. OSError si la suppression échoue."""
+    if candidates_present(folder):
+        shutil.rmtree(Path(folder) / CANDIDATES_DIR)
 
 
 def same_front(meta, wanted: Picture):

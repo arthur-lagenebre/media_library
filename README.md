@@ -13,7 +13,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes  |
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
-| [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet |
+| [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
@@ -165,6 +165,17 @@ python scripts\Music\Cover.py --dir "D:\Musique" --extract --apply    # écrit l
 ```
 
 Le chemin pour corriger les mauvaises pochettes (recto-verso, mal cadrées) : extraire, ouvrir les `cover.jpg`, remplacer à la main ceux qui ne vont pas, puis embarquer avec `Cover.py --apply`.
+
+**Choisir entre plusieurs pochettes.** `--candidates` retrouve l'édition de chaque album sur MusicBrainz (comme `Metadata.py` : l'identifiant déjà dans les pistes ou le nom du dossier, sinon la recherche) et télécharge dans un sous-dossier `_covers/` de l'album les pochettes de face que Cover Art Archive garde pour cette édition **et pour les autres éditions du même album** (12 au plus). Chaque nom dit d'où vient l'image : `01_FR-2013-CD_1200x1200.jpg` — le `01` est l'édition retenue, puis viennent les autres, les plus anciennes d'abord. Les images identiques entre elles ou au `cover.jpg` déjà là ne sont déposées qu'une fois ; rien n'est touché ailleurs (ni `cover.jpg`, ni les pistes), et un fichier déjà déposé n'est jamais écrasé. `--image-size`, `--country` et `--no-cache` se comportent comme pour `Metadata.py`.
+
+```powershell
+python scripts\Music\Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --candidates --apply   # dépose les pochettes dans _covers\
+# ouvrir _covers\ dans l'Explorateur, copier la bonne image en cover.jpg dans le dossier de l'album
+python scripts\Music\Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --apply                # l'embarque dans les pistes
+python scripts\Music\Cover.py --dir "D:\Musique" --clean-candidates --apply                    # supprime les dossiers _covers
+```
+
+Un `cover.jpg` l'emporte sur un `cover.png` : si l'image choisie change de format, supprimer l'ancien fichier. Embarquer ne supprime jamais `_covers/` — un passage sur toute la médiathèque n'efface ainsi pas des candidates que l'on n'a pas encore regardées ; c'est `--clean-candidates` qui le fait (simulation sans `--apply`).
 
 Une piste qui porte déjà exactement cette image n'est pas réécrite ; une autre image de face est remplacée, les images d'un autre type (dos, livret) sont gardées. Les albums sans fichier cover sont listés à la fin, pour savoir où en poser un. Seuls le JPEG et le PNG s'embarquent dans une piste : un `.webp`, `.gif` ou `.bmp` ne s'embarque pas dans un fichier audio (signalé). Une image de plus de 4 Mio est signalée, car l'Explorateur de Windows ne lit plus rien d'un `.flac` dont l'en-tête la dépasse.
 

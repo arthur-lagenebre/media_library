@@ -10,8 +10,10 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.music import coverfile, library, mp3
+from libraries.music.musicbrainz import MusicBrainzError
 from libraries.music.tags import AudioError
 from scripts.Music import Cover as cover
+from tests.test_album import OUTRUN, sortie
 from tests.test_flac import image
 from tests.test_music_metadata import AlbumTestCase, FauxMusicBrainz, Mp3AlbumTestCase
 from tests.test_music_programmes import faux
@@ -495,6 +497,238 @@ class TestExtraction(CoverTestCase):
         self.poser()
         with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
             self.lancer("--extract", "--verify")
+
+
+def edition(ident, date, pays, avec_pochette=True):
+    """Une édition du release group « rg-1 », telle que MusicBrainz la rend en liste."""
+    return dict(sortie(ident, "OutRun", 3, date=date, pays=pays), **{"cover-art-archive": {"front": avec_pochette}})
+
+
+UNE = b"\xff\xd8EDITION-RETENUE"
+DEUX = b"\xff\xd8EDITION-US"
+TROIS = b"\xff\xd8SECOND-SCAN"
+
+
+class CandidatsMusicBrainz(FauxMusicBrainz):
+    """MusicBrainz dont Cover Art Archive garde `images` = {id de sortie: [(id d'image, octets)]} ; `panne` = ids d'image dont le téléchargement échoue."""
+
+    def __init__(self, images, groupe=(), panne=(), **kwargs):
+        retenue = dict(OUTRUN, **{"cover-art-archive": {"front": True}})
+        super().__init__(releases={"rel-1": retenue}, results=[sortie("rel-1", "OutRun", 3)], **kwargs)
+        self.images, self.groupe, self.panne = images, [retenue, *groupe], set(panne)
+        self.index, self.telechargements = [], []
+
+    def group_releases(self, mbid):
+        return list(self.groupe)
+
+    def cover_images(self, release_id):
+        self.index.append(release_id)
+        return [{"id": ident, "front": True, "data": data} for ident, data in self.images.get(release_id, [])]
+
+    def cover_image(self, image, size="1200"):
+        self.telechargements.append((image["id"], size))
+        if image["id"] in self.panne:
+            raise MusicBrainzError("HTTP 503")
+        return image["data"]
+
+
+class TestCandidates(CoverTestCase):
+    """--candidates : les pochettes entre lesquelles choisir, déposées dans _covers/ ; --clean-candidates les supprime."""
+
+    def lancer_mb(self, mb, *argv, dossier=None):
+        ligne = [str(Path(cover.__file__)), "--dir", str(dossier or self.dossier.parent.parent), *argv]
+        with mock.patch.object(sys, "argv", ligne), mock.patch.object(cover, "MusicBrainz", return_value=mb), \
+                mock.patch.object(cover.cache, "Cache"), redirect_stdout(io.StringIO()) as texte:
+            code = cover.main()
+        return code, texte.getvalue()
+
+    def deux_editions(self, **kwargs):
+        return CandidatsMusicBrainz({"rel-1": [(1, UNE)], "rel-9": [(2, DEUX), (3, TROIS)]}, [edition("rel-9", "2014-05-01", "US")], **kwargs)
+
+    def candidates(self):
+        place = self.dossier / coverfile.CANDIDATES_DIR
+        return {p.name: p.read_bytes() for p in place.iterdir()} if place.is_dir() else {}
+
+    def test_simulation_n_ecrit_rien_et_ne_telecharge_rien(self):
+        self.poser()
+        mb, avant = self.deux_editions(), self.octets()
+        code, texte = self.lancer_mb(mb, "--candidates")
+        self.assertEqual(code, 0)
+        self.assertIn("SIMULATION", texte)
+        self.assertIn("3 pochette(s) de face chez 2 édition(s)", texte)
+        self.assertIn("TOTAL : 3 pochette(s) à déposer pour 1/1 album(s).", texte)
+        self.assertEqual(mb.telechargements, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_apply_depose_l_edition_retenue_d_abord_puis_les_autres(self):
+        self.poser()
+        mb = self.deux_editions()
+        code, texte = self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.candidates(), {"01_FR-2013-CD.jpg": UNE, "02_US-2014-CD.jpg": DEUX, "03_US-2014-CD.jpg": TROIS})
+        self.assertIn("_covers/01_FR-2013-CD.jpg", texte)
+        self.assertIn("TOTAL : 3 pochette(s) déposée(s) pour 1/1 album(s).", texte)
+        self.assertIn("--clean-candidates", texte)
+        self.assertEqual([taille for _, taille in mb.telechargements], ["1200"] * 3)
+
+    def test_la_taille_demandee_est_transmise(self):
+        self.poser()
+        mb = self.deux_editions()
+        self.lancer_mb(mb, "--candidates", "--apply", "--image-size", "500")
+        self.assertEqual({taille for _, taille in mb.telechargements}, {"500"})
+
+    def test_ni_les_pistes_ni_le_cover_ne_sont_touches(self):
+        self.poser()
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)
+        avant = self.octets()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        self.assertEqual({p.name: p.read_bytes() for p in self.dossier.iterdir() if p.is_file()}, avant)
+
+    def test_une_image_identique_au_cover_ou_deja_vue_n_est_deposee_qu_une_fois(self):
+        self.poser()
+        (self.dossier / "cover.jpg").write_bytes(UNE)
+        mb = CandidatsMusicBrainz({"rel-1": [(1, UNE)], "rel-9": [(2, DEUX), (3, DEUX)]}, [edition("rel-9", "2014-05-01", "US")])
+        self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(self.candidates(), {"01_US-2014-CD.jpg": DEUX})
+
+    def test_une_edition_sans_pochette_de_face_n_est_pas_interrogee(self):
+        self.poser()
+        mb = CandidatsMusicBrainz({"rel-1": [(1, UNE)]}, [edition("rel-8", "2015-01-01", "JP", avec_pochette=False)])
+        self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(mb.index, ["rel-1"])
+
+    def test_plafond_de_pochettes_par_album(self):
+        self.poser()
+        beaucoup = [(n, b"\xff\xd8" + bytes([n])) for n in range(1, 21)]
+        self.lancer_mb(CandidatsMusicBrainz({"rel-1": beaucoup}), "--candidates", "--apply")
+        self.assertEqual(len(self.candidates()), cover.MAX_CANDIDATES)
+
+    def test_un_deuxieme_passage_n_ecrase_rien(self):
+        self.poser()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        (self.dossier / coverfile.CANDIDATES_DIR / "01_FR-2013-CD.jpg").write_bytes(b"\xff\xd8RETOUCHEE")
+        code, texte = self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(texte.count("déjà là"), 3)
+        self.assertEqual(self.candidates()["01_FR-2013-CD.jpg"], b"\xff\xd8RETOUCHEE")
+
+    def test_un_format_qui_n_est_ni_jpeg_ni_png_est_ignore(self):
+        self.poser()
+        mb = CandidatsMusicBrainz({"rel-1": [(1, b"GIF89a"), (2, UNE)]})
+        _, texte = self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertIn("ni JPEG ni PNG", texte)
+        self.assertEqual(self.candidates(), {"01_FR-2013-CD.jpg": UNE})
+
+    def test_aucune_pochette_nulle_part(self):
+        self.poser()
+        code, texte = self.lancer_mb(CandidatsMusicBrainz({}, [edition("rel-8", "2015-01-01", "JP", avec_pochette=False)]), "--candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("Sans pochette à proposer (1)", texte)
+        self.assertEqual(self.candidates(), {})
+        self.assertFalse((self.dossier / coverfile.CANDIDATES_DIR).exists())
+
+    def test_un_telechargement_en_echec_se_compte_sans_arreter_les_autres(self):
+        self.poser()
+        code, texte = self.lancer_mb(self.deux_editions(panne=[2]), "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC]", texte)
+        self.assertIn("1 écriture(s) en échec", texte)
+        self.assertEqual(self.candidates(), {"01_FR-2013-CD.jpg": UNE, "02_US-2014-CD.jpg": TROIS})
+
+    def test_ecriture_en_echec_se_compte(self):
+        self.poser()
+        with mock.patch.object(cover.coverfile, "write_candidate", side_effect=PermissionError(13, "Accès refusé")):
+            code, texte = self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC] 01_FR-2013-CD.jpg : Accès refusé", texte)
+
+    def test_panne_de_musicbrainz_sur_l_album(self):
+        self.poser()
+        mb = self.deux_editions()
+        mb.search_releases = mock.Mock(side_effect=MusicBrainzError("réseau"))
+        code, texte = self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("échec MusicBrainz : réseau", texte)
+        self.assertIn("1 sans fiche", texte)
+
+    def test_album_non_associe(self):
+        self.poser()
+        mb = self.deux_editions()
+        mb.results = []
+        code, texte = self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[NON ASSOCIÉ]", texte)
+
+    def test_piste_illisible_bloque_l_album(self):
+        self.poser()
+        (self.dossier / "02 - Blizzard.flac").write_bytes(b"pas un flac")
+        mb = self.deux_editions()
+        code, texte = self.lancer_mb(mb, "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("fichier(s) illisible(s)", texte)
+        self.assertEqual(mb.index, [])
+
+    def test_les_modes_s_excluent(self):
+        self.poser()
+        for argv in (("--candidates", "--extract"), ("--candidates", "--clean-candidates"), ("--candidates", "--verify"), ("--clean-candidates", "--verify")):
+            with self.subTest(argv), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                self.lancer(*argv)
+
+    def test_embarquer_ne_supprime_pas_les_candidates(self):
+        self.poser()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        (self.dossier / "cover.jpg").write_bytes(UNE)
+        code, _ = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.candidates()), 3)
+
+    def test_choisir_puis_embarquer_puis_nettoyer(self):
+        self.poser()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        (self.dossier / "cover.jpg").write_bytes(self.candidates()["02_US-2014-CD.jpg"])
+        self.lancer("--apply")
+        self.assertEqual(self.fronts(), [DEUX])
+        code, texte = self.lancer("--clean-candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 1 dossier(s) _covers supprimé(s).", texte)
+        self.assertEqual(self.candidates(), {})
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), DEUX)
+
+    def test_nettoyage_en_simulation_ne_supprime_rien(self):
+        self.poser()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        code, texte = self.lancer("--clean-candidates")
+        self.assertEqual(code, 0)
+        self.assertIn("_covers serait supprimé (simulation)", texte)
+        self.assertEqual(len(self.candidates()), 3)
+
+    def test_nettoyage_sans_dossier_candidates(self):
+        self.poser()
+        code, texte = self.lancer("--clean-candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 0 dossier(s) _covers supprimé(s).", texte)
+
+    def test_nettoyage_en_echec_se_compte(self):
+        self.poser()
+        self.lancer_mb(self.deux_editions(), "--candidates", "--apply")
+        with mock.patch.object(cover.coverfile, "remove_candidates", side_effect=PermissionError(13, "Accès refusé")):
+            code, texte = self.lancer("--clean-candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC] _covers : Accès refusé", texte)
+
+
+class TestNomDeCandidate(unittest.TestCase):
+    PNG = b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR" + (1200).to_bytes(4, "big") + (1190).to_bytes(4, "big") + bytes([8, 2])
+
+    def test_edition_format_et_dimensions(self):
+        self.assertEqual(coverfile.candidate_name(1, edition("a", "2013-02-25", "FR"), self.PNG), "01_FR-2013-CD_1200x1190.png")
+
+    def test_les_champs_absents_sont_omis(self):
+        self.assertEqual(coverfile.candidate_name(12, {"id": "a"}, b"\xff\xd8x"), "12.jpg")
+
+    def test_caracteres_interdits_dans_le_format(self):
+        release = {"country": "XW", "date": "1999", "media": [{"format": '12" Vinyl'}]}
+        self.assertEqual(coverfile.candidate_name(2, release, b"\xff\xd8x"), "02_XW-1999-12 Vinyl.jpg")
 
 
 class TestCoverMp3(Mp3AlbumTestCase, CoverTestCase):
