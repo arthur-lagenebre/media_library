@@ -68,6 +68,23 @@ class TestArtistes(ClientTestCase):
         _, reqs, _ = self.call([FakeResponse(b'{"id": "a"}')], methode="artist", args=("abc",))
         self.assertTrue(reqs[0].full_url.endswith("artist/abc?inc=url-rels+artist-rels+genres&fmt=json"))
 
+    def test_recherche_d_artiste_par_nom_ou_alias(self):
+        artistes, reqs, _ = self.call([FakeResponse(b'{"artists": [{"id": "a", "score": 100}]}')], methode="search_artists", args=('Say "Hi"',))
+        self.assertEqual(artistes, [{"id": "a", "score": 100}])
+        self.assertIn('query=artist:"Say  Hi " OR alias:"Say  Hi "', unquote(reqs[0].full_url))
+
+    def test_discographie_lue_page_par_page(self):
+        pages = [FakeResponse(b'{"release-group-count": 3, "release-groups": [{"id": "1"}, {"id": "2"}]}'),
+                 FakeResponse(b'{"release-group-count": 3, "release-groups": [{"id": "3"}]}')]
+        groupes, reqs, _ = self.call(pages, methode="artist_release_groups", args=("abc",))
+        self.assertEqual([g["id"] for g in groupes], ["1", "2", "3"])
+        self.assertIn("release-group?artist=abc&limit=100&offset=0", reqs[0].full_url)
+        self.assertIn("offset=2", reqs[1].full_url)
+
+    def test_discographie_vide(self):
+        groupes, reqs, _ = self.call([FakeResponse(b'{"release-group-count": 0, "release-groups": []}')], methode="artist_release_groups", args=("abc",))
+        self.assertEqual((groupes, len(reqs)), ([], 1))
+
     def test_json_d_un_autre_site_sans_cadence(self):
         data, reqs, attentes = self.call([FakeResponse(b'{"extract": "x"}')], methode="external", args=("https://fr.wikipedia.org/api/rest_v1/page/summary/X",))
         self.assertEqual(data, {"extract": "x"})

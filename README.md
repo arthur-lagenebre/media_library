@@ -14,6 +14,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
 | [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
+| [scripts/Music/Discography.py](scripts/Music/Discography.py) | Pose dans le dossier de chaque artiste la pochette `1997 - OK Computer.jpg` (ou un fichier vide `1997 - OK Computer` sans pochette) de chaque album qu'il a sorti d'après MusicBrainz et que la médiathèque n'a pas ; les albums possédés ne sont jamais touchés |
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
@@ -27,7 +28,7 @@ Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine ; 
 ```text
 scripts/Movies/        étiquetage et renommage des films
 scripts/TV_Shows/      la même chose pour les séries
-scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, pochettes
+scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, pochettes, albums manquants
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
 scripts/Converters/    conversions qui précèdent l'étiquetage : Video/ (conteneur .mkv) et Music/ (.wav en .flac)
 libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage
@@ -191,6 +192,31 @@ python scripts\Music\Rename_Tracks.py --dir "D:\Musique" --apply         # renom
 ```
 
 L'album est reconnu exactement comme par `Metadata.py` — mêmes éditions, même placement des fichiers, mêmes questions en fin de passage — et un album dont un seul fichier ne trouve pas sa piste n'est pas renommé du tout. Passé après `Metadata.py`, il ne cherche plus rien : l'identifiant est dans les fichiers. Un album en plusieurs disques rangés à plat préfixe le disque (`2-01 - Alive 1997.flac`) ; rangés dans `CD1`, `CD2`…, chaque dossier repart de `01`. Un `/` dans un titre devient `-` (`Robot Rock - Oh Yeah`), et les paroles `.lrc` posées à côté suivent leur piste. Les dossiers ne bougent pas : leur nom reste celui qu'on leur a donné.
+
+**Compléter la discographie.** [Discography.py](scripts/Music/Discography.py) compare chaque dossier d'artiste à ce que MusicBrainz sait de lui et pose, pour chaque album qui manque, un fichier `{année} - {titre}` à côté des albums rangés — là où l'artiste range les siens : son dossier, ou `Albums/` s'il y met les siens. C'est ce nom que lit la fiche de l'artiste pour montrer les albums à acquérir, avec leur pochette.
+
+```text
+Radiohead/
+    1995 - The Bends/            <- un album possédé : jamais touché
+    1997 - OK Computer.jpg       <- un album qui manque, avec sa pochette
+    2000 - Kid A                 <- un album qui manque, sans pochette (fichier vide, sans extension)
+```
+
+**La pochette** est celle que Cover Art Archive garde pour l'album (l'édition que MusicBrainz juge représentative), en JPEG ou PNG, à la taille `--image-size` — 1200 px par défaut : assez pour la fiche, sans les scans d'origine de plusieurs Mo (`original` les prend). Faute de pochette, ou si le service ne répond pas, l'album est un fichier vide sans extension ; au passage suivant, ce fichier vide est **remplacé par la pochette** si elle existe alors. Une image ou un fichier non vide déjà là n'est jamais remplacé. `--no-covers` ne télécharge rien et ne pose que des fichiers vides ; la simulation ne télécharge rien non plus.
+
+L'artiste est reconnu par l'identifiant MusicBrainz que portent les fichiers de ses albums (`Metadata.py` l'y a inscrit), sinon par recherche sur le nom du dossier — ou la première ligne de son `artist.txt`. Plusieurs artistes de ce nom sont une **question** de fin de passage (`--no-ask` garde le premier). Un album compte pour possédé qu'il soit un dossier, un fichier (vide, avec ou sans `.txt`) ou une image `AAAA - Titre` : seul le titre est comparé, l'année d'une réédition ou d'un autre format n'y change rien. Les sorties sans année sur MusicBrainz ne peuvent pas se nommer `AAAA - Titre` : elles sont comptées et laissées de côté.
+
+Seuls les **albums** sont complétés par défaut ; `--cats` ajoute les `ep`, `single`, `live`, `compilation`, `soundtrack`, `remix`, `demo`, `other` (ou `all`), dont les fichiers vont dans un sous-dossier à leur nom (`EP/`, `Singles/`…) — celui où l'artiste range déjà les siens s'il existe. `--only "Radiohead"` ne complète que cet artiste, et crée son dossier s'il n'existe pas encore, sous le nom que lui donne MusicBrainz.
+
+```powershell
+python scripts\Music\Discography.py --dir "D:\Musique"                             # simulation
+python scripts\Music\Discography.py --dir "D:\Musique" --apply                     # pose pochettes et fichiers vides
+python scripts\Music\Discography.py --dir "D:\Musique" --only "Radiohead" --apply  # un artiste, créé au besoin
+python scripts\Music\Discography.py --dir "D:\Musique" --cats album,ep --apply     # albums et EP
+python scripts\Music\Discography.py --dir "D:\Musique" --no-covers --apply         # fichiers vides seulement
+```
+
+Un titre qui finit comme une extension (`Vol.2`) garde un `.txt` quand il n'a pas de pochette (`1999 - Vol.2.txt`) : sans lui, le nom serait lu comme `Vol` + `.2`. Les anciens `.txt` restent lus comme avant. Repasser le script ne pose que ce qui a manqué depuis, et il sort en **code 1** s'il reste un artiste sans fiche (introuvable, à confirmer, MusicBrainz injoignable) ou une écriture en échec.
 
 ### Livres, BD, comics et mangas
 
