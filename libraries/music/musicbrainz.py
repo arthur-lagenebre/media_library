@@ -132,6 +132,23 @@ class MusicBrainz:
         """Artiste complet : type, pays, dates, membres (relations d'artiste), liens (relations d'URL), genres."""
         return self.get(f"artist/{mbid}?inc=url-rels+artist-rels+genres")
 
+    def search_artists(self, name, limit=10):
+        """Artistes dont le nom (ou un alias) est `name`, du plus au moins pertinent. Chacun porte son `score` (0-100)."""
+        safe = (name or "").replace("\\", " ").replace('"', " ")
+        query = f'artist:"{safe}" OR alias:"{safe}"'
+        return self.get(f"artist/?query={quote(query, safe='')}&limit={limit}").get("artists", [])
+
+    def artist_release_groups(self, mbid):
+        """Tous les release groups d'un artiste - albums, EP, singles, lives... -, sans leurs éditions : c'est sa discographie. L'API les rend par pages de 100."""
+        groups, offset = [], 0
+        while True:
+            data = self.get(f"release-group?artist={mbid}&limit=100&offset={offset}")
+            batch = data.get("release-groups") or []
+            groups += batch
+            offset += len(batch)
+            if not batch or offset >= data.get("release-group-count", 0):
+                return groups
+
     # --------------------------------------------------------------- Sorties
     def search_releases(self, album, artist=None, exact=True, limit=25):
         """Sorties dont le titre (et l'artiste) correspondent.

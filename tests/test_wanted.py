@@ -42,8 +42,13 @@ class TestNom(unittest.TestCase):
         self.assertEqual(wanted.parse("1997 - OK Computer.txt"), Wanted("1997", "OK Computer"))
         self.assertEqual(wanted.parse("2011 – The King of Limbs.TXT"), Wanted("2011", "The King of Limbs"))
 
+    def test_sans_extension(self):
+        self.assertEqual(wanted.parse("1997 - OK Computer"), Wanted("1997", "OK Computer"))
+        self.assertEqual(wanted.parse("1999 - Dr. Dre"), Wanted("1999", "Dr. Dre"))
+        self.assertEqual(wanted.parse("1999 - Vol.2.txt"), Wanted("1999", "Vol.2"))
+
     def test_ce_qui_n_est_pas_un_album(self):
-        for nom in ("artist.txt", "notes.txt", "OK Computer.txt", "1997 - OK Computer.nfo", "1997 - OK Computer", "1997 - .txt"):
+        for nom in ("artist.txt", "notes.txt", "OK Computer.txt", "1997 - OK Computer.nfo", "1997 - OK Computer.pdf", "1997 - .txt", "1997 - ", "OK Computer"):
             with self.subTest(nom=nom):
                 self.assertIsNone(wanted.parse(nom))
 

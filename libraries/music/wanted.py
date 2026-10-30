@@ -7,7 +7,7 @@ Dans le dossier d'un artiste, une image nommée comme un album rangé - "1997 - 
             1995 - The Bends/            <- un album possédé
             1997 - OK Computer.jpg       <- un album qui manque, avec sa pochette
 
-La fiche de l'artiste montre ces albums à leur place, grisés, avec cette pochette. Un fichier vide "1997 - OK Computer.txt" dit la même chose, sans pochette (l'ancienne façon, toujours lue) ; avec une image de même nom, c'est elle qui sert. Rien n'est cherché en ligne ni écrit sur le disque : on lit des noms de fichiers.
+La fiche de l'artiste montre ces albums à leur place, grisés, avec cette pochette. Un fichier vide "1997 - OK Computer", sans extension, dit la même chose, sans pochette ("1997 - OK Computer.txt", l'ancienne façon, est toujours lu) ; avec une image de même nom, c'est elle qui sert. Rien n'est cherché en ligne ni écrit sur le disque : on lit des noms de fichiers.
 
 Un album qui figure à la fois en dossier et en image (acquis depuis, l'image oubliée) n'est pas déclaré manquant.
 """
@@ -15,6 +15,7 @@ Un album qui figure à la fois en dossier et en image (acquis depuis, l'image ou
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -23,6 +24,9 @@ from libraries.common.text import fold
 
 from . import album as albums
 from . import coverfile
+
+
+EXTENSION_RE = re.compile(r"\.[a-z0-9]{1,5}")      # ce qui ressemble à une extension de fichier
 
 
 @dataclass(frozen=True)
@@ -46,11 +50,16 @@ class Wanted:
 
 
 def parse(name):
-    """Wanted d'un nom de fichier "1997 - OK Computer.jpg" (ou .txt), ou None si ce n'en est pas un (artist.txt, cover.jpg, notes.txt...). `cover` reste vide : voir _in_folder."""
+    """Wanted d'un nom de fichier "1997 - OK Computer" (sans extension), "1997 - OK Computer.jpg" ou "1997 - OK Computer.txt", ou None si ce n'en est pas un (artist.txt, cover.jpg, notes.txt...). `cover` reste vide : voir _in_folder."""
     path = Path(name)
-    if path.suffix.lower() not in (".txt", *coverfile.EXTS):
+    suffix = path.suffix.lower()
+    if suffix in (".txt", *coverfile.EXTS):
+        stem = path.stem
+    elif EXTENSION_RE.fullmatch(suffix):          # ".nfo", ".pdf"... : le fichier d'autre chose
         return None
-    found = albums.YEAR_PREFIX_RE.match(path.stem)
+    else:                                         # aucune extension : le nom EST "1997 - OK Computer" (un point suivi d'un espace, "Dr. Dre", n'en est pas une)
+        stem = path.name
+    found = albums.YEAR_PREFIX_RE.match(stem)
     title = found.group(2).strip() if found else ""
     return Wanted(found.group(1), title) if title else None
 
@@ -84,7 +93,7 @@ def owned(release, wanted):
 
 
 def find(root, releases):
-    """{id d'artiste: [Wanted, ...]} d'après les images (et .txt) des dossiers qui rangent ses albums, de son dossier à celui de la médiathèque (exclu : ce n'est pas un artiste).
+    """{id d'artiste: [Wanted, ...]} d'après les images (et fichiers vides) des dossiers qui rangent ses albums, de son dossier à celui de la médiathèque (exclu : ce n'est pas un artiste).
 
     Un dossier qui range des albums de plusieurs artistes (un compte-rendu de collaborations, un genre) donne ses fichiers à celui qui y a le plus d'albums.
     """
