@@ -136,6 +136,29 @@ class TestQuestions(unittest.TestCase):
         self.assertEqual(self.demander([KeyboardInterrupt()])[0], cli.ASK_STOP)
 
 
+class TestOuiNon(unittest.TestCase):
+    def demander(self, reponses, defaut=True):
+        with mock.patch("builtins.input", side_effect=reponses), redirect_stdout(io.StringIO()):
+            return cli.ask_yes_no(defaut)
+
+    def test_entree_garde_le_defaut(self):
+        self.assertIs(self.demander([""]), True)
+        self.assertIs(self.demander([""], defaut=False), False)
+
+    def test_oui_et_non(self):
+        for oui in ("o", "OUI", "y"):
+            self.assertIs(self.demander([oui]), True)
+        for non in ("n", "Non", "no"):
+            self.assertIs(self.demander([non]), False)
+
+    def test_une_reponse_incomprise_repose_la_question(self):
+        self.assertIs(self.demander(["peut-etre", "n"]), False)
+
+    def test_entree_fermee_ou_ctrl_c_ne_decide_pas(self):
+        self.assertIsNone(self.demander([EOFError()]))
+        self.assertIsNone(self.demander([KeyboardInterrupt()]))
+
+
 class TestPeutOnDemander(unittest.TestCase):
     def avec(self, stdin, stdout):
         with mock.patch.object(cli.sys, "stdin", stdin), mock.patch.object(cli.sys, "stdout", stdout):

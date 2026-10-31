@@ -108,6 +108,26 @@ def ask_choice(nombre, defaut=0):
               "i pour laisser de côté, q pour arrêter les questions.")
 
 
+def ask_yes_no(defaut=True):
+    """True (oui) ou False (non), None si l'entrée se ferme ou si Ctrl-C interrompt.
+
+    Entrée vide = le défaut. Une réponse incomprise repose la question plutôt que de décider à la place de quelqu'un.
+    """
+    while True:
+        try:
+            reponse = input(f"      [{'O/n' if defaut else 'o/N'}] : ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not reponse:
+            return defaut
+        if reponse in ("o", "oui", "y", "yes"):
+            return True
+        if reponse in ("n", "non", "no"):
+            return False
+        print("      réponse non comprise : o pour oui, n pour non.")
+
+
 def mode_label(args, simulation="rien ne sera écrit ; ajoute --apply pour appliquer"):
     """Libellé du mode courant, pour la bannière affichee au démarrage."""
     if getattr(args, "verify", False):
