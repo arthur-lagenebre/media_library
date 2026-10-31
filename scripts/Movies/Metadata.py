@@ -45,6 +45,7 @@ La numérotation du dossier doit tenir dans la collection, faute de quoi un doss
 L'identifiant TMDB retenu est INSCRIT DANS LE FILM : au passage suivant, il est relu et plus rien n'est cherché - l'association survit donc au renommage, et ne peut plus se tromper deux fois de la même façon.
 La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags : une médiathèque jamais étiquetée ne paie rien.
 Une association suspecte (durée incohérente, fiche presque inconnue) est signalée à chaque passage. Pour la faire taire SANS épingler l'identifiant dans le nom du fichier, ajoute-le à "metadata.ok", à côté du journal : une ligne par film, l'identifiant seul ou son lien TMDB tel que le journal le donne, '#' pour un commentaire. Les doutes de ces films ne sont plus signalés ; rien d'autre ne change.
+Le titre de COLLECTION inscrit dans le film ne garde pas le suffixe " - Saga" que TMDB ajoute en français : il est retiré d'office. Le " Collection" final ("Iron Man Collection") n'est retiré qu'avec ton accord, car il peut faire partie du nom ("The Criterion Collection") : la question est posée une fois par collection, dans le terminal, et la réponse est mémorisée dans "metadata.collections", à côté du journal ("nom TMDB => titre inscrit", une ligne par collection, modifiable à la main). Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le nom est gardé tel quel.
 Ordre de priorité : --tmdb-id, puis l'identifiant épinglé dans le NOM, puis celui lu dans le FICHIER, puis la recherche.
 Si un passage à inscrit le mauvais identifiant, corrige-le en épinglant le bon dans le nom - "Dune (2021) [tmdbid-438631]" ou "Dune {tmdb-438631}" - le passage suivant le réécrira dans le fichier.
 
@@ -85,11 +86,32 @@ from libraries.video.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
 # ----------------------------------------------------------------------------
 # 1. État vise pour un film (TargetTypeValue 50 = film, 70 = collection/saga)
 # ----------------------------------------------------------------------------
+SAGA_SUFFIX_RE = re.compile(r"\s+-\s+saga\s*$", re.IGNORECASE)
+COLLECTION_SUFFIX_RE = re.compile(r"(?:\s+-)?\s+collection\s*$", re.IGNORECASE)
+
+
+def collection_title(name):
+    """Le nom de la collection sans le " - Saga" que TMDB ajoute en français ("Iron Man - Saga" -> "Iron Man").
+
+    Ce suffixe est un invariant : il part toujours. Le " Collection" anglais, lui, peut faire partie du nom ("The Criterion Collection") : voir `collection_proposal`, qui ne le retire qu'avec l'accord de l'utilisateur.
+    """
+    name = (name or "").strip()
+    return SAGA_SUFFIX_RE.sub("", name).strip() or name
+
+
+def collection_proposal(name):
+    """Le nom sans son " Collection" final, ou None quand il n'y a rien à proposer."""
+    name = collection_title(name)
+    proposal = COLLECTION_SUFFIX_RE.sub("", name).strip()
+    return proposal if proposal and proposal != name else None
+
+
 def build_movie_tags_xml(movie, max_actors=20):
     credits = movie.get("credits", {})
     blocks = []
 
-    collection = (movie.get("belongs_to_collection") or {}).get("name")
+    # `_collection_title` : le titre arrêté avec l'utilisateur (voir `settle_collection`) ; à défaut, seul l'invariant " - Saga" est appliqué.
+    collection = movie.get("_collection_title") or collection_title((movie.get("belongs_to_collection") or {}).get("name"))
     if collection:
         lines = [mkv.simple("TITLE", collection)]
         if movie.get("_order"):                       # ordre de la saga (préfixe "{n} - ")
@@ -203,6 +225,10 @@ class Library:
     journal: list = field(default_factory=list)   # (nom affiche, id TMDB, statut)
     doubts: list = field(default_factory=list)    # (nom affiche, fiche TMDB, [raisons]) - associations suspectes
     approved: set = field(default_factory=set)    # identifiants TMDB validés dans metadata.ok
+    titles: dict = field(default_factory=dict)    # {nom TMDB de collection: titre à écrire}, lu dans metadata.collections
+    titles_file: object = None                    # où consigner une réponse (None : on ne mémorise rien)
+    asking: bool = True                           # faux dès que l'entrée se ferme : inutile d'insister
+    waiting: set = field(default_factory=set)     # collections laissées sans réponse, signalées une seule fois
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
@@ -242,6 +268,77 @@ def read_approved(path):
         if found:
             approved.add(int(found.group(1)))
     return approved
+
+
+COLLECTIONS_NAME = "metadata.collections"
+COLLECTIONS_HEADER = ("# Titres de collection arrêtés avec toi : 'nom TMDB => titre inscrit dans le film'.\n"
+                      "# Une ligne par collection ; '#' en début de ligne = commentaire. Modifie le titre à ta guise,\n"
+                      "# ou supprime la ligne pour que la question soit reposée.\n")
+
+
+def collections_path(root_dir, args):
+    """Le fichier des titres de collection, rangé avec le journal."""
+    return log_path(root_dir, args).with_name(COLLECTIONS_NAME)
+
+
+def read_collections(path):
+    """{nom TMDB de collection: titre à inscrire} lu dans metadata.collections ; un fichier absent ou illisible ne décide rien."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    titles = {}
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        name, sep, title = line.partition("=>")
+        if sep and name.strip() and title.strip():
+            titles[name.strip()] = title.strip()
+    return titles
+
+
+def remember_collection(path, name, title):
+    """Consigne une réponse tout de suite : une interruption plus loin ne doit pas la perdre."""
+    try:
+        new = not Path(path).exists()
+        with open(path, "a", encoding="utf-8", newline="") as f:
+            f.write((COLLECTIONS_HEADER if new else "") + f"{name} => {title}\n")
+    except OSError as e:
+        print(f"      [{COLLECTIONS_NAME}] non écrit : {e}")
+
+
+def settle_collection(movie, library, args):
+    """Arrête le titre de collection à inscrire dans `movie` (clé `_collection_title`).
+
+    " - Saga" est retiré d'office (voir `collection_title`). Un " Collection" final, lui, n'est retiré qu'avec l'accord de l'utilisateur : "The Criterion Collection" ne doit pas devenir "The Criterion" sans qu'on le lui ait demandé. La réponse vaut pour toute la collection, et est mémorisée dans metadata.collections.
+
+    Sans terminal, sous --no-ask, en vérification ou sans étiquetage, rien n'est demandé et le nom est gardé tel quel.
+    """
+    name = ((movie.get("belongs_to_collection") or {}).get("name") or "").strip()
+    proposal = collection_proposal(name)
+    if not proposal:
+        return
+    if name in library.titles:
+        movie["_collection_title"] = library.titles[name]
+        return
+    if args.verify or args.no_tag:
+        return
+    if args.no_ask or not library.asking or not cli.can_ask():
+        if name not in library.waiting:
+            library.waiting.add(name)
+            print(f"      [COLLECTION] '{collection_title(name)}' gardé tel quel (non validé) ; "
+                  f"à décider dans {COLLECTIONS_NAME}, ou relance dans un terminal")
+        return
+    print(f"      collection TMDB : '{collection_title(name)}' -> retirer ' Collection' pour inscrire '{proposal}' ?")
+    answer = cli.ask_yes_no(True)
+    if answer is None:
+        library.asking = False
+        return
+    title = proposal if answer else collection_title(name)
+    library.titles[name] = title
+    movie["_collection_title"] = title
+    if library.titles_file:
+        remember_collection(library.titles_file, name, title)
 
 
 def write_log(root_dir, library, args, report):
@@ -314,6 +411,7 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent).
         print(f"  [DOUBLON] même film que '{jumeau}' -> les deux seront traités")
     library.resolved.append(movie)
+    settle_collection(movie, library, args)
     # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
     doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
@@ -596,7 +694,10 @@ def main():
     if corrections:
         print(f"{len(corrections)} film(s) replacé(s) par leur saga TMDB.\n")
 
-    report, library = Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)))
+    titles_file = collections_path(args.dir, args)
+    report, library = Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)), titles=read_collections(titles_file), titles_file=titles_file)
+    if library.titles:
+        print(f"{len(library.titles)} titre(s) de collection arrêté(s) dans {COLLECTIONS_NAME}.\n")
     if library.approved:
         print(f"{len(library.approved)} film(s) validé(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signalés.\n")
     attente = []

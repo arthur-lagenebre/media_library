@@ -95,10 +95,36 @@ class TestFilms(unittest.TestCase):
         niveaux = [n.text for n in root.findall("./Tag/Targets/TargetTypeValue")]
         self.assertEqual(niveaux, ["70", "50"])
         saga = root.find("Tag")
-        self.assertEqual(saga.find("Simple[Name='TITLE']/String").text, "Iron Man - Saga")
+        self.assertEqual(saga.find("Simple[Name='TITLE']/String").text, "Iron Man")
         self.assertEqual(saga.find("Simple[Name='PART_NUMBER']/String").text, "1")
         film = root.findall("Tag")[1]
         self.assertEqual(film.find("Simple[Name='GENRE']/String").text, "Action, Science-Fiction")
+
+    def test_le_suffixe_saga_n_est_pas_inscrit(self):
+        self.assertEqual(films.collection_title("Iron Man - Saga"), "Iron Man")
+        self.assertEqual(films.collection_title("Iron Man - saga"), "Iron Man")
+        self.assertEqual(films.collection_title("Saga Twilight"), "Saga Twilight")
+        self.assertEqual(films.collection_title(None), "")
+
+    def test_collection_n_est_jamais_retire_d_office(self):
+        self.assertEqual(films.collection_title("Iron Man Collection"), "Iron Man Collection")
+        movie = {"title": "Iron Man", "belongs_to_collection": {"name": "Iron Man Collection"}}
+        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        self.assertEqual(root.find("Tag").find("Simple[Name='TITLE']/String").text, "Iron Man Collection")
+
+    def test_proposition_sans_collection(self):
+        self.assertEqual(films.collection_proposal("Iron Man Collection"), "Iron Man")
+        self.assertEqual(films.collection_proposal("Iron Man - Collection"), "Iron Man")
+        self.assertEqual(films.collection_proposal("Iron Man Collection - Saga"), "Iron Man")
+        self.assertIsNone(films.collection_proposal("Iron Man - Saga"))
+        self.assertIsNone(films.collection_proposal("Collection"))
+        self.assertIsNone(films.collection_proposal(None))
+
+    def test_titre_arrete_inscrit_dans_la_collection(self):
+        movie = {"title": "Iron Man", "belongs_to_collection": {"name": "Iron Man Collection"}, "_collection_title": "Iron Man"}
+        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        self.assertEqual(root.find("Tag").find("Simple[Name='TITLE']/String").text, "Iron Man")
+        self.assertEqual(films.collection_title("Star Wars"), "Star Wars")
 
     def test_l_identifiant_est_inscrit_dans_le_film(self):
         # Pour que le passage suivant n ait plus rien à chercher.
@@ -109,6 +135,74 @@ class TestFilms(unittest.TestCase):
         movie = {"title": "Heat", "credits": {}}
         root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
         self.assertEqual([n.text for n in root.findall("./Tag/Targets/TargetTypeValue")], ["50"])
+
+
+class TestValidationDuTitreDeCollection(unittest.TestCase):
+    """" - Saga" part d'office ; " Collection" ne part qu'avec l'accord de l'utilisateur, et une fois par collection."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.fichier = Path(self._tmp.name) / "metadata.collections"
+
+    def regler(self, nom="Iron Man Collection", reponses=(), peut_demander=True, library=None, **changes):
+        args = types.SimpleNamespace(verify=False, no_tag=False, no_ask=False)
+        for cle, valeur in changes.items():
+            setattr(args, cle, valeur)
+        library = library or films.Library([], {}, {}, titles_file=self.fichier)
+        movie = {"title": "Iron Man", "belongs_to_collection": {"name": nom}}
+        with mock.patch.object(films.cli, "can_ask", lambda: peut_demander), mock.patch.object(films.cli, "ask_yes_no", side_effect=list(reponses)) as question, redirect_stdout(io.StringIO()) as sortie:
+            films.settle_collection(movie, library, args)
+        return movie.get("_collection_title"), question.call_count, library, sortie.getvalue()
+
+    def test_oui_retire_collection_et_le_memorise(self):
+        titre, questions, library, _ = self.regler(reponses=[True])
+        self.assertEqual((titre, questions), ("Iron Man", 1))
+        self.assertIn("Iron Man Collection => Iron Man", self.fichier.read_text(encoding="utf-8"))
+        self.assertEqual(library.titles, {"Iron Man Collection": "Iron Man"})
+
+    def test_non_garde_le_nom_et_le_memorise(self):
+        titre, _, _, _ = self.regler(reponses=[False])
+        self.assertEqual(titre, "Iron Man Collection")
+        self.assertIn("Iron Man Collection => Iron Man Collection", self.fichier.read_text(encoding="utf-8"))
+
+    def test_la_reponse_vaut_pour_toute_la_collection(self):
+        _, _, library, _ = self.regler(reponses=[True])
+        titre, questions, _, _ = self.regler(library=library)
+        self.assertEqual((titre, questions), ("Iron Man", 0))
+
+    def test_une_reponse_deja_consignee_n_est_pas_redemandee(self):
+        self.fichier.write_text("# commentaire\nIron Man Collection => Iron Man (MCU)\n", encoding="utf-8")
+        library = films.Library([], {}, {}, titles=films.read_collections(self.fichier), titles_file=self.fichier)
+        titre, questions, _, _ = self.regler(library=library)
+        self.assertEqual((titre, questions), ("Iron Man (MCU)", 0))
+
+    def test_saga_ne_demande_rien(self):
+        titre, questions, _, _ = self.regler(nom="Iron Man - Saga")
+        self.assertEqual((titre, questions), (None, 0))
+        self.assertFalse(self.fichier.exists())
+
+    def test_sans_terminal_le_nom_est_garde_sans_rien_ecrire(self):
+        titre, questions, _, sortie = self.regler(peut_demander=False)
+        self.assertEqual((titre, questions), (None, 0))
+        self.assertIn("gardé tel quel", sortie)
+        self.assertFalse(self.fichier.exists())
+
+    def test_no_ask_verify_et_no_tag_ne_demandent_rien(self):
+        for option in ("no_ask", "verify", "no_tag"):
+            titre, questions, _, _ = self.regler(**{option: True})
+            self.assertEqual((titre, questions), (None, 0), option)
+
+    def test_entree_fermee_cesse_de_demander(self):
+        titre, _, library, _ = self.regler(reponses=[None])
+        self.assertIsNone(titre)
+        self.assertFalse(library.asking)
+        _, questions, _, _ = self.regler(library=library)
+        self.assertEqual(questions, 0)
+        self.assertFalse(self.fichier.exists())
+
+    def test_fichier_absent_ou_illisible(self):
+        self.assertEqual(films.read_collections(self.fichier), {})
 
 
 def sous_titre(langue, nom):
