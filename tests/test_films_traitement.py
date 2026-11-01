@@ -183,6 +183,22 @@ class TestJournal(unittest.TestCase):
         self.assertIn("metadata.log inchangé", self.ecrire())
         self.assertEqual((self.racine / "metadata.log").stat().st_mtime_ns, avant)
 
+    def test_log_dir_recoit_le_journal_et_ses_voisins(self):
+        sortie = self.racine / "sortie" / "logs"
+        args = arguments(log_dir=str(sortie))
+        with redirect_stdout(io.StringIO()):
+            films.write_log(self.racine, self.library, args, films.Report(matched=1, total=2))
+        self.assertTrue((sortie / "metadata.log").exists())
+        self.assertFalse((self.racine / "metadata.log").exists())
+        self.assertEqual(films.approved_path(self.racine, args), sortie / "metadata.ok")
+        self.assertEqual(films.collections_path(self.racine, args), sortie / "metadata.collections")
+
+    def test_reponse_de_collection_creee_dans_log_dir(self):
+        fichier = self.racine / "sortie" / "metadata.collections"
+        with redirect_stdout(io.StringIO()):
+            films.remember_collection(fichier, "Iron Man Collection", "Iron Man")
+        self.assertEqual(films.read_collections(fichier), {"Iron Man Collection": "Iron Man"})
+
     def test_journal_impossible_a_ecrire_n_arrete_pas_le_script(self):
         self.assertIn("metadata.log non écrit", self.ecrire(self.racine / "absent"))
 

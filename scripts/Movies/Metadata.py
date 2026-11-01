@@ -56,11 +56,11 @@ Usage :
   python Metadata.py --dir "D:\Films" --verify                # vérifie seulement
 
 Options : --apply --verify --skip-done --artwork --no-tag --no-cache --no-ask
-          --no-saga
+          --no-saga --log-dir
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
 
-À chaque passage, un JOURNAL est écrit à la racine de --dir : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
+À chaque passage, un JOURNAL est écrit à la racine de --dir (ou dans --log-dir, qui accueille alors aussi metadata.ok et metadata.collections - utile quand la médiathèque est en lecture seule) : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
 """
 
 from __future__ import annotations
@@ -236,8 +236,12 @@ class Library:
 
 
 def log_path(root_dir, args):
-    """Où écrire le journal : à la racine de --dir, où on le cherche."""
-    return Path(root_dir) / "metadata.log"
+    """Où écrire le journal : à la racine de --dir, où on le cherche, ou dans --log-dir.
+
+    metadata.ok et metadata.collections sont rangés avec lui : ils suivent donc --log-dir.
+    """
+    log_dir = getattr(args, "log_dir", None)
+    return (Path(log_dir) if log_dir else Path(root_dir)) / "metadata.log"
 
 
 APPROVED_NAME = "metadata.ok"
@@ -300,6 +304,7 @@ def read_collections(path):
 def remember_collection(path, name, title):
     """Consigne une réponse tout de suite : une interruption plus loin ne doit pas la perdre."""
     try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         new = not Path(path).exists()
         with open(path, "a", encoding="utf-8", newline="") as f:
             f.write((COLLECTIONS_HEADER if new else "") + f"{name} => {title}\n")
@@ -363,6 +368,8 @@ def write_log(root_dir, library, args, report):
         print(f"[log] {out.name} inchangé")
         return
     try:
+        if getattr(args, "log_dir", None):
+            out.parent.mkdir(parents=True, exist_ok=True)
         textfile.write(out, text)
     except OSError as e:
         print(f"[log] {out.name} non écrit : {e}")
@@ -639,6 +646,7 @@ def resolve_movie(rawname, args, tmdb, single, contexts=(), tag_id=None, saga=No
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
     ap.add_argument("--dir", required=True, help="Dossier de films, parcouru récursivement (dossiers de saga compris)")
+    ap.add_argument("--log-dir", help="Dossier où ranger metadata.log, metadata.ok et metadata.collections (défaut : la racine de --dir ; créé au besoin)")
     ap.add_argument("--tmdb-id", help="Force l'id TMDB (utile si --dir ne contient qu'un seul film)")
     ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
