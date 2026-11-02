@@ -14,6 +14,6 @@ Suivi de l'analyse du code (novembre 2026). Cocher une case dans la PR qui règl
 
 ## Détails
 
-- [ ] `textfile.write` n'est pas atomique (`libraries/common/textfile.py:23`), contrairement à `flac.write` et `mp3.write`.
+- [x] `textfile.write` n'était pas atomique (`libraries/common/textfile.py`) : écrit maintenant sous un nom provisoire puis remplace, comme `flac.write` et `mp3.write`.
 - [ ] `libraries/books/` n'est utilisé par aucun script du dépôt (seulement media_hub et les tests) ; le test d'architecture vise un `scripts/Books` qui n'existe pas (`tests/test_architecture.py:56`). Le dire en commentaire, ou nettoyer.
 - [x] Coquille `diffs =albums…` (`scripts/Music/Metadata.py:156`) : disparue avec le découpage de `process_album`.

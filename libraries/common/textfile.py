@@ -5,9 +5,12 @@ Lancées chaque nuit sur un NAS, les fiches ne doivent ni réveiller les disques
 S'y ajoute un service des pages elles-mêmes : relire leur titre.
 """
 
+import os
 import re
 from html import unescape
 from pathlib import Path
+
+from .tools import partial_path
 
 
 def same(path, text, skip_lines=0):
@@ -21,9 +24,21 @@ def same(path, text, skip_lines=0):
 
 
 def write(path, text):
-    """Écrit `text` tel quel, sans traduire les fins de ligne."""
-    with open(Path(path), "w", encoding="utf-8", newline="") as f:
-        f.write(text)
+    """Écrit `text` tel quel, sans traduire les fins de ligne.
+
+    Écrit à côté sous un nom provisoire puis remplace : une coupure ou un disque plein en cours de route laisse l'ancienne page intacte, au lieu d'une page tronquée que `same` ne reconnaîtrait plus et que le lecteur verrait telle quelle.
+    """
+    path = Path(path)
+    partial = partial_path(path)
+    try:
+        with open(partial, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
