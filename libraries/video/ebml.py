@@ -248,28 +248,26 @@ def _chaine(f, depart, fin, taille_fichier, complet):
     return None
 
 
-def _rapide(f, debut, fin, taille_fichier):
-    """Contrôle par points de repère, à prix fixe quelle que soit la taille.
+def _trouver_index(f, debut):
+    """((position, taille) du contenu de l'index SeekHead, ou None s'il n'y en a pas ; défaut).
 
-    On demande à l'index où il a rangé les grands éléments, et on va vérifier qu'ils y sont ; puis on remonte la queue depuis le dernier cluster indexe. C'est la que se logent les dégâts observés en pratique - une fin de fichier écrite à moitié.
+    L'index ouvre le Segment chez mkvmerge, mais d'autres muxeurs glissent un Void devant : on regarde les premiers éléments plutôt que le premier seul.
     """
-    # L'index ouvre le Segment chez mkvmerge, mais d'autres muxeurs glissent un Void devant : on regarde les premiers éléments plutôt que le premier seul.
-    position, index = debut, None
+    position = debut
     for _ in range(4):
         ident, taille, entete, _ = lire_entete(f, position)
         if ident is None:
-            return Defaut("élément illisible en tête du Segment", position)
+            return None, Defaut("élément illisible en tête du Segment", position)
         if ident == SEEK_HEAD:
-            index = (position + entete, taille)
-            break
+            return (position + entete, taille), None
         if ident not in NIVEAU1 or taille is None or taille < 0:
-            return Defaut("le Segment ne commence pas par un élément connu", position)
+            return None, Defaut("le Segment ne commence pas par un élément connu", position)
         position += entete + taille
-    if index is None or not 0 < index[1] < MAX_INDEX:
-        return None                       # sans index, la queue reste hors de portée
-    f.seek(index[0])
-    couples = reperes_seekhead(lire_exact(f, index[1]), debut)
+    return None, None
 
+
+def _verifier_reperes(f, couples, debut, taille_fichier):
+    """Défaut si un grand élément n'est pas là où l'index l'annonce."""
     for vise, position in couples:
         if vise not in NIVEAU1:
             continue                      # repère vers un élément qu'on ne juge pas
@@ -279,23 +277,54 @@ def _rapide(f, debut, fin, taille_fichier):
         if trouve != vise:
             return Defaut(f"l'index annonce {NIVEAU1[vise]} ici, on y trouve "
                           f"{NIVEAU1.get(trouve, 'des données')}", position)
+    return None
 
+
+def _lire_cues(f, couples, debut):
+    """(positions des clusters que la table Cues annonce ; défaut). Vides quand l'index ne cite pas de table Cues."""
     position_cues = next((p for i, p in couples if i == CUES), None)
     if position_cues is None:
-        return None
+        return [], None
     ident, taille, entete, _ = lire_entete(f, position_cues)
     if ident != CUES or taille is None or taille < 0:
-        return Defaut("table Cues illisible", position_cues)
+        return [], Defaut("table Cues illisible", position_cues)
     f.seek(position_cues + entete)
-    clusters = clusters_de_cues(lire_exact(f, taille), debut)
-    if not clusters:
-        return None
+    return clusters_de_cues(lire_exact(f, taille), debut), None
+
+
+def _verifier_extremes(f, clusters, debut, taille_fichier):
+    """Défaut si le premier ou le dernier cluster de la table Cues n'y est pas."""
     for position in (min(clusters), max(clusters)):
         if not debut <= position < taille_fichier:
             return Defaut("la table Cues annonce un cluster hors du fichier", position)
         if lire_entete(f, position)[0] != CLUSTER:
             return Defaut("la table Cues annonce un cluster qui n'y est pas", position)
-    return _chaine(f, max(clusters), fin, taille_fichier, complet=False)
+    return None
+
+
+def _rapide(f, debut, fin, taille_fichier):
+    """Contrôle par points de repère, à prix fixe quelle que soit la taille.
+
+    On demande à l'index où il a rangé les grands éléments, et on va vérifier qu'ils y sont ; puis on remonte la queue depuis le dernier cluster indexe. C'est la que se logent les dégâts observés en pratique - une fin de fichier écrite à moitié.
+    """
+    index, defaut = _trouver_index(f, debut)
+    if defaut:
+        return defaut
+    if index is None or not 0 < index[1] < MAX_INDEX:
+        return None                       # sans index, la queue reste hors de portée
+    f.seek(index[0])
+    couples = reperes_seekhead(lire_exact(f, index[1]), debut)
+
+    defaut = _verifier_reperes(f, couples, debut, taille_fichier)
+    if defaut:
+        return defaut
+    clusters, defaut = _lire_cues(f, couples, debut)
+    if defaut:
+        return defaut
+    if not clusters:
+        return None
+    defaut = _verifier_extremes(f, clusters, debut, taille_fichier)
+    return defaut or _chaine(f, max(clusters), fin, taille_fichier, complet=False)
 
 
 def verifier(chemin, complet=False):
