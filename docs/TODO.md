@@ -35,7 +35,7 @@ Rien d'alarmant : la syntaxe est compatible 3.8, aucun `shell=True`, `eval` ou d
 
 ## À décider
 
-- [ ] **10. `Verify_Files.py --apply` remplace l'original par le remux sans comparer** — contrairement aux conversions (qui contrôlent la durée), `repair` n'exige du remux que d'être structurellement sain. Sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie : l'original, même abîmé, est alors perdu pour de bon. Garder l'original à côté (`Film.mkv.orig`), ou exiger une durée proche, ou assumer ? (`scripts/Maintenance/Verify_Files.py:121-146`)
+- [x] **10. `Verify_Files.py --repair` remplaçait l'original sans le garder** — sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie du film. L'original est maintenant gardé à côté (`Film.mkv.orig`, puis `.orig2`… sans jamais en écraser un), remis en place si le remux ne peut pas prendre sa place, et le journal dit où il est. Décision prise : on garde (le traitement se fait sur le PC avant transfert au NAS, la place n'est pas en jeu). Les `.orig` se suppriment à la main une fois les films vérifiés ; une option pour ne pas les garder reste possible si le script tourne un jour sur le NAS.
 
 ## Détails
 

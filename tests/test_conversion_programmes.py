@@ -343,8 +343,15 @@ class TestMainVerify(ProgrammeTestCase):
         self.assertIn("1 réparé(s), 0 échec(s)", texte)
         self.assertEqual(self.contenu("Blade (1998).mkv"), b"REMUX SAIN")
         self.assertEqual(self.contenu("Inception (2010).mkv"), b"ORIGINAL Inception (2010).mkv")     # les sains ne sont pas touchés
-        self.assertIn("-> réparé", self.journal())
+        self.assertIn("-> réparé (original gardé : Blade (1998).mkv.orig)", self.journal())
         self.assertFalse([n for n in self.noms() if n.endswith(".part")])
+
+    def test_repair_garde_l_original_a_cote_et_le_dit(self):
+        _, texte = self.lancer("--repair", defauts={"Blade (1998).mkv": "fin de fichier tronquée"})
+        self.assertEqual(self.contenu("Blade (1998).mkv.orig"), b"ORIGINAL Blade (1998).mkv")
+        self.assertIn("réparé (original gardé : Blade (1998).mkv.orig)", texte)
+        self.assertIn("Les originaux abîmés sont gardés à côté (1 fichier(s) *.mkv.orig)", texte)
+        self.assertNotIn("Blade (1998).mkv.orig", [p.name for p in Verify_Files.mkv_files(self.racine)])
 
     def test_repair_qui_echoue_laisse_l_original_et_donne_le_code_1(self):
         code, texte = self.lancer("--repair", defauts={"Blade (1998).mkv": "x"}, mux=MkvmergeSimule(code=2, writes=b"TRONQUE", stderr="Erreur : disque plein"))

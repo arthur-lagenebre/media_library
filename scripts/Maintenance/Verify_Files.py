@@ -16,7 +16,7 @@ Deux profondeurs, parce qu'une lecture au hasard coûte ~70 ms sur un partage r�
 
 --repair remultiplexe les fichiers en défaut : mkvmerge relit le film et le réécrit proprement à côté, le résultat est contrôle à son tour, et l'original n'est remplacé que s'il ressort sain.
 Rien ne se perd au passage - identifiant TMDB, jaquette, titre du segment, nom des pistes et statistiques sont recopiés. Au moindre échec l'original reste en place.
-Il faut la place d'un film de plus sur le volume, le temps du remux.
+L'original abîmé est GARDÉ à côté sous le nom "Film.mkv.orig" ("Film.mkv.orig2" si un original plus ancien y est déjà) : sur un fichier abîmé, mkvmerge peut ne récupérer qu'une partie du film, et l'original est alors tout ce qui reste de la suite. À supprimer à la main une fois les films vérifiés ; il faut donc la place d'un film de plus sur le volume, durablement.
 
 Usage :
   python Verify_Files.py --dir "\\Asgard\films"                 # contrôle rapide
@@ -52,7 +52,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Contrôle la structure des .mkv d'un dossier (récursivement par défaut).")
     p.add_argument("--dir", required=True, help="dossier à contrôler")
     p.add_argument("--full", action="store_true", help="suit toute la chaîne, clusters compris (lit chaque fichier en entier : ~10 s par Go)")
-    p.add_argument("--repair", action="store_true", help="remultiplexe les fichiers en défaut et remplace l'original si le résultat est sain")
+    p.add_argument("--repair", action="store_true", help="remultiplexe les fichiers en défaut et remplace l'original si le résultat est sain (l'original est gardé à côté : Film.mkv.orig)")
     p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les .mkv posés directement dans --dir, sans descendre dans les sous-dossiers")
     p.add_argument("--log", default=None, help="fichier journal (défaut : verification.log à la racine de --dir)")
     return p.parse_args()
@@ -123,10 +123,20 @@ def check(chemin, complet):
     return ""
 
 
-def repair(chemin, complet):
-    """(réussite, ce qui a manque). Remuxe à côté, contrôle, puis remplace.
+def kept_name(chemin):
+    """Nom sous lequel l'original abîmé est gardé : `Film.mkv.orig`, puis `.orig2`, `.orig3`... si un original plus ancien y est déjà - il n'est jamais écrasé."""
+    for n in range(1, 1000):
+        candidat = chemin.with_name(chemin.name + ".orig" + (str(n) if n > 1 else ""))
+        if not candidat.exists():
+            return candidat
+    raise OSError("aucun nom libre pour garder l'original")
 
-    L'original n'est touche qu'a la toute fin, et seulement si le remux ressort sain : tant que le remplacement n'a pas eu lieu, un échec ne coûte qu'un fichier temporaire. mkvmerge rend 1 pour un simple avertissement - il a écrit quand même - et 2 ou plus quand il n'a rien pu produire.
+
+def repair(chemin, complet):
+    """(réussite, ce qu'il faut en dire). Remuxe à côté, contrôle, puis remplace - en gardant l'original à côté.
+
+    Sur un fichier abîmé, mkvmerge peut ne récupérer qu'une partie du film : l'original, même abîmé, est alors tout ce qui reste de la suite. Il est donc mis de côté sous `Film.mkv.orig` (à supprimer à la main une fois le résultat vérifié), et remis en place si le remux n'a pas pu prendre sa place.
+    L'original n'est touché qu'à la toute fin, et seulement si le remux ressort sain : tant que le remplacement n'a pas eu lieu, un échec ne coûte qu'un fichier temporaire. mkvmerge rend 1 pour un simple avertissement - il a écrit quand même - et 2 ou plus quand il n'a rien pu produire.
     """
     neuf = partial_path(chemin)
     try:
@@ -138,15 +148,24 @@ def repair(chemin, complet):
         if reste:
             return False, f"le remux est abîmé lui aussi ({reste})"
         try:
+            garde = kept_name(chemin)
+            os.replace(chemin, garde)
+        except OSError as exc:
+            return False, f"original non mis de côté, rien n'est remplacé : {exc.strerror or exc}"
+        try:
             os.replace(neuf, chemin)
         except OSError as exc:
+            try:
+                os.replace(garde, chemin)
+            except OSError:
+                return False, f"remplacement impossible ({exc.strerror or exc}) et l'original est resté sous le nom {garde.name}"
             return False, f"remplacement impossible : {exc.strerror or exc}"
     finally:
         neuf.unlink(missing_ok=True)          # déjà renommé : rien à faire ; sinon (échec, Ctrl-C) rien ne doit traîner
-    return True, ""
+    return True, f"original gardé : {garde.name}"
 
 
-def write_log(destination, racine, total, defauts, repares, echecs, complet, recursif=True):
+def write_log(destination, racine, total, defauts, repares, echecs, complet, recursif=True, gardes=None):
     """Journal du passage : ce qui cloche, et ce qu'on en a fait."""
     lignes = [
         f"Vérification du {datetime.now():%d/%m/%Y %H:%M} - {racine}",
@@ -158,7 +177,7 @@ def write_log(destination, racine, total, defauts, repares, echecs, complet, rec
         lignes.append("Aucun défaut de structure.")
     for chemin, message in defauts:
         nom = filenames.relative_name(chemin, racine)
-        etat = "réparé" if nom in repares else ("RÉPARATION ÉCHOUÉE" if nom in echecs else "non réparé")
+        etat = f"réparé ({gardes[nom]})" if nom in repares and nom in (gardes or {}) else "réparé" if nom in repares else ("RÉPARATION ÉCHOUÉE" if nom in echecs else "non réparé")
         lignes += [nom, f"    {message}", f"    -> {etat}", ""]
     if echecs:
         lignes += ["", "RÉPARATIONS ÉCHOUÉES (originaux intacts) :"]
@@ -204,7 +223,7 @@ def main():
             defauts.append((chemin, message))
     clear_line()
 
-    repares, echecs = [], []
+    repares, echecs, gardes = [], [], {}
     if args.repair and defauts:
         print(f"\nRéparation de {len(defauts)} fichier(s) : remux, contrôle du "
               "résultat, puis remplacement.")
@@ -212,8 +231,10 @@ def main():
             nom = filenames.relative_name(chemin, racine)
             print(f"  [{n}/{len(defauts)}] {nom} ...", end="", flush=True)
             reussi, souci = repair(chemin, args.full)
-            print(" réparé" if reussi else f" ÉCHEC : {souci}")
+            print(f" réparé ({souci})" if reussi else f" ÉCHEC : {souci}")
             (repares if reussi else echecs).append(nom)
+            if reussi:
+                gardes[nom] = souci
 
     duree = time.time() - debut
     print(f"\nTOTAL : {total} fichier(s) contrôlé(s) en {readable_time(duree)}, "
@@ -222,11 +243,13 @@ def main():
           + ".")
     if defauts and not args.repair:
         print("Relance la même commande avec --repair pour les remultiplexer.")
+    if gardes:
+        print(f"Les originaux abîmés sont gardés à côté ({len(gardes)} fichier(s) *.mkv.orig) : supprime-les une fois les films vérifiés.")
     if not args.full and not defauts:
         print("Le contrôle rapide ne juge que l'index et la queue : --full "
               "descend dans les clusters.")
 
-    write_log(Path(args.log) if args.log else racine / "verification.log", racine, total, defauts, repares, echecs, args.full, not args.no_recursive)
+    write_log(Path(args.log) if args.log else racine / "verification.log", racine, total, defauts, repares, echecs, args.full, not args.no_recursive, gardes)
     return 1 if echecs or (defauts and not args.repair) else 0
 
 

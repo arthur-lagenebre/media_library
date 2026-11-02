@@ -3,6 +3,7 @@
 mkvmerge, ffprobe et la lecture des pistes sont simulés : ce qu'on vérifie, c'est ce que le dossier contient APRÈS le passage - le `.mkv` n'existe que s'il a été jugé sain, rien ne traîne, l'original n'est effacé que sur un contrôle réussi.
 """
 
+import os
 import sys
 import tempfile
 import types
@@ -286,12 +287,50 @@ class TestReparationAtomique(unittest.TestCase):
     def folder_content(self):
         return sorted(p.name for p in self.folder.iterdir())
 
-    def test_remux_sain_remplace_l_original(self):
+    def test_remux_sain_remplace_l_original_qui_reste_a_cote(self):
         mux = MkvmergeSimule(writes=b"SAIN")
-        self.assertEqual(self.repair(mux), (True, ""))
+        self.assertEqual(self.repair(mux), (True, "original gardé : Le Film.mkv.orig"))
         self.assertEqual(mux.output(mux.commands[0]), self.neuf)
         self.assertEqual(self.film.read_bytes(), b"SAIN")
+        self.assertEqual((self.folder / "Le Film.mkv.orig").read_bytes(), b"ABIME")
+        self.assertEqual(self.folder_content(), ["Le Film.mkv", "Le Film.mkv.orig"])
+
+    def test_un_original_deja_garde_n_est_jamais_ecrase(self):
+        (self.folder / "Le Film.mkv.orig").write_bytes(b"PREMIER ORIGINAL")
+        self.assertEqual(self.repair(MkvmergeSimule(writes=b"SAIN")), (True, "original gardé : Le Film.mkv.orig2"))
+        self.assertEqual((self.folder / "Le Film.mkv.orig").read_bytes(), b"PREMIER ORIGINAL")
+        self.assertEqual((self.folder / "Le Film.mkv.orig2").read_bytes(), b"ABIME")
+        self.assertEqual(self.film.read_bytes(), b"SAIN")
+
+    def test_remplacement_refuse_apres_la_mise_de_cote_remet_l_original(self):
+        vrai = os.replace
+
+        def capricieux(src, dst):
+            if Path(src) == self.neuf:
+                raise PermissionError(13, "Accès refusé")
+            return vrai(src, dst)
+
+        with mock.patch.object(Verify_Files.os, "replace", capricieux):
+            reussi, souci = self.repair(MkvmergeSimule(writes=b"SAIN"))
+        self.assertFalse(reussi)
+        self.assertIn("Accès refusé", souci)
+        self.assertEqual(self.film.read_bytes(), b"ABIME")
         self.assertEqual(self.folder_content(), ["Le Film.mkv"])
+
+    def test_retour_impossible_dit_ou_est_l_original(self):
+        vrai = os.replace
+
+        def capricieux(src, dst):
+            if Path(src) == self.neuf or Path(dst) == self.film:
+                raise PermissionError(13, "Accès refusé")
+            return vrai(src, dst)
+
+        with mock.patch.object(Verify_Files.os, "replace", capricieux):
+            reussi, souci = self.repair(MkvmergeSimule(writes=b"SAIN"))
+        self.assertFalse(reussi)
+        self.assertIn("Le Film.mkv.orig", souci)
+        self.assertEqual((self.folder / "Le Film.mkv.orig").read_bytes(), b"ABIME")
+        self.assertEqual(self.folder_content(), ["Le Film.mkv.orig"])
 
     def test_echec_de_mkvmerge_laisse_l_original_et_rien_d_autre(self):
         reussi, souci = self.repair(MkvmergeSimule(code=2, writes=b"TRONQUE", stderr="Erreur : disque plein"))
@@ -301,7 +340,8 @@ class TestReparationAtomique(unittest.TestCase):
         self.assertEqual(self.folder_content(), ["Le Film.mkv"])
 
     def test_un_avertissement_de_mkvmerge_n_empeche_pas_la_reparation(self):
-        self.assertEqual(self.repair(MkvmergeSimule(code=1, writes=b"SAIN")), (True, ""))
+        reussi, _ = self.repair(MkvmergeSimule(code=1, writes=b"SAIN"))
+        self.assertTrue(reussi)
         self.assertEqual(self.film.read_bytes(), b"SAIN")
 
     def test_remux_abime_laisse_l_original_et_rien_d_autre(self):
