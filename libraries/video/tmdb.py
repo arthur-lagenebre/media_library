@@ -4,13 +4,10 @@ Gère les deux formes de clé (clé v3 en paramètre, token v4 en Bearer), disti
 """
 
 import json
-import random
-import time
-from http.client import HTTPException
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+from libraries.common import http
 
 API = "https://api.themoviedb.org/3"
 IMG_BASE = "https://image.tmdb.org/t/p/"
@@ -23,7 +20,6 @@ def movie_url(movie_id):
 
 # Ordre de préférence des types de sortie TMDB : théâtrale > théâtrale limitée > première > numérique > physique > TV.
 RELEASE_TYPE_ORDER = (3, 2, 1, 4, 5, 6)
-MAX_RETRY_WAIT = 30        # secondes : plafond du Retry-After renvoyé par TMDB
 
 class TmdbError(Exception):
     """Échec ponctuel : l'appelant peut sauter cet élément et continuer."""
@@ -51,34 +47,17 @@ class Tmdb:
 
     # ------------------------------------------------------------------ HTTP
     @staticmethod
-    def _retry_after(headers):
-        """Délai demande par TMDB dans l'en-tête Retry-After, si exploitable."""
-        value = (headers or {}).get("Retry-After")
-        if value and str(value).strip().isdigit():
-            return min(int(value), MAX_RETRY_WAIT)
-        return None
+    def _refuse(e):
+        """L'exception d'un échec que réessayer ne changerait pas."""
+        if e.code in (401, 403):
+            return TmdbAuthError(f"clé TMDB refusée par l'API (HTTP {e.code}). Vérifie la ligne TMDB_KEY=... de ton fichier .env.")
+        if e.code == 404:
+            return TmdbError("introuvable sur TMDB (HTTP 404)")
+        return TmdbError(f"HTTP {e.code} {e.reason}")
 
     def _request(self, url, headers):
         """GET brut avec réessais. Retourne (octets, en-têtes)."""
-        for attempt in range(1, self.attempts + 1):
-            wait = None
-            try:
-                with urlopen(Request(url, headers=headers), timeout=self.timeout) as r:
-                    return r.read(), r.headers
-            except HTTPError as e:            # sous-classe d'URLError : à rattraper avant
-                if e.code in (401, 403):
-                    raise TmdbAuthError(f"clé TMDB refusée par l'API (HTTP {e.code}). Vérifie la ligne TMDB_KEY=... de ton fichier .env.") from e
-                if e.code == 404:
-                    raise TmdbError("introuvable sur TMDB (HTTP 404)") from e
-                if e.code != 429 and e.code < 500:
-                    raise TmdbError(f"HTTP {e.code} {e.reason}") from e
-                failure, wait = e, self._retry_after(e.headers)   # 429 / panne serveur
-            except (URLError, OSError, HTTPException) as e:       # réseau, DNS, timeout, réponse coupée en route (IncompleteRead n'est pas un OSError)
-                failure = e
-            if attempt == self.attempts:
-                raise TmdbError(str(failure)) from failure
-            # Attente exponentielle + bruit : les vignettes du récap partent à 8 threads, sans bruit elles reviendraient toutes taper au même instant.
-            time.sleep(wait if wait is not None else 2 ** (attempt - 1) + random.uniform(0, 0.5))
+        return http.fetch(url, headers, self.timeout, self.attempts, fail=TmdbError, refuse=self._refuse)
 
     def get(self, endpoint, language=None):
         """GET sur un endpoint de l'API, decode en JSON. Passe par le cache s'il y en a un."""
