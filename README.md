@@ -36,6 +36,8 @@ libraries/video/       tout ce qui touche aux films et aux séries
 libraries/music/       tout ce qui touche à la musique
 libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
 tests/                 les tests
+docs/                  le suivi (TODO) et l'usage des agents et des skills Claude Code
+.claude/               les agents et les skills du dépôt (ce dossier doit rester à la racine)
 ```
 
 [libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres, GET HTTP avec réessais (partagé par TMDB et MusicBrainz). [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers, le chemin commun des conversions en `.mkv` (`Avi_To_Mkv.py` et `Mp4_To_Mkv.py`). [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
@@ -310,6 +312,10 @@ python -m unittest discover -s tests -t .
 Ils tournent aussi sur chaque push et chaque PR (Windows et Linux, Python 3.8 et 3.13) via [GitHub Actions](.github/workflows/tests.yml).
 
 Ils couvrent la partie qui casse en silence — analyse des noms, tags produits, comparaison à l'état visé, erreurs TMDB, cas tordus du renommage — sans réseau ni outil externe.
+
+## Agents Claude Code
+
+Quatre agents spécialisés (films et séries, musique, tests, relecture) et quatre skills (`/check`, `/new-script`, `/ship`, `/ub-mode`) sont dans `.claude/` : voir [docs/agents.md](docs/agents.md). Ce qu'il reste à faire ou à décider : [docs/TODO.md](docs/TODO.md).
 
 ## Licence et données
 
