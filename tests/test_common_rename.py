@@ -154,6 +154,52 @@ class TestConflitsEtEchecs(DossierTestCase):
         self.assertIn("[ÉCHEC]", self.sortie)
 
 
+class TestCasseSeule(DossierTestCase):
+    """Changer seulement la casse passe par un nom intermédiaire : si la seconde étape échoue, le fichier ne doit pas y rester."""
+
+    def renommer_en_echouant(self, echecs):
+        """rename_path("a.mkv" -> "A.mkv") quand les appels de Path.rename numéro `echecs` (1, 2...) sont refusés."""
+        vrai, appels = Path.rename, []
+
+        def capricieux(self_path, cible):
+            appels.append(self_path.name)
+            if len(appels) in echecs:
+                raise PermissionError(13, "Accès refusé")
+            return vrai(self_path, cible)
+
+        with mock.patch.object(rename, "same_file", return_value=True), mock.patch.object(Path, "rename", capricieux):
+            rename.rename_path(self.dir / "a.mkv", self.dir / "A.mkv")
+
+    def test_seconde_etape_refusee_remet_le_nom_d_origine(self):
+        self.creer(**{"a.mkv": "VIDEO"})
+        with self.assertRaises(PermissionError):
+            self.renommer_en_echouant({2})
+        self.assertEqual(self.contenu(), {"a.mkv": "VIDEO"})
+
+    def test_retour_impossible_dit_ou_est_le_fichier(self):
+        self.creer(**{"a.mkv": "VIDEO"})
+        with self.assertRaisesRegex(OSError, r"a\.tmp1\.mkv"):
+            self.renommer_en_echouant({2, 3})
+        self.assertEqual(self.contenu(), {"a.tmp1.mkv": "VIDEO"})
+
+    def test_un_passage_signale_l_echec_et_garde_le_nom_d_origine(self):
+        self.creer(**{"a.mkv": "VIDEO"})
+        vrai = Path.rename
+        appels = []
+
+        def capricieux(self_path, cible):
+            appels.append(1)
+            if len(appels) == 2:
+                raise PermissionError(13, "Accès refusé")
+            return vrai(self_path, cible)
+
+        with mock.patch.object(rename, "same_file", return_value=True), mock.patch.object(Path, "rename", capricieux):
+            done = self.appliquer([(self.dir / "a.mkv", self.dir / "A.mkv")])
+        self.assertEqual(self.contenu(), {"a.mkv": "VIDEO"})
+        self.assertEqual(done, set())
+        self.assertIn("[ÉCHEC] a.mkv -> A.mkv", self.sortie)
+
+
 class TestCompteRendu(unittest.TestCase):
     def test_les_bilans_s_additionnent(self):
         total = rename.Tally(named=2, total=3, subtitles=1) + rename.Tally(named=1, total=4, subtitles=0, unresolved=1)

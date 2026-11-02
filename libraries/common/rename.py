@@ -29,12 +29,19 @@ def same_file(a, b):
 def rename_path(src, dst):
     """Renomme src en dst, y compris quand seule la CASSE change.
 
-    Windows considère "titre.mkv" et "Titre.mkv" comme le même fichier : le renommage direct est refusé, il faut passer par un nom intermédiaire.
+    Windows considère "titre.mkv" et "Titre.mkv" comme le même fichier : le renommage direct est refusé, il faut passer par un nom intermédiaire. Si la seconde étape échoue, le fichier reprend son nom d'origine ; s'il ne le peut pas, l'erreur dit sous quel nom il est resté.
     """
     if same_file(src, dst):
         tmp = free_name(src)
         src.rename(tmp)
-        tmp.rename(dst)
+        try:
+            tmp.rename(dst)
+        except OSError as e:
+            try:
+                tmp.rename(src)
+            except OSError:
+                raise OSError(f"{e} (le fichier est resté sous le nom {tmp.name})") from e
+            raise
     else:
         src.rename(dst)
 
