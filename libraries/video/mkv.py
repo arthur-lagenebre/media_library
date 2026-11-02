@@ -523,14 +523,10 @@ def track_conflicts(info, opts):
     return raisons
 
 
-def verify(info, target, opts, tags=None):
-    """Compare l'état actuel du .mkv à l'état vise. [(label, ok, detail_actuel), ...]
-
-    `tags` vient de read_tags ; à None, les tags ne sont pas comparés - c'est le cas quand on ne les a pas relus.
-    """
-    checks = []
+def _container_checks(info, target, opts):
+    """Titre, date et jaquette du conteneur."""
     cont = (info or {}).get("container", {}).get("properties", {})
-    checks.append(("titre", cont.get("title") == target.title, cont.get("title") or "(absent)"))
+    checks = [("titre", cont.get("title") == target.title, cont.get("title") or "(absent)")]
     if opts.date and target.date:
         cur = (cont.get("date_utc") or cont.get("date_local") or "")[:10]
         checks.append(("date", cur == target.date, cur or "(absente)"))
@@ -538,6 +534,12 @@ def verify(info, target, opts, tags=None):
         # Sans jaquette disponible cote TMDB, en exiger une signalerait un écart que rien ne peut combler (et --skip-done ne sauterait plus jamais rien).
         present = has_cover(info)
         checks.append(("jaquette", present, "presente" if present else "absente"))
+    return checks
+
+
+def _track_checks(info, opts):
+    """Nom de chaque piste audio et de chaque sous-titre, puis les drapeaux de sous-titres que le nom annonce sans que le fichier les porte."""
+    checks = []
     audios, subs = track_selectors(info)
     if opts.audio_names:
         for sel, tr in audios:
@@ -551,17 +553,77 @@ def verify(info, target, opts, tags=None):
         for key, label in SUB_FLAGS:
             if key in ajouts:
                 checks.append((f"st {sel} {label.lower()}", False, "absent (le nom l'annonce)"))
-    if tags is not None and target.tags_xml:
-        attendus = parse_tags(target.tags_xml)
-        manquants, en_trop = attendus - tags, tags - attendus
-        detail = (f"{len(manquants)} manquant(s), {len(en_trop)} en trop" if (manquants or en_trop) else f"{len(tags)} présent(s)")
-        checks.append(("tags", not (manquants or en_trop), detail))
     return checks
+
+
+def _tags_check(target, tags):
+    """Les tags relus contre ceux qu'on veut écrire ; rien à comparer quand ils n'ont pas été relus."""
+    if tags is None or not target.tags_xml:
+        return []
+    attendus = parse_tags(target.tags_xml)
+    manquants, en_trop = attendus - tags, tags - attendus
+    detail = (f"{len(manquants)} manquant(s), {len(en_trop)} en trop" if (manquants or en_trop) else f"{len(tags)} présent(s)")
+    return [("tags", not (manquants or en_trop), detail)]
+
+
+def verify(info, target, opts, tags=None):
+    """Compare l'état actuel du .mkv à l'état vise. [(label, ok, detail_actuel), ...]
+
+    `tags` vient de read_tags ; à None, les tags ne sont pas comparés - c'est le cas quand on ne les a pas relus.
+    """
+    return _container_checks(info, target, opts) + _track_checks(info, opts) + _tags_check(target, tags)
 
 
 def is_conform(info, target, opts, tags=None):
     """Vrai si le fichier est déjà dans l'état vise (utilise par --skip-done)."""
     return all(ok for _, ok, _ in verify(info, target, opts, tags))
+
+
+def _audio_edits(audios, opts):
+    """Arguments mkvpropedit des pistes audio : nom et drapeau 'par défaut' (fusionnés par piste)."""
+    args = []
+    primary = primary_audio_sel(audios) if opts.flags else None
+    for sel, tr in audios:
+        sets = []
+        if opts.audio_names:
+            nm = audio_track_name(tr)
+            sets += ["--set", f"name={nm}"] if nm else (["--delete", "name"] if current_name(tr) else [])
+        if opts.flags:
+            sets += ["--set", f"flag-default={1 if sel == primary else 0}"]
+        if sets:
+            args += ["--edit", f"track:{sel}"] + sets
+    return args
+
+
+def _subtitle_edits(subs, opts):
+    """Arguments mkvpropedit des sous-titres : nom, aucun par défaut, drapeaux que le nom annonce."""
+    args = []
+    for sel, tr, ajouts in subtitle_targets(subs, opts):
+        sets = []
+        if opts.sub_names:
+            nm = subtitle_track_name(tr, ajouts)
+            sets += ["--set", f"name={nm}"] if nm else (["--delete", "name"] if current_name(tr) else [])
+        if opts.flags:
+            sets += ["--set", "flag-default=0"]   # aucun sous-titre par défaut
+            for motif, (cle, propriete) in NAME_FLAGS.items():
+                if cle in ajouts:   # sinon les drapeaux restent inchangés
+                    sets += ["--set", f"{propriete}=1"]
+        if sets:
+            args += ["--edit", f"track:{sel}"] + sets
+    return args
+
+
+def _cover_edits(info, target, opts, tmdb, tmp):
+    """Arguments mkvpropedit de la jaquette embarquée, téléchargée dans `tmp` ; vide si elle ne peut pas l'être (dit, sans arrêter l'étiquetage)."""
+    if not (opts.cover and target.poster):
+        return []
+    try:
+        tmdb.save_image(target.poster, opts.image_size, tmp / "cover.jpg")
+    except TmdbError as e:
+        print(f"      jaquette ignorée ({e})")
+        return []
+    args = ["--delete-attachment", "name:cover.jpg"] if has_cover(info) else []
+    return args + ["--attachment-name", "cover.jpg", "--attachment-mime-type", "image/jpeg", "--add-attachment", "cover.jpg"]
 
 
 def write(path, info, target, opts, tmdb):
@@ -584,40 +646,9 @@ def write(path, info, target, opts, tmdb):
         if opts.stats:
             cmd += ["--add-track-statistics-tags"]
 
-        # --- Pistes : nom + drapeau 'par défaut' (fusionnés par piste) ---
+        # --- Pistes : nom + drapeau 'par défaut' (fusionnés par piste), puis jaquette embarquée ---
         audios, subs = track_selectors(info)
-        primary = primary_audio_sel(audios) if opts.flags else None
-        for sel, tr in audios:
-            sets = []
-            if opts.audio_names:
-                nm = audio_track_name(tr)
-                sets += ["--set", f"name={nm}"] if nm else (["--delete", "name"] if current_name(tr) else [])
-            if opts.flags:
-                sets += ["--set", f"flag-default={1 if sel == primary else 0}"]
-            if sets:
-                cmd += ["--edit", f"track:{sel}"] + sets
-        for sel, tr, ajouts in subtitle_targets(subs, opts):
-            sets = []
-            if opts.sub_names:
-                nm = subtitle_track_name(tr, ajouts)
-                sets += ["--set", f"name={nm}"] if nm else (["--delete", "name"] if current_name(tr) else [])
-            if opts.flags:
-                sets += ["--set", "flag-default=0"]   # aucun sous-titre par défaut
-                for motif, (cle, propriete) in NAME_FLAGS.items():
-                    if cle in ajouts:   # sinon les drapeaux restent inchangés
-                        sets += ["--set", f"{propriete}=1"]
-            if sets:
-                cmd += ["--edit", f"track:{sel}"] + sets
-
-        # --- Jaquette embarquee ---
-        if opts.cover and target.poster:
-            try:
-                tmdb.save_image(target.poster, opts.image_size, tmp / "cover.jpg")
-                if has_cover(info):
-                    cmd += ["--delete-attachment", "name:cover.jpg"]
-                cmd += ["--attachment-name", "cover.jpg", "--attachment-mime-type", "image/jpeg", "--add-attachment", "cover.jpg"]
-            except TmdbError as e:
-                print(f"      jaquette ignorée ({e})")
+        cmd += _audio_edits(audios, opts) + _subtitle_edits(subs, opts) + _cover_edits(info, target, opts, tmdb, tmp)
 
         try:
             res = run_tool(cmd, cwd=tmp)
