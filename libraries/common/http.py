@@ -38,8 +38,10 @@ def fetch(url, headers, timeout, attempts, fail, refuse, base=1, before_attempt=
             with urlopen(Request(url, headers=headers), timeout=timeout) as r:
                 return r.read(), r.headers
         except HTTPError as e:            # sous-classe d'URLError : à rattraper avant
-            if e.fp is not None:          # sans corps, Python 3.8 lève KeyError à la fermeture
+            try:
                 e.close()                 # le corps d'une erreur ne sert à rien : sa connexion ne reste pas ouverte pendant l'attente
+            except (KeyError, OSError):   # au mieux : Python 3.8 lève KeyError pour une erreur sans corps (fp=None, comme en fabriquent les doubles de test)
+                pass
             if e.code != 429 and e.code < 500:
                 raise refuse(e) from e
             failure, wait = e, retry_after(e.headers)
