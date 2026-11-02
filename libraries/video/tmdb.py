@@ -151,6 +151,7 @@ class Tmdb:
         Compare la taille reçue à l'en-tête Content-Length : un flux coupé en cours de route leve une erreur au lieu de produire silencieusement un JPEG tronque — embarque tel quel dans le .mkv, il y resterait.
         """
         body, headers = self._request(f"{IMG_BASE}{size}{image_path}", {"User-Agent": self.user_agent})
+        # Ceinture : http.client lève déjà IncompleteRead sur une réponse plus courte que son Content-Length (voir common/http.py) ; ce contrôle ne sert que si un double de test, ou un jour un autre transport, rend moins d'octets sans le dire.
         announced = headers.get("Content-Length")
         if announced and str(announced).isdigit() and len(body) != int(announced):
             raise TmdbError(f"téléchargement incomplet ({len(body)}/{announced} octets)")

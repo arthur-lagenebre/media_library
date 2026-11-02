@@ -4,6 +4,7 @@ Aucun appel réseau : urlopen est remplacé par un double qui rejoue une file de
 """
 
 import http.client
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -64,6 +65,21 @@ class TestFetch(unittest.TestCase):
         _, deux = self.fetch([URLError("x"), URLError("x"), FakeResponse(b"ok")], base=2)
         self.assertTrue(1 <= un[0] <= 1.5 and 2 <= un[1] <= 2.5)
         self.assertTrue(2 <= deux[0] <= 2.5 and 4 <= deux[1] <= 4.5)
+
+    def test_la_connexion_d_une_erreur_http_est_fermee(self):
+        # Le corps d'une erreur ne sert à rien : sa connexion ne doit pas rester ouverte pendant l'attente, ni après l'abandon.
+        for code, reponses in ((503, 3), (404, 1)):
+            with self.subTest(code=code):
+                corps = [io.BytesIO(b"erreur") for _ in range(reponses)]
+                erreurs = [HTTPError("http://x", code, "erreur", {}, c) for c in corps]
+                self.fetch(erreurs + [FakeResponse(b"ok")] * (3 - reponses))
+                self.assertTrue(all(c.closed for c in corps))
+
+    def test_une_erreur_sans_corps_ne_se_ferme_pas(self):
+        # Python 3.8 : close() d'une HTTPError sans corps (fp=None, comme en fabriquent les doubles de test) lève KeyError.
+        with mock.patch.object(HTTPError, "close", side_effect=KeyError("file")):
+            resultat, pauses = self.fetch([http_error(503), FakeResponse(b"ok")])
+        self.assertEqual((resultat[0], len(pauses)), (b"ok", 1))
 
     def test_avant_chaque_tentative_meme_reessayee(self):
         appels = []

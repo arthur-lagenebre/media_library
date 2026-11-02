@@ -153,6 +153,38 @@ class TestConflitsEtEchecs(DossierTestCase):
         self.assertEqual(done, set())
         self.assertIn("[ÉCHEC]", self.sortie)
 
+    def appliquer_en_refusant(self, planned, refuse):
+        """Applique `planned` en faisant échouer les renommages pour lesquels refuse(source, cible) est vrai."""
+        vrai = Path.rename
+
+        def capricieux(self_path, cible):
+            if refuse(self_path, Path(cible)):
+                raise PermissionError(13, "Accès refusé")
+            return vrai(self_path, cible)
+
+        with mock.patch.object(Path, "rename", capricieux):
+            return self.appliquer(planned)
+
+    def test_cycle_interrompu_rend_le_fichier_mis_de_cote(self):
+        # 01 est mis de côté pour casser le cycle, mais 02 ne peut pas prendre sa place : 01 doit retrouver son nom.
+        self.creer(**{"01": "A", "02": "B"})
+        done = self.appliquer_en_refusant([(self.dir / "01", self.dir / "02"), (self.dir / "02", self.dir / "01")],
+                                          lambda src, dst: src.name == "02")
+        self.assertEqual(self.contenu(), {"01": "A", "02": "B"})
+        self.assertEqual(done, set())
+        self.assertIn("[REMIS]", self.sortie)
+
+    def test_cycle_dont_la_fin_echoue_dit_ou_est_le_fichier(self):
+        # Les autres ont pris leur nom ; le dernier est resté sous son nom provisoire, et son nom d'origine est pris : on le dit.
+        self.creer(**{"1": "A", "2": "B", "3": "C"})
+        planned = [(self.dir / "1", self.dir / "2"), (self.dir / "2", self.dir / "3"), (self.dir / "3", self.dir / "1")]
+        done = self.appliquer_en_refusant(planned, lambda src, dst: "tmp" in src.name)
+        self.assertEqual(done, {self.dir / "2", self.dir / "3"})
+        (provisoire,) = [n for n in self.contenu() if "tmp" in n]
+        self.assertEqual(self.contenu()[provisoire], "A")
+        self.assertIn(f"resté sous le nom provisoire {provisoire}", self.sortie)
+        self.assertNotIn("[REMIS]", self.sortie)
+
 
 class TestCasseSeule(DossierTestCase):
     """Changer seulement la casse passe par un nom intermédiaire : si la seconde étape échoue, le fichier ne doit pas y rester."""

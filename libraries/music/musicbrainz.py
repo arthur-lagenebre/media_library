@@ -160,6 +160,7 @@ class MusicBrainz:
     # --------------------------------------------------------------- Pochettes
     def _image(self, url):
         body, headers = self._request(url, "image/*", throttle=False)
+        # Ceinture : http.client lève déjà IncompleteRead sur une réponse plus courte que son Content-Length (voir common/http.py) ; ce contrôle ne sert que si un double de test, ou un jour un autre transport, rend moins d'octets sans le dire.
         announced = headers.get("Content-Length")
         if announced and str(announced).isdigit() and len(body) != int(announced):
             raise MusicBrainzError(f"téléchargement incomplet ({len(body)}/{announced} octets)")
