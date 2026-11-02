@@ -68,48 +68,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer l
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
+from libraries.video.episodetags import episode_target  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 # ----------------------------------------------------------------------------
-# 1. État vise pour un épisode : tags Matroska + titre + date + jaquette
-#    TargetTypeValue : 70 = COLLECTION (série), 60 = SEASON, 50 = ÉPISODE
-# ----------------------------------------------------------------------------
-def build_tags_xml(season, ep, series_name, max_actors=20):
-    blocks = []
-    if series_name:
-        blocks.append(mkv.tag_block(70, [mkv.simple("TITLE", series_name)]))
-
-    blocks.append(mkv.tag_block(60, [
-        mkv.simple("PART_NUMBER", season.get("season_number", "")),
-        mkv.simple("TITLE", season.get("name", "")),
-        mkv.simple("TOTAL_PARTS", len(season.get("episodes", []))),
-    ]))
-
-    lines = [mkv.simple("TITLE", ep.get("name", "")), mkv.simple("PART_NUMBER", ep.get("episode_number", ""))]
-    if ep.get("overview"):
-        lines.append(mkv.simple("SYNOPSIS", ep["overview"]))
-        lines.append(mkv.simple("SUMMARY", ep["overview"]))
-    if ep.get("air_date"):
-        lines.append(mkv.simple("DATE_RELEASED", ep["air_date"]))
-    lines += mkv.credits_lines(ep.get("crew", []), ep.get("guest_stars", []), max_actors)
-    if ep.get("vote_average"):
-        lines.append(mkv.simple("COMMENT", f"TMDB {round(ep['vote_average'], 1)}/10 ({ep.get('vote_count', 0)} votes)"))
-    blocks.append(mkv.tag_block(50, lines))
-    return mkv.tags_document(blocks)
-
-
-def episode_target(season, ep, series_name, opts):
-    """Ce que le .mkv de cet épisode devrait contenir."""
-    return mkv.Target(
-        title=ep.get("name", ""),
-        date=ep.get("air_date"),
-        tags_xml=build_tags_xml(season, ep, series_name),
-        poster=(ep.get("still_path") or season.get("poster_path")) if opts.cover else None,
-    )
-
-
-# ----------------------------------------------------------------------------
-# 2. Traitement d'une saison
+# 1. Traitement d'une saison
 # ----------------------------------------------------------------------------
 @dataclass
 class SeasonRun:
@@ -229,7 +192,7 @@ def process_season(mkv_dir, season, args, opts, tmdb):
 
 
 # ----------------------------------------------------------------------------
-# 3. Annexes : affiches de dossier
+# 2. Annexes : affiches de dossier
 # ----------------------------------------------------------------------------
 def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
     """Écrit les affiches de dossier (folder.jpg, en anglais) si --artwork. processed = [SeasonRun, ...]."""
@@ -246,7 +209,7 @@ def generate_sidecars(root_dir, series_name, show, processed, args, tmdb):
 
 
 # ----------------------------------------------------------------------------
-# 4. Programme principal
+# 3. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des .mkv depuis TMDB (données en français via l'API).")
