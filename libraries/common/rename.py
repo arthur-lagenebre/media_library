@@ -46,6 +46,21 @@ def rename_path(src, dst):
         src.rename(dst)
 
 
+def put_back(origin, src):
+    """Un fichier mis de côté sous un nom provisoire pour casser un cycle, et que sa cible n'a pas accueilli : il reprend son nom d'origine si celui-ci est libre ; sinon on dit sous quel nom il est resté."""
+    if src == origin:
+        return
+    if not origin.exists():
+        try:
+            src.rename(origin)
+        except OSError:
+            pass
+        else:
+            print(f"  [REMIS] {src.name} -> {origin.name} (nom d'origine retrouvé)")
+            return
+    print(f"  /!\\ {origin.name} est resté sous le nom provisoire {src.name} : à renommer à la main")
+
+
 def apply_renames(planned):
     """Applique les renommages prévus. Retourne l'ensemble des sources traitées.
 
@@ -63,6 +78,7 @@ def apply_renames(planned):
                 rename_path(src, dst)
             except OSError as e:
                 print(f"  [ÉCHEC] {src.name} -> {dst.name} : {e}")
+                put_back(origin, src)
                 continue
             done.add(origin)
             progress = True
@@ -74,8 +90,9 @@ def apply_renames(planned):
         occupees = {os.path.normcase(str(s)) for _, s, _ in blocked}
         bloque = next((t for t in blocked if os.path.normcase(str(t[2])) in occupees), None)
         if bloque is None:                # vrais conflits : des fichiers étrangers
-            for _, _, dst in blocked:
+            for origin, src, dst in blocked:
                 print(f"  [IGNORÉ] existe déjà : {dst.name}")
+                put_back(origin, src)
             break
         _, src, dst = bloque              # cycle : on degage le premier maillon
         try:

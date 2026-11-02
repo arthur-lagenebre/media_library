@@ -4,6 +4,7 @@ Aucun appel réseau : urlopen est remplacé par un double qui rejoue une file de
 """
 
 import http.client
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -64,6 +65,15 @@ class TestFetch(unittest.TestCase):
         _, deux = self.fetch([URLError("x"), URLError("x"), FakeResponse(b"ok")], base=2)
         self.assertTrue(1 <= un[0] <= 1.5 and 2 <= un[1] <= 2.5)
         self.assertTrue(2 <= deux[0] <= 2.5 and 4 <= deux[1] <= 4.5)
+
+    def test_la_connexion_d_une_erreur_http_est_fermee(self):
+        # Le corps d'une erreur ne sert à rien : sa connexion ne doit pas rester ouverte pendant l'attente, ni après l'abandon.
+        for code, reponses in ((503, 3), (404, 1)):
+            with self.subTest(code=code):
+                corps = [io.BytesIO(b"erreur") for _ in range(reponses)]
+                erreurs = [HTTPError("http://x", code, "erreur", {}, c) for c in corps]
+                self.fetch(erreurs + [FakeResponse(b"ok")] * (3 - reponses))
+                self.assertTrue(all(c.closed for c in corps))
 
     def test_avant_chaque_tentative_meme_reessayee(self):
         appels = []

@@ -40,6 +40,6 @@ Rien d'alarmant : la syntaxe est compatible 3.8, aucun `shell=True`, `eval` ou d
 
 ## Détails
 
-- [ ] `apply_renames` : le déblocage d'un cycle passe par `X.tmpN.ext` ; si le renommage suivant échoue, le fichier y reste (le message `[ÉCHEC]` cite ce nom provisoire, mais rien ne le remet) — même famille que #50. (`libraries/common/rename.py:83`)
-- [ ] `libraries/common/http.py` : l'`HTTPError` retenue entre deux essais garde sa connexion ouverte jusqu'à l'essai suivant ; appeler `close()` avant de dormir.
-- [ ] Les contrôles `Content-Length` de `Tmdb.image` et `MusicBrainz._image` ne se déclenchent plus en pratique (`http.client` lève `IncompleteRead` avant, depuis #46) ; ils ne servent qu'aux tests. Les garder comme ceinture, ou les retirer avec leurs tests.
+- [x] `apply_renames` : le déblocage d'un cycle passe par `X.tmpN.ext` ; si le renommage suivant échouait, le fichier y restait. `put_back` lui rend maintenant son nom d'origine quand celui-ci est libre (`[REMIS]`) et, quand un autre fichier l'a pris (cycle presque terminé), dit sous quel nom provisoire il est resté. (`libraries/common/rename.py`)
+- [x] `libraries/common/http.py` : l'`HTTPError` retenue entre deux essais gardait sa connexion ouverte ; elle est fermée dès qu'elle est reçue.
+- [x] Les contrôles `Content-Length` de `Tmdb.image` et `MusicBrainz._image` ne se déclenchent plus en pratique (`http.client` lève `IncompleteRead` avant) : décision de les garder comme ceinture, avec un commentaire qui le dit, plutôt que de retirer du code et des tests sans gain.
