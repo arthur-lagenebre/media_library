@@ -667,20 +667,8 @@ def parse_args():
     return ap.parse_args()
 
 
-def main():
-    args = parse_args()
-    cli.setup_console()
-    cli.check_dir(args.dir)
-    args.probe = mkv.check_tools(needs_mkvtoolnix=not args.no_tag)
-    opts = mkv.Options.from_args(args)
-    tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="movies_mkv/1.0", cache=cache.Cache(read=not args.no_cache))
-
-    print(f"=== {cli.mode_label(args)} ===   source : TMDB {args.language}\n")
-
-    movies = naming.find_movies(args.dir)
-    if not movies:
-        print(f"Aucun .mkv trouvé dans : {args.dir}")
-        return
+def print_notes(movies, args):
+    """Les options qui ne feront rien, ou pas ce qu'on croit, avec ce qu'on a trouvé."""
     if args.tmdb_id and len(movies) > 1:
         print(f"Note : --tmdb-id ne s'applique qu'à un seul film ; {len(movies)} détectés "
               "-> id ignoré, recherche par nom.\n")
@@ -689,29 +677,33 @@ def main():
     if args.artwork and not any(e.owns_folder for e in movies):
         print("Note : --artwork sans effet ici : aucun dossier ne contient un seul film.\n")
 
-    # Toutes les lectures d'un coup, en parallèle : chaque fichier coûte deux à trois sous-processus qu'on ne fait qu'attendre, et rien la-dedans ne dépend de TMDB. L'affichage, lui, garde son ordre.
-    lectures = {}
+
+def read_files(movies, args):
+    """{chemin: Reading} de tous les fichiers, lus d'un coup, en parallèle : chaque fichier coûte deux à trois sous-processus qu'on ne fait qu'attendre, et rien là-dedans ne dépend de TMDB. L'affichage, lui, garde son ordre."""
     fichiers = [f for entry in movies for f in entry.files]
     if not args.no_tag:
-        lectures = mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done)
-    else:
-        # Sans étiquetage, on ne lit des fichiers que leurs tags et leur durée - pour l'identifiant TMDB qu'un passage précédent y a inscrit, et le contrôle de l'association. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Lu en Python pur : ni MKVToolNix ni ffprobe, de quoi tourner sur un NAS.
-        lectures = mkv.read_light_all(fichiers)
+        return mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done)
+    # Sans étiquetage, on ne lit des fichiers que leurs tags et leur durée - pour l'identifiant TMDB qu'un passage précédent y a inscrit, et le contrôle de l'association. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Lu en Python pur : ni MKVToolNix ni ffprobe, de quoi tourner sur un NAS.
+    return mkv.read_light_all(fichiers)
 
-    corrections = {} if args.no_saga else saga_corrections(movies, lectures, args, tmdb)
-    if corrections:
-        print(f"{len(corrections)} film(s) replacé(s) par leur saga TMDB.\n")
 
+def open_library(lectures, args):
+    """La Library du passage, avec les films validés (metadata.ok) et les titres de collection arrêtés (metadata.collections)."""
     titles_file = collections_path(args.dir, args)
-    report, library = Report(), Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)), titles=read_collections(titles_file), titles_file=titles_file)
+    library = Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)), titles=read_collections(titles_file), titles_file=titles_file)
     if library.titles:
         print(f"{len(library.titles)} titre(s) de collection arrêté(s) dans {COLLECTIONS_NAME}.\n")
     if library.approved:
         print(f"{len(library.approved)} film(s) validé(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signalés.\n")
-    attente = []
+    return library
+
+
+def process_library(movies, library, corrections, args, opts, tmdb):
+    """Associe et traite chaque film, puis pose les questions mises de côté. Retourne le Report du passage."""
+    report, attente = Report(), []
     for entry in movies:
         print(f"--- {entry.display} ---")
-        movie, doute = resolve_movie(entry.rawname, args, tmdb, single=len(movies) == 1, contexts=entry.contexts, tag_id=tag_movie_id(entry, lectures), saga=corrections.get(entry.display))
+        movie, doute = resolve_movie(entry.rawname, args, tmdb, single=len(movies) == 1, contexts=entry.contexts, tag_id=tag_movie_id(entry, library.lectures), saga=corrections.get(entry.display))
         if doute is not None:
             print("      [À CONFIRMER] plusieurs versions portent ce titre "
                   "-> question en fin de passage")
@@ -727,13 +719,43 @@ def main():
 
     if attente:
         report += resolve_pending(attente, library, args, opts, tmdb)
+    return report
 
+
+def print_summary(report, library):
+    """Le bilan du passage, et les associations suspectes."""
     print(f"TOTAL : {report.matched}/{report.total} film(s) associé(s).")
     if library.doubts:
         print(f"\nÀ VÉRIFIER : {len(library.doubts)} association(s) suspecte(s)")
         for name, movie, doubts in library.doubts:
             print(f"  {name} -> {lookup.describe(movie)} : {' ; '.join(doubts)}")
         print()
+
+
+def main():
+    args = parse_args()
+    cli.setup_console()
+    cli.check_dir(args.dir)
+    args.probe = mkv.check_tools(needs_mkvtoolnix=not args.no_tag)
+    opts = mkv.Options.from_args(args)
+    tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="movies_mkv/1.0", cache=cache.Cache(read=not args.no_cache))
+
+    print(f"=== {cli.mode_label(args)} ===   source : TMDB {args.language}\n")
+
+    movies = naming.find_movies(args.dir)
+    if not movies:
+        print(f"Aucun .mkv trouvé dans : {args.dir}")
+        return
+    print_notes(movies, args)
+
+    lectures = read_files(movies, args)
+    corrections = {} if args.no_saga else saga_corrections(movies, lectures, args, tmdb)
+    if corrections:
+        print(f"{len(corrections)} film(s) replacé(s) par leur saga TMDB.\n")
+
+    library = open_library(lectures, args)
+    report = process_library(movies, library, corrections, args, opts, tmdb)
+    print_summary(report, library)
     write_log(args.dir, library, args, report)
     reste = report.epilogue()
     if reste:
