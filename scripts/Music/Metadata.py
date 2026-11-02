@@ -132,6 +132,87 @@ class CoverCache:
         return self.picture
 
 
+@dataclass
+class TrackPlan:
+    """Ce qu'un fichier a besoin qu'on lui change."""
+    diffs: list            # tags qui diffèrent : [(clé, valeurs actuelles, valeurs visées)]
+    wants_cover: bool      # une pochette à embarquer
+    missing_cover: bool    # pour --verify : la pochette manque (ou diffère de cover.jpg)
+    shrink: bool           # l'en-tête est enflé par le padding
+
+    @property
+    def conform(self):
+        return not (self.diffs or self.missing_cover or self.shrink)
+
+
+def plan_track(meta, target, covers, local, args):
+    """Compare un fichier à ce qu'on veut y écrire."""
+    diffs = albums.differences(meta.comments, target)
+    if local is not None:       # le fichier cover du dossier : la piste doit porter exactement celle-là
+        wants_cover = missing_cover = not coverfile.same_front(meta, local)
+    else:
+        wants_cover = not args.no_cover and covers.possible and (args.replace_cover or not meta.has_front_cover)
+        # --verify n'exige que la pochette que la sortie déclare : celle du release group n'existe peut-être pas, et l'exiger signalerait un écart que rien ne comble.
+        missing_cover = not args.no_cover and covers.own and not meta.has_front_cover
+    # L'Explorateur de Windows ne lit rien d'un en-tête de plus de 4 Mio : quand c'est le padding qui l'enfle, recopier le fichier suffit à le rendre lisible.
+    return TrackPlan(diffs, wants_cover, missing_cover, meta.bloated)
+
+
+def describe_track(entry, medium, track, meta, folder):
+    """La ligne de la piste, puis ses remarques."""
+    name = filenames.relative_name(entry.path, folder)       # CD1/ et CD2/ se distinguent
+    print(f"  [{medium.get('position')}-{track.get('position'):02d}] {name} -> {track.get('title')}")
+    for note in albums.entry_notes(entry, track):
+        print(f"      /!\\ {note}")
+    if meta.heavy_header:
+        print(f"      /!\\ en-tête de {(meta.audio_offset - meta.padding) / 1048576:.1f} Mo sans le padding : l'Explorateur Windows n'en lit rien (--replace-cover remplace la pochette)")
+
+
+def verify_track(meta, plan, covers, local, report):
+    """--verify : dit chaque écart, sans rien écrire."""
+    for key, current, wanted in plan.diffs:
+        print(f"      [DIFF] {key} : {', '.join(current) or '(absent)'} -> {', '.join(wanted) or '(retire)'}")
+    if plan.missing_cover:
+        print("      [DIFF] pochette : " + (f"différente de {covers.file.name}" if local is not None else "absente"))
+    if plan.shrink:
+        print(f"      [DIFF] en-tête : {meta.audio_offset / 1048576:.1f} Mo dont {meta.padding / 1048576:.1f} Mo de padding, illisible pour l'Explorateur Windows")
+    if plan.conform:
+        print("      [OK] déjà conforme")
+    else:
+        report.diffs += 1
+
+
+def planned_changes(plan, covers):
+    """Ce qu'il y aurait à écrire, en clair : vide quand le fichier est conforme."""
+    diffs = plan.diffs
+    return ([f"{len(diffs)} tag(s) : " + ", ".join(k for k, _, _ in diffs[:6]) + (" ..." if len(diffs) > 6 else "")] if diffs else []) + ([covers.label] if plan.wants_cover else []) + (["padding à retirer (en-tête illisible par Windows)"] if plan.shrink else [])
+
+
+def write_track(entry, meta, target, plan, covers, args, report):
+    """Dit ce qui serait écrit, et l'écrit avec --apply."""
+    changes = planned_changes(plan, covers)
+    if not changes:
+        print("      déjà conforme")
+        return
+    print(f"      à écrire : {' + '.join(changes)}")
+    if not args.apply:
+        return
+
+    pictures = meta.pictures
+    if plan.wants_cover:
+        cover = covers.get()
+        if cover is not None:
+            pictures = [cover] + [p for p in meta.pictures if p.kind != audio.FRONT_COVER]
+        elif not plan.diffs and not plan.shrink:
+            return
+    try:
+        mode = audio.write(entry.path, meta, albums.merge(meta.comments, target), pictures)
+        print(f"      [OK] {mode}")
+    except audio.AudioError as e:
+        print(f"      [ÉCHEC] {e}")
+        report.failures += 1
+
+
 def process_album(found, release, group, args, mb):
     """Place chaque fichier sur sa piste, compare, et écrit si --apply. Retourne le Report de l'album."""
     album, metas = found.album, found.metas
@@ -153,56 +234,12 @@ def process_album(found, release, group, args, mb):
         medium, track = placed[entry.path]
         meta = metas[entry.path]
         target = albums.target_tags(release, group, medium, track, with_genres=not args.no_genres, artist=found.artist_name)
-        diffs =albums.differences(meta.comments, target)
-        if local is not None:       # le fichier cover du dossier : la piste doit porter exactement celle-là
-            wants_cover = missing_cover = not coverfile.same_front(meta, local)
-        else:
-            wants_cover = not args.no_cover and covers.possible and (args.replace_cover or not meta.has_front_cover)
-            # --verify n'exige que la pochette que la sortie déclare : celle du release group n'existe peut-être pas, et l'exiger signalerait un écart que rien ne comble.
-            missing_cover = not args.no_cover and covers.own and not meta.has_front_cover
-        # L'Explorateur de Windows ne lit rien d'un en-tête de plus de 4 Mio : quand c'est le padding qui l'enfle, recopier le fichier suffit à le rendre lisible.
-        shrink = meta.bloated
-
-        name = filenames.relative_name(entry.path, album.folder)       # CD1/ et CD2/ se distinguent
-        print(f"  [{medium.get('position')}-{track.get('position'):02d}] {name} -> {track.get('title')}")
-        for note in albums.entry_notes(entry, track):
-            print(f"      /!\\ {note}")
-        if meta.heavy_header:
-            print(f"      /!\\ en-tête de {(meta.audio_offset - meta.padding) / 1048576:.1f} Mo sans le padding : l'Explorateur Windows n'en lit rien (--replace-cover remplace la pochette)")
+        plan = plan_track(meta, target, covers, local, args)
+        describe_track(entry, medium, track, meta, album.folder)
         if args.verify:
-            for key, current, wanted in diffs:
-                print(f"      [DIFF] {key} : {', '.join(current) or '(absent)'} -> {', '.join(wanted) or '(retire)'}")
-            if missing_cover:
-                print("      [DIFF] pochette : " + (f"différente de {covers.file.name}" if local is not None else "absente"))
-            if shrink:
-                print(f"      [DIFF] en-tête : {meta.audio_offset / 1048576:.1f} Mo dont {meta.padding / 1048576:.1f} Mo de padding, illisible pour l'Explorateur Windows")
-            if diffs or missing_cover or shrink:
-                report.diffs += 1
-            else:
-                print("      [OK] déjà conforme")
-            continue
-
-        changes = ([f"{len(diffs)} tag(s) : " + ", ".join(k for k, _, _ in diffs[:6]) + (" ..." if len(diffs) > 6 else "")] if diffs else []) + ([covers.label] if wants_cover else []) + (["padding à retirer (en-tête illisible par Windows)"] if shrink else [])
-        if not changes:
-            print("      déjà conforme")
-            continue
-        print(f"      à écrire : {' + '.join(changes)}")
-        if not args.apply:
-            continue
-
-        pictures = meta.pictures
-        if wants_cover:
-            cover = covers.get()
-            if cover is not None:
-                pictures = [cover] + [p for p in meta.pictures if p.kind != audio.FRONT_COVER]
-            elif not diffs and not shrink:
-                continue
-        try:
-            mode = audio.write(entry.path, meta, albums.merge(meta.comments, target), pictures)
-            print(f"      [OK] {mode}")
-        except audio.AudioError as e:
-            print(f"      [ÉCHEC] {e}")
-            report.failures += 1
+            verify_track(meta, plan, covers, local, report)
+        else:
+            write_track(entry, meta, target, plan, covers, args, report)
     return report
 
 
