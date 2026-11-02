@@ -17,7 +17,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
-from ..common.tools import PARTIAL_SUFFIX, partial_path, run_tool  # noqa: F401  (réexportés : mkv.run_tool, mkv.partial_path...)
+from ..common.tools import PARTIAL_SUFFIX, partial_path, read_timeout, run_tool  # noqa: F401  (réexportés : mkv.run_tool, mkv.partial_path...)
 from . import ebml
 from .tmdb import TmdbError
 
@@ -43,6 +43,8 @@ def _reason(exc):
     if isinstance(exc, subprocess.CalledProcessError):
         err = (exc.stderr or "").strip().splitlines()
         return err[0] if err else f"code {exc.returncode}"
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"sans réponse après {exc.timeout:g} s (partage réseau injoignable ?)"
     return str(exc)
 
 
@@ -84,7 +86,7 @@ def identify(path):
     Rien n'est affiché ici : la remarque est rendue à l'appelant, qui l'imprime au bon endroit. C'est ce qui permet de lire plusieurs fichiers en parallèle sans entrelacer les messages.
     """
     try:
-        out = run_tool(["mkvmerge", "-J", str(path)], check=True).stdout
+        out = run_tool(["mkvmerge", "-J", str(path)], check=True, timeout=read_timeout(path)).stdout
         if not out:
             return None, "lecture impossible par mkvmerge (sortie vide)"
         return json.loads(out), ""
@@ -105,7 +107,7 @@ def probe(path):
     Les deux informations venaient de deux appels distincts, soit deux processus lances par fichier là où un seul suffit.
     """
     try:
-        out = run_tool(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", str(path)], check=True).stdout
+        out = run_tool(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", str(path)], check=True, timeout=read_timeout(path)).stdout
         data = json.loads(out) if out else None
     except TOOL_FAILURES:
         return Probe()
@@ -171,7 +173,7 @@ def read_tags(path):
     mkvmerge -J ne donne pas leur contenu : il faut passer par mkvextract.
     """
     try:
-        out = run_tool(["mkvextract", str(path), "tags", "-"], check=True).stdout
+        out = run_tool(["mkvextract", str(path), "tags", "-"], check=True, timeout=read_timeout(path)).stdout
     except TOOL_FAILURES:
         return set()
     return parse_tags(out) if out else set()

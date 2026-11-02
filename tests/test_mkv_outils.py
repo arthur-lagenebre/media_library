@@ -47,6 +47,10 @@ class TestRaisonDUnEchec(unittest.TestCase):
     def test_autre_exception_son_texte(self):
         self.assertEqual(mkv._reason(FileNotFoundError("mkvmerge")), "mkvmerge")
 
+    def test_outil_sans_reponse(self):
+        raison = mkv._reason(subprocess.TimeoutExpired(["mkvmerge", "-J", "film.mkv"], 120))
+        self.assertEqual(raison, "sans réponse après 120 s (partage réseau injoignable ?)")
+
 
 class TestVerificationDesOutils(unittest.TestCase):
     def verifier(self, presents, **kwargs):
@@ -102,6 +106,21 @@ class TestLectureParMkvmerge(unittest.TestCase):
         info, _ = self.identifier(return_value=resultat("pas du json"))
         self.assertIsNone(info)
 
+    def test_outil_suspendu_sur_un_partage_reseau(self):
+        # Sans délai, un mkvmerge suspendu sur un partage figeait tout le passage.
+        info, note = self.identifier(side_effect=subprocess.TimeoutExpired(["mkvmerge"], 120))
+        self.assertIsNone(info)
+        self.assertIn("sans réponse après 120 s", note)
+
+    def test_delai_demande_selon_le_volume(self):
+        run = mock.Mock(return_value=resultat(json.dumps({"tracks": []})))
+        with mock.patch.object(mkv, "run_tool", run):
+            with mock.patch.object(mkv, "read_timeout", return_value=120):
+                mkv.identify("sur_le_nas.mkv")
+            with mock.patch.object(mkv, "read_timeout", return_value=None):
+                mkv.identify("en_local.mkv")
+        self.assertEqual([c.kwargs["timeout"] for c in run.call_args_list], [120, None])
+
 
 class TestSondeFfprobe(unittest.TestCase):
     def sonder(self, sortie=None, **retour):
@@ -115,6 +134,10 @@ class TestSondeFfprobe(unittest.TestCase):
             {"codec_type": "audio"}, {"codec_type": "audio", "bit_rate": "192000"}]})
         self.assertEqual(sonde.duration_min, 100.0)
         self.assertEqual(sonde.audio_bitrates, {1: 640, 3: 192})        # numérotées par piste audio, pas par flux
+
+    def test_sonde_suspendue_rend_une_sonde_vide(self):
+        sonde = self.sonder(side_effect=subprocess.TimeoutExpired(["ffprobe"], 120))
+        self.assertEqual((sonde.duration_min, sonde.audio_bitrates), (None, {}))
 
     def test_duree_incomprehensible(self):
         self.assertIsNone(self.sonder({"format": {"duration": "N/A"}, "streams": []}).duration_min)
