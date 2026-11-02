@@ -38,6 +38,12 @@ class TestEntetesIllisibles(unittest.TestCase):
     def test_segment_absent_apres_l_en_tete(self):
         self.assertIn("aucun Segment après l'en-tête EBML", defaut(ENTETE + INFO))
 
+    def test_segment_sans_taille_lisible(self):
+        # Régression : TypeError (int + None) au lieu d'un défaut, sur le fichier même qu'on veut signaler.
+        for controle in (False, True):
+            with self.subTest(complet=controle):
+                self.assertIn("Segment n'annonce pas de taille lisible", defaut(ENTETE + octets_id(ebml.SEGMENT) + b"\x00" + INFO, complet=controle))
+
     def test_segment_de_taille_inconnue_est_legitime(self):
         # Un flux sans taille annoncée : la chaîne se suit jusqu'à la fin du fichier.
         donnees = ENTETE + octets_id(ebml.SEGMENT) + b"\xff" + INFO + CLUSTER
@@ -104,6 +110,10 @@ class TestIndexEtTableCues(unittest.TestCase):
 
     def test_segment_qui_ne_commence_pas_par_un_element_connu(self):
         self.assertIn("ne commence pas par un élément connu", self.rapide(element(0xE7, b"x") + INFO))
+
+    def test_index_sans_taille_lisible(self):
+        # Régression : TypeError (0 < None) au lieu d'un défaut.
+        self.assertIn("SeekHead n'annonce pas de taille lisible", self.rapide(octets_id(ebml.SEEK_HEAD) + b"\x00" + INFO + CLUSTER))
 
     def test_tete_de_segment_illisible(self):
         self.assertIn("élément illisible en tête du Segment", self.rapide(b"\x00" * 20))

@@ -190,6 +190,8 @@ def _segment(f, taille_fichier):
     if ident != SEGMENT:
         return 0, 0, Defaut("aucun Segment après l'en-tête EBML", position)
     debut = position + entete
+    if taille is None:
+        return 0, 0, Defaut("le Segment n'annonce pas de taille lisible", position)
     if taille == TAILLE_INCONNUE:
         return debut, taille_fichier, None      # légitime : flux sans taille annoncée
     fin = debut + taille
@@ -259,6 +261,8 @@ def _trouver_index(f, debut):
         if ident is None:
             return None, Defaut("élément illisible en tête du Segment", position)
         if ident == SEEK_HEAD:
+            if taille is None:
+                return None, Defaut("l'index SeekHead n'annonce pas de taille lisible", position)
             return (position + entete, taille), None
         if ident not in NIVEAU1 or taille is None or taille < 0:
             return None, Defaut("le Segment ne commence pas par un élément connu", position)
