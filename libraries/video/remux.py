@@ -105,6 +105,61 @@ def attach_subtitles(command, video, subs, args):
     return attached
 
 
+def _inspect(video, args, container):
+    """(refus, infos, sous-titres) : ce que mkvmerge lit du fichier, ou le (statut, détail) qui dit pourquoi on s'arrête là."""
+    info, problem = identify(video)
+    if info is None:
+        return ("erreur", problem), None, None
+    if not any(track.get("type") == "video" for track in info.get("tracks", [])):
+        return ("erreur", "aucune piste vidéo"), None, None
+
+    subs = find_subtitles(video) if args.subs != "none" else []
+    if args.subs == "require" and not subs and not container.embedded_subtitles(info):
+        return ("ignoré", container.no_subtitles), None, None
+    return None, info, subs
+
+
+def _mux(command, partial, note):
+    """(échec, note) : lance mkvmerge, qui écrit sous le nom provisoire. L'échec est un (statut, détail), None quand il a écrit."""
+    partial.unlink(missing_ok=True)           # reste d'un passage interrompu : il ne doit pas passer pour la sortie de celui-ci
+    result = run_tool(command)
+    if result.returncode > MKVMERGE_WARNING or not partial.exists():
+        return ("erreur", first_error(result) or "mkvmerge n'a rien pu écrire"), note
+    if result.returncode == MKVMERGE_WARNING:
+        note += ", avertissement mkvmerge"
+    return None, note
+
+
+def _compare_durations(video, partial, final, args, check_duration):
+    """(échec, non vérifié, écart en secondes) : la durée du résultat contre celle de la source.
+
+    Un conteneur décrit sa durée dans un index ou un moov que les copies successives ont pu abîmer, ou qu'une copie coupée n'a jamais reçu :
+    mkvmerge recopie alors moins de film qu'il n'y en a, sans forcément le dire. "Non vérifié" dit pourquoi la comparaison n'a pas eu lieu ; l'écart est None dans ce cas.
+    """
+    if not check_duration:
+        return None, "durée non contrôlée (ffprobe absent)", None
+    source, produced = probe(video).duration_min, probe(partial).duration_min
+    if source is None or produced is None:
+        return None, "durée indéterminable", None
+    gap = abs(source - produced) * 60
+    if gap > args.tolerance:
+        return ("écart", f"{gap:.1f} s de différence avec la source : {final.name} n'a pas été écrit, l'original est gardé"), "", gap
+    return None, "", gap
+
+
+def _conclude(video, args, note, unverified, gap):
+    """(statut, détail) d'une conversion réussie ; la source n'est effacée que si la durée a été vérifiée."""
+    if unverified:
+        return "non vérifié", f"converti, {unverified}{note}"
+    if args.delete_source:
+        try:
+            video.unlink()
+            note += ", source effacée"
+        except OSError as exc:
+            note += f", source non effacée : {exc.strerror or exc}"
+    return "converti", f"écart {gap:.2f} s{note}"
+
+
 def convert(video, args, check_duration, container):
     """(statut, détail) : ce qu'on a fait du fichier, et ce qu'il y a à en dire.
 
@@ -114,15 +169,9 @@ def convert(video, args, check_duration, container):
     if final.exists() and not args.overwrite:
         return "ignoré", f"{final.name} existe déjà (--overwrite pour l'écraser)"
 
-    info, problem = identify(video)
-    if info is None:
-        return "erreur", problem
-    if not any(track.get("type") == "video" for track in info.get("tracks", [])):
-        return "erreur", "aucune piste vidéo"
-
-    subs = find_subtitles(video) if args.subs != "none" else []
-    if args.subs == "require" and not subs and not container.embedded_subtitles(info):
-        return "ignoré", container.no_subtitles
+    refusal, info, subs = _inspect(video, args, container)
+    if refusal:
+        return refusal
 
     # mkvmerge écrit sous un nom provisoire : le .mkv ne prend son nom qu'une fois jugé sain.
     partial = partial_path(final)
@@ -135,40 +184,19 @@ def convert(video, args, check_duration, container):
     if args.output_dir:
         args.output_dir.mkdir(parents=True, exist_ok=True)
     try:
-        partial.unlink(missing_ok=True)       # reste d'un passage interrompu : il ne doit pas passer pour la sortie de celui-ci
-        result = run_tool(command)
-        if result.returncode > MKVMERGE_WARNING or not partial.exists():
-            return "erreur", first_error(result) or "mkvmerge n'a rien pu écrire"
-        if result.returncode == MKVMERGE_WARNING:
-            note += ", avertissement mkvmerge"
-
-        # Un conteneur décrit sa durée dans un index ou un moov que les copies successives ont pu abîmer, ou qu'une copie coupée n'a jamais reçu :
-        # mkvmerge recopie alors moins de film qu'il n'y en a, sans forcément le dire.
-        unverified = "" if check_duration else "durée non contrôlée (ffprobe absent)"
-        if check_duration:
-            source, produced = probe(video).duration_min, probe(partial).duration_min
-            if source is None or produced is None:
-                unverified = "durée indéterminable"
-            else:
-                gap = abs(source - produced) * 60
-                if gap > args.tolerance:
-                    return "écart", f"{gap:.1f} s de différence avec la source : {final.name} n'a pas été écrit, l'original est gardé"
+        failure, note = _mux(command, partial, note)
+        if failure:
+            return failure
+        failure, unverified, gap = _compare_durations(video, partial, final, args, check_duration)
+        if failure:
+            return failure
         try:
             os.replace(partial, final)
         except OSError as exc:
             return "erreur", f"{final.name} n'a pas pu être écrit : {exc.strerror or exc}"
     finally:
         partial.unlink(missing_ok=True)       # déjà renommé : rien à faire ; sinon (échec, écart, Ctrl-C) rien ne doit traîner
-
-    if unverified:
-        return "non vérifié", f"converti, {unverified}{note}"
-    if args.delete_source:
-        try:
-            video.unlink()
-            note += ", source effacée"
-        except OSError as exc:
-            note += f", source non effacée : {exc.strerror or exc}"
-    return "converti", f"écart {gap:.2f} s{note}"
+    return _conclude(video, args, note, unverified, gap)
 
 
 def write_log(destination, root, entries, args, summary, container):
