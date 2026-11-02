@@ -16,6 +16,7 @@ Tout est pur, sauf inventory et tagged_artist_id qui lisent le disque.
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from . import album as albums
 from . import audio
 from . import coverfile
 from . import wanted
+from .library import SKIPPED_PREFIXES
 
 # Clé interne -> nom du sous-dossier où se rangent ces sorties.
 CATEGORIES = {
@@ -176,30 +178,40 @@ class Inventory:
     shelves: Counter = field(default_factory=Counter)    # dossier -> albums qu'il range : où poser les fichiers
 
 
+def unreadable_folders(artist_dir):
+    """Les erreurs de lecture des dossiers de l'artiste. find_albums et files_with_ext prennent un dossier qu'ils ne peuvent pas lister pour un dossier vide : un album illisible passerait pour manquant. Les dossiers cachés et ceux de rangement du système (#recycle, @eaDir) ne comptent pas."""
+    errors = []
+    for _, dirnames, _ in os.walk(artist_dir, onerror=errors.append):
+        dirnames[:] = [d for d in dirnames if not d.startswith((".", *SKIPPED_PREFIXES))]
+    return errors
+
+
 def inventory(artist_dir):
-    """L'inventaire du dossier d'un artiste, qui peut ne pas exister encore (il est alors vide).
+    """L'inventaire du dossier d'un artiste, qui peut ne pas exister encore (il est alors vide). OSError quand un de ses dossiers ne se laisse pas lire : mieux vaut ne rien poser que de poser des fichiers pour des albums qu'on possède.
 
     Les titres se lisent comme partout : le nom du dossier d'un album ("1994 - Born Dead", "Daft Punk - Discovery (2001) FLAC"), et le nom des .txt ou images "AAAA - Titre" posées dans le dossier de l'artiste et dans ceux qui rangent ses albums.
     """
     artist_dir, found = Path(artist_dir), Inventory()
+    if artist_dir.is_dir():
+        unreadable = unreadable_folders(artist_dir)
+        if unreadable:
+            first = unreadable[0]
+            raise OSError(f"dossier illisible : {first.filename} ({first.strerror or first})")
     for album in albums.find_albums(artist_dir):
         if album.folder == artist_dir:                   # de l'audio vrac dans le dossier de l'artiste : aucun titre à en tirer
             continue
         found.held.add(title_key(albums.folder_hints(album.folder).title))
         found.shelves[album.folder.parent] += 1
-    try:
-        for folder in {artist_dir, *found.shelves}:
-            for path in folder.iterdir():
-                declared = wanted.parse(path.name) if path.is_file() else None
-                if declared is None:
-                    continue
-                key = title_key(declared.title)
-                if path.suffix.lower() in coverfile.EXTS or path.stat().st_size:
-                    found.held.add(key)
-                else:
-                    found.empty.setdefault(key, []).append(path)
-    except OSError:
-        pass
+    for folder in {artist_dir, *found.shelves}:
+        for path in folder.iterdir() if folder.is_dir() else ():
+            declared = wanted.parse(path.name) if path.is_file() else None
+            if declared is None:
+                continue
+            key = title_key(declared.title)
+            if path.suffix.lower() in coverfile.EXTS or path.stat().st_size:
+                found.held.add(key)
+            else:
+                found.empty.setdefault(key, []).append(path)
     found.have = found.held | set(found.empty)
     return found
 

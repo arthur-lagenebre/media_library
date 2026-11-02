@@ -137,7 +137,12 @@ def complete(target, mbid, origin, args, mb, root):
         print("  aucune sortie référencée sur MusicBrainz")
         return Report(total=1, unresolved=1), Counter()
     planned, undated = discography.plan(groups, args.cats)
-    todo = discography.missing(planned, discography.inventory(target.folder), target.folder, upgrade=args.covers)
+    try:
+        owned = discography.inventory(target.folder)
+    except OSError as e:
+        print(f"  [ÉCHEC] inventaire impossible, rien n'est posé pour cet artiste : {e}")
+        return Report(total=1, matched=1, failures=1), Counter()
+    todo = discography.missing(planned, owned, target.folder, upgrade=args.covers)
 
     report, count, bare = Report(total=1, matched=1), Counter(), 0
     if target.new and not target.folder.exists():
