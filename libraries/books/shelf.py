@@ -250,21 +250,18 @@ def _is_container(name):
     return name.startswith("_")
 
 
-def scan(root, include_pdf=False):
-    """Les séries de la bibliothèque, par section : [(nom de la section, [Series])], séries triées par nom.
+class _Scan:
+    """Le parcours d'une bibliothèque : range ce qu'il trouve par (section, collection), puis par série."""
 
-    Une collection ("_DC" dans "Comics") est sa propre section d'affichage - "Comics · DC" -, rangée juste après sa section. Ne lit le contenu d'aucun fichier : seuls les noms, tailles et dates sont vus (voir `read_info`). Les .pdf sont ignorés, sauf `include_pdf`.
-    """
-    root = Path(root)
-    kinds = {ext: kind for ext, kind in KINDS.items() if include_pdf or ext not in OPTIONAL_KINDS}
-    sections = {}
+    def __init__(self, root, kinds):
+        self.root, self.kinds, self.sections = root, kinds, {}
 
-    def add(section, collection, group, sub, path, size, mtime):
-        volume = Volume(path, path.relative_to(root).as_posix(), section, group, sub, size, mtime, kinds[path.suffix.lower()])
-        series = sections.setdefault((section, collection), {}).setdefault(group, Series(section, group, collection=collection))
+    def add(self, section, collection, group, sub, path, size, mtime):
+        volume = Volume(path, path.relative_to(self.root).as_posix(), section, group, sub, size, mtime, self.kinds[path.suffix.lower()])
+        series = self.sections.setdefault((section, collection), {}).setdefault(group, Series(section, group, collection=collection))
         series.volumes.append(volume)
 
-    def add_children(section, collection, folder):
+    def add_children(self, section, collection, folder):
         """Les séries d'une section - ou d'une collection - : un dossier par série, un fichier seul étant la sienne."""
         try:
             children = sorted(os.scandir(folder), key=lambda e: e.name)
@@ -277,49 +274,70 @@ def scan(root, include_pdf=False):
             try:
                 if child.is_dir():
                     if not collection and section != LOOSE_SECTION and _is_container(child.name):
-                        add_children(section, child.name.lstrip("_").strip(), child.path)
+                        self.add_children(section, child.name.lstrip("_").strip(), child.path)
                         continue
-                    for file, size, mtime in _walk(child.path, kinds):
+                    for file, size, mtime in _walk(child.path, self.kinds):
                         sub = file.parent.relative_to(path).as_posix()
-                        add(section, collection, child.name, "" if sub == "." else sub, file, size, mtime)
-                elif path.suffix.lower() in kinds:
+                        self.add(section, collection, child.name, "" if sub == "." else sub, file, size, mtime)
+                elif path.suffix.lower() in self.kinds:
                     stat = child.stat()
-                    add(section, collection, path.stem, "", path, stat.st_size, int(stat.st_mtime))
+                    self.add(section, collection, path.stem, "", path, stat.st_size, int(stat.st_mtime))
             except OSError:
                 continue
 
-    try:
-        top = sorted(os.scandir(root), key=lambda e: e.name)
-    except OSError:
-        return []
-    for entry in top:
-        if _skipped(entry.name):
-            continue
-        path = Path(entry.path)
+    def read_root(self):
+        """Parcourt la racine : un dossier par section, les fichiers posés là formant la section des autres. Faux quand la racine ne se lit pas."""
         try:
-            if entry.is_dir():
-                add_children(entry.name, "", entry.path)
-            elif path.suffix.lower() in kinds:
-                stat = entry.stat()
-                add(LOOSE_SECTION, "", path.stem, "", path, stat.st_size, int(stat.st_mtime))
+            top = sorted(os.scandir(self.root), key=lambda e: e.name)
         except OSError:
-            continue
+            return False
+        for entry in top:
+            if _skipped(entry.name):
+                continue
+            path = Path(entry.path)
+            try:
+                if entry.is_dir():
+                    self.add_children(entry.name, "", entry.path)
+                elif path.suffix.lower() in self.kinds:
+                    stat = entry.stat()
+                    self.add(LOOSE_SECTION, "", path.stem, "", path, stat.st_size, int(stat.st_mtime))
+            except OSError:
+                continue
+        return True
 
-    def rank(key):
-        section, collection = key
-        if section == LOOSE_SECTION:
-            return (2, 0, [], [])
-        if section in SECTION_ORDER:
-            return (0, SECTION_ORDER.index(section), [], sort_text(collection))
-        return (1, 0, sort_text(section), sort_text(collection))
 
+def _section_rank(key):
+    """Ordre d'affichage d'une (section, collection) : les sections connues dans l'ordre de l'étagère, les autres par ordre alphabétique, puis les fichiers posés à la racine."""
+    section, collection = key
+    if section == LOOSE_SECTION:
+        return (2, 0, [], [])
+    if section in SECTION_ORDER:
+        return (0, SECTION_ORDER.index(section), [], sort_text(collection))
+    return (1, 0, sort_text(section), sort_text(collection))
+
+
+def _ordered(sections):
+    """[(nom de la section, [Series])] : sections dans l'ordre de l'étagère, séries triées par nom, volumes triés dans chaque série."""
     result = []
-    for key in sorted(sections, key=rank):
+    for key in sorted(sections, key=_section_rank):
         series = sorted(sections[key].values(), key=lambda s: sort_text(s.name))
         for one in series:
             one.sort()
         result.append((series[0].label, series))
     return result
+
+
+def scan(root, include_pdf=False):
+    """Les séries de la bibliothèque, par section : [(nom de la section, [Series])], séries triées par nom.
+
+    Une collection ("_DC" dans "Comics") est sa propre section d'affichage - "Comics · DC" -, rangée juste après sa section. Ne lit le contenu d'aucun fichier : seuls les noms, tailles et dates sont vus (voir `read_info`). Les .pdf sont ignorés, sauf `include_pdf`.
+    """
+    root = Path(root)
+    kinds = {ext: kind for ext, kind in KINDS.items() if include_pdf or ext not in OPTIONAL_KINDS}
+    parcours = _Scan(root, kinds)
+    if not parcours.read_root():
+        return []
+    return _ordered(parcours.sections)
 
 
 # ----------------------------------------------------------------------------

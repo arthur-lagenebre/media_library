@@ -51,6 +51,36 @@ def _meta(metadata, name):
     return None
 
 
+def _writers(metadata):
+    """Les auteurs, séparés par une virgule, ou "". Ceux qu'un rôle désigne comme tels, ou sans rôle : les traducteurs, illustrateurs et le "bkp" de Calibre n'écrivent pas le livre."""
+    return ", ".join((e.text or "").strip() for e in metadata.findall(DC + "creator")
+                     if (e.text or "").strip() and e.get(f"{OPF}role") in (None, "aut"))
+
+
+def _date_fields(metadata):
+    """{'Year', 'Month', 'Day'} de la date de l'.opf ; vide quand elle n'a pas d'année plausible."""
+    date = DATE_RE.match((_texts(metadata, "date") or [""])[0])
+    if not date or int(date.group(1)) < MIN_YEAR:
+        return {}
+    fields = {"Year": int(date.group(1))}
+    for field, part in (("Month", date.group(2)), ("Day", date.group(3))):
+        if part and 1 <= int(part) <= 31:
+            fields[field] = int(part)
+    return fields
+
+
+def _series_fields(metadata):
+    """{'Series', 'Number'} d'après les champs de Calibre ; vide pour un livre qui n'est pas dans une série."""
+    series = _meta(metadata, "calibre:series")
+    if not series:
+        return {}
+    fields = {"Series": series}
+    index = _meta(metadata, "calibre:series_index")
+    if index:
+        fields["Number"] = index[:-2] if index.endswith(".0") else index
+    return fields
+
+
 def parse_opf(root):
     """Fiche d'un .opf déjà analysé, aux noms de ComicInfo."""
     metadata = root.find(f"{OPF}metadata")
@@ -62,11 +92,9 @@ def parse_opf(root):
     title = _texts(metadata, "title")
     if title:
         info["Title"] = title[0]
-    # Les auteurs : ceux qu'un rôle désigne comme tels, ou sans rôle. Les traducteurs, illustrateurs et le "bkp" de Calibre n'écrivent pas le livre.
-    authors = [(e.text or "").strip() for e in metadata.findall(DC + "creator")
-               if (e.text or "").strip() and e.get(f"{OPF}role") in (None, "aut")]
+    authors = _writers(metadata)
     if authors:
-        info["Writer"] = ", ".join(authors)
+        info["Writer"] = authors
     for field, tag in (("Publisher", "publisher"), ("LanguageISO", "language")):
         found = _texts(metadata, tag)
         if found:
@@ -77,18 +105,8 @@ def parse_opf(root):
     summary = plain_text((_texts(metadata, "description") or [""])[0])
     if summary:
         info["Summary"] = summary
-    date = DATE_RE.match((_texts(metadata, "date") or [""])[0])
-    if date and int(date.group(1)) >= MIN_YEAR:
-        info["Year"] = int(date.group(1))
-        for field, part in (("Month", date.group(2)), ("Day", date.group(3))):
-            if part and 1 <= int(part) <= 31:
-                info[field] = int(part)
-    series = _meta(metadata, "calibre:series")
-    if series:
-        info["Series"] = series
-        index = _meta(metadata, "calibre:series_index")
-        if index:
-            info["Number"] = index[:-2] if index.endswith(".0") else index
+    info.update(_date_fields(metadata))
+    info.update(_series_fields(metadata))
     return info
 
 
