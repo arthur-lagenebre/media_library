@@ -75,6 +75,12 @@ class TestFetch(unittest.TestCase):
                 self.fetch(erreurs + [FakeResponse(b"ok")] * (3 - reponses))
                 self.assertTrue(all(c.closed for c in corps))
 
+    def test_une_erreur_sans_corps_ne_se_ferme_pas(self):
+        # Python 3.8 : close() d'une HTTPError sans corps (fp=None, comme en fabriquent les doubles de test) lève KeyError.
+        with mock.patch.object(HTTPError, "close", side_effect=KeyError("file")):
+            resultat, pauses = self.fetch([http_error(503), FakeResponse(b"ok")])
+        self.assertEqual((resultat[0], len(pauses)), (b"ok", 1))
+
     def test_avant_chaque_tentative_meme_reessayee(self):
         appels = []
         self.fetch([URLError("x"), URLError("x"), FakeResponse(b"ok")], before_attempt=lambda: appels.append(1))
