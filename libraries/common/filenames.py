@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 def safe_name(s):
-    """Nettoie un titre pour en faire un nom de fichier valide sous Windows."""
-    s = re.sub(r'[<>:"/\\|?*]', "", s or "")
+    """Nettoie un titre pour en faire un nom de fichier valide sous Windows. Rend "" quand rien n'en reste ("...", "???") : c'est à l'appelant d'écarter un nom vide."""
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", s or "")
     s = re.sub(r"\s+", " ", s).strip()
     return s.rstrip(". ")
 

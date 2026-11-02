@@ -32,9 +32,11 @@ from libraries.video.tmdb import Tmdb, TmdbAuthError                       # noq
 def target_stem(film, order, pin_id):
     """Nom vise pour un film : "Titre (Année)", avec ce qui doit y survivre.
 
-    L'ordre de saga est conservé parce qu'il porte une information que TMDB n'a pas : celle que TU as choisie pour regarder la série de films.
+    L'ordre de saga est conservé parce qu'il porte une information que TMDB n'a pas : celle que TU as choisie pour regarder la série de films. "" quand le titre ne laisse rien d'utilisable ("...") : l'année ou l'ordre seuls ne font pas un nom.
     """
     titre = filenames.safe_name(film.get("title", ""))
+    if not titre:
+        return ""
     annee = (film.get("release_date") or "")[:4]
     stem = f"{titre} ({annee})" if annee else titre
     if order:
@@ -89,6 +91,11 @@ def plan_library(movies, args, tmdb, ids=None):
         if film is None:
             tally.unresolved += 1
             print()
+            continue
+
+        if not target_stem(film, order, False):
+            tally.unresolved += 1
+            print(f"  [IGNORÉ] le titre TMDB ({film.get('title')!r}) ne laisse aucun nom de fichier utilisable\n")
             continue
 
         mouvements = [(src, dst) for src, dst in plan_entry(entry, film, order, args.pin_id) if dst != src]

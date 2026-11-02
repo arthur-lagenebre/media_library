@@ -590,6 +590,19 @@ class TestLigneDeCommande(unittest.TestCase):
         with self.assertRaises(SystemExit), mock.patch.object(sys, "stderr", io.StringIO()):
             self.analyser("--dir", "x", "--cats", "album,bidule")
 
+    def test_only_sans_nom_utilisable(self):
+        # « ??? » donnait le dossier --dir lui-même comme dossier d'artiste à créer.
+        for nom in ("???", "..."):
+            with self.subTest(nom=nom), self.assertRaises(SystemExit), mock.patch.object(sys, "stderr", io.StringIO()):
+                self.analyser("--dir", "x", "--only", nom)
+
+    def test_nom_musicbrainz_inutilisable_garde_le_dossier_demande(self):
+        cible = script.Target(Path("musique") / "Radiohead", "Radiohead", new=True)
+        cible.adopt({"name": "???"})
+        self.assertEqual(cible.folder, Path("musique") / "Radiohead")
+        cible.adopt({"name": "Radiohead!"})
+        self.assertEqual(cible.folder, Path("musique") / "Radiohead!")
+
     def test_dossier_introuvable(self):
         with mock.patch.object(sys, "argv", ["Discography.py", "--dir", "/nulle/part/du/tout"]), redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit) as sortie:

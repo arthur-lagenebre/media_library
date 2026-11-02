@@ -53,9 +53,10 @@ class Target:
         self.pool = []                       # les artistes entre lesquels trancher
 
     def adopt(self, artist):
-        """L'artiste retenu : un dossier à créer prend le nom que lui donne MusicBrainz."""
-        if self.new:
-            self.folder = self.folder.parent / filenames.safe_name(artist["name"])
+        """L'artiste retenu : un dossier à créer prend le nom que lui donne MusicBrainz. Un nom qui ne laisse rien une fois nettoyé ("???") garde celui qu'on a demandé : sans quoi le « dossier » serait --dir lui-même."""
+        name = filenames.safe_name(artist["name"])
+        if self.new and name:
+            self.folder = self.folder.parent / name
 
 
 def find_targets(root, only):
@@ -226,6 +227,8 @@ def parse_args():
     ap.add_argument("--apply", action="store_true", help="Pose réellement les fichiers (défaut : simulation)")
     args = ap.parse_args()
     args.cats = parse_cats(args.cats)
+    if args.only is not None and not filenames.safe_name(args.only):
+        ap.error(f"--only attend un nom d'artiste dont il reste quelque chose une fois les signes interdits dans un nom de dossier retirés, pas '{args.only}'")
     args.covers = not args.no_covers
     unknown = args.cats - set(discography.CATEGORIES)
     if unknown or not args.cats:
