@@ -11,7 +11,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import cast, lookup, mkv, naming
+from libraries.video import cast, doubts, lookup, mkv, movietags, naming
 from libraries.video.tmdb import TmdbError
 from libraries.common.report import Report
 from scripts.Movies import Metadata as films
@@ -91,7 +91,7 @@ class TestTagsEpisode(unittest.TestCase):
 class TestFilms(unittest.TestCase):
     def test_tags_de_saga(self):
         movie = {"title": "Iron Man", "release_date": "2008-04-30", "_order": 1, "belongs_to_collection": {"name": "Iron Man - Saga"}, "genres": [{"name": "Action"}, {"name": "Science-Fiction"}], "credits": {"crew": [{"name": "J. Favreau", "job": "Director"}], "cast": [{"name": "R. Downey Jr.", "character": "Tony Stark"}]}}
-        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        root = ElementTree.fromstring(movietags.build_movie_tags_xml(movie))
         niveaux = [n.text for n in root.findall("./Tag/Targets/TargetTypeValue")]
         self.assertEqual(niveaux, ["70", "50"])
         saga = root.find("Tag")
@@ -101,39 +101,39 @@ class TestFilms(unittest.TestCase):
         self.assertEqual(film.find("Simple[Name='GENRE']/String").text, "Action, Science-Fiction")
 
     def test_le_suffixe_saga_n_est_pas_inscrit(self):
-        self.assertEqual(films.collection_title("Iron Man - Saga"), "Iron Man")
-        self.assertEqual(films.collection_title("Iron Man - saga"), "Iron Man")
-        self.assertEqual(films.collection_title("Saga Twilight"), "Saga Twilight")
-        self.assertEqual(films.collection_title(None), "")
+        self.assertEqual(movietags.collection_title("Iron Man - Saga"), "Iron Man")
+        self.assertEqual(movietags.collection_title("Iron Man - saga"), "Iron Man")
+        self.assertEqual(movietags.collection_title("Saga Twilight"), "Saga Twilight")
+        self.assertEqual(movietags.collection_title(None), "")
 
     def test_collection_n_est_jamais_retire_d_office(self):
-        self.assertEqual(films.collection_title("Iron Man Collection"), "Iron Man Collection")
+        self.assertEqual(movietags.collection_title("Iron Man Collection"), "Iron Man Collection")
         movie = {"title": "Iron Man", "belongs_to_collection": {"name": "Iron Man Collection"}}
-        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        root = ElementTree.fromstring(movietags.build_movie_tags_xml(movie))
         self.assertEqual(root.find("Tag").find("Simple[Name='TITLE']/String").text, "Iron Man Collection")
 
     def test_proposition_sans_collection(self):
-        self.assertEqual(films.collection_proposal("Iron Man Collection"), "Iron Man")
-        self.assertEqual(films.collection_proposal("Iron Man - Collection"), "Iron Man")
-        self.assertEqual(films.collection_proposal("Iron Man Collection - Saga"), "Iron Man")
-        self.assertIsNone(films.collection_proposal("Iron Man - Saga"))
-        self.assertIsNone(films.collection_proposal("Collection"))
-        self.assertIsNone(films.collection_proposal(None))
+        self.assertEqual(movietags.collection_proposal("Iron Man Collection"), "Iron Man")
+        self.assertEqual(movietags.collection_proposal("Iron Man - Collection"), "Iron Man")
+        self.assertEqual(movietags.collection_proposal("Iron Man Collection - Saga"), "Iron Man")
+        self.assertIsNone(movietags.collection_proposal("Iron Man - Saga"))
+        self.assertIsNone(movietags.collection_proposal("Collection"))
+        self.assertIsNone(movietags.collection_proposal(None))
 
     def test_titre_arrete_inscrit_dans_la_collection(self):
         movie = {"title": "Iron Man", "belongs_to_collection": {"name": "Iron Man Collection"}, "_collection_title": "Iron Man"}
-        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        root = ElementTree.fromstring(movietags.build_movie_tags_xml(movie))
         self.assertEqual(root.find("Tag").find("Simple[Name='TITLE']/String").text, "Iron Man")
-        self.assertEqual(films.collection_title("Star Wars"), "Star Wars")
+        self.assertEqual(movietags.collection_title("Star Wars"), "Star Wars")
 
     def test_l_identifiant_est_inscrit_dans_le_film(self):
         # Pour que le passage suivant n ait plus rien à chercher.
-        root = ElementTree.fromstring(films.build_movie_tags_xml({"id": 314, "title": "Catwoman"}))
+        root = ElementTree.fromstring(movietags.build_movie_tags_xml({"id": 314, "title": "Catwoman"}))
         film = root.findall("Tag")[-1]
         self.assertEqual(film.find("Simple[Name='TMDB']/String").text, "movie/314")
     def test_film_hors_saga(self):
         movie = {"title": "Heat", "credits": {}}
-        root = ElementTree.fromstring(films.build_movie_tags_xml(movie))
+        root = ElementTree.fromstring(movietags.build_movie_tags_xml(movie))
         self.assertEqual([n.text for n in root.findall("./Tag/Targets/TargetTypeValue")], ["50"])
 
 
@@ -432,7 +432,7 @@ class TestDoutesSurLAssociation(unittest.TestCase):
         fichiers = [Path(f"{nom}.cd{i}.mkv") for i in range(parts)]
         entry = types.SimpleNamespace(rawname=nom, files=fichiers)
         lu = mkv.Reading(info={"container": {"properties": {"duration": int(minutes / parts * 60e9)}}})
-        return films.identity_doubts(entry, {"runtime": runtime, "vote_count": votes}, {f: lu for f in fichiers})
+        return doubts.identity_doubts(entry, {"runtime": runtime, "vote_count": votes}, {f: lu for f in fichiers})
 
     def test_court_metrage_pris_pour_le_film(self):
         # Microcosmos (75 min) associé à un court métrage de 3 min qui porte le même nom.
@@ -460,7 +460,7 @@ class TestDoutesSurLAssociation(unittest.TestCase):
 
     def test_sans_duree_lue_pas_de_doute(self):
         entry = types.SimpleNamespace(rawname="X", files=[Path("X.mkv")])
-        self.assertEqual(films.identity_doubts(entry, {"runtime": 3, "vote_count": 500}, {}), [])
+        self.assertEqual(doubts.identity_doubts(entry, {"runtime": 3, "vote_count": 500}, {}), [])
 
 
 

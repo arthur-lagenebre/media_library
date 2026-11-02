@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import lookup, mkv, naming
+from libraries.video import lookup, mkv, movietags, naming
 from libraries.video.tmdb import TmdbError
 from scripts.Movies import Metadata as films
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
@@ -33,15 +33,15 @@ def arguments(**changes):
 class TestTagsDuFilm(unittest.TestCase):
     def test_synopsis_ecrit_deux_fois(self):
         # SYNOPSIS pour les lecteurs qui le connaissent, SUMMARY pour les autres.
-        xml = films.movie_target(DUNE, OPTS).tags_xml
+        xml = movietags.movie_target(DUNE, OPTS).tags_xml
         self.assertEqual(xml.count("Un désert."), 2)
 
     def test_sans_synopsis(self):
-        xml = films.movie_target(dict(DUNE, overview=""), OPTS).tags_xml
+        xml = movietags.movie_target(dict(DUNE, overview=""), OPTS).tags_xml
         self.assertNotIn("SYNOPSIS", xml)
 
     def test_identifiant_inscrit_dans_le_film(self):
-        self.assertIn("movie/438631", films.movie_target(DUNE, OPTS).tags_xml)
+        self.assertIn("movie/438631", movietags.movie_target(DUNE, OPTS).tags_xml)
 
 
 class TestTraitementDUnFichier(unittest.TestCase):
