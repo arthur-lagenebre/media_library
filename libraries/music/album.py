@@ -311,6 +311,52 @@ def entry_for(path, meta, disc_folder=None):
     return Entry(path, disc, track, title, meta.duration if meta else None, bool(meta and meta.first("TITLE")))
 
 
+def _numbered_key(entry, media, slots, by_position):
+    """(disque, piste) que le numéro du fichier désigne dans la sortie, ou None."""
+    if entry.track is None:
+        return None
+    continuous = None
+    if 1 <= entry.track <= len(slots):              # numérotation continue d'un album à plusieurs disques
+        medium, track = slots[entry.track - 1]
+        continuous = (medium.get("position"), track.get("position"))
+    if len(media) == 1:
+        return (media[0].get("position"), entry.track)
+    if entry.disc is not None and (entry.disc, entry.track) in by_position:
+        return (entry.disc, entry.track)
+    return continuous                               # "CD 2/10 - Distortion" : les tags d'une édition en 16 pistes d'un seul tenant
+
+
+def _claim(placed, taken, path, key):
+    placed[path] = key
+    taken.add(key)
+
+
+def _place_by_number(entries, media, slots, by_position):
+    """({chemin: clé}, clés prises) : les fichiers dont le numéro tombe sur une piste libre."""
+    placed, taken = {}, set()
+    for entry in entries:
+        key = _numbered_key(entry, media, slots, by_position)
+        if key in by_position and key not in taken:
+            _claim(placed, taken, entry.path, key)
+    return placed, taken
+
+
+def _doubtful(entries, placed, by_position):
+    """{chemin: clé} des places données par le numéro à un titre sans rapport avec celui du fichier."""
+    by_path = {e.path: e for e in entries}
+    return {path: key for path, key in placed.items() if by_path[path].titled and similarity(by_path[path].title, by_position[key][1].get("title")) < MIN_TITLE / 2}
+
+
+def _place_by_title(entries, slots, placed, taken):
+    """Place ce qui reste par ressemblance des titres, les meilleures correspondances d'abord."""
+    rest = [e for e in entries if e.path not in placed]
+    scores = sorted(((similarity(e.title, t.get("title")), str(e.path), e, (m.get("position"), t.get("position"))) for e in rest for m, t in slots if (m.get("position"), t.get("position")) not in taken), key=lambda x: (-x[0], x[1], x[3]))
+    for score, _, entry, key in scores:
+        if score < MIN_TITLE or entry.path in placed or key in taken:
+            continue
+        _claim(placed, taken, entry.path, key)
+
+
 def match_tracks(entries, release):
     """({chemin: (disque, piste)}, raison) : chaque fichier sur une piste distincte de la sortie.
 
@@ -319,45 +365,17 @@ def match_tracks(entries, release):
     media = release.get("media") or []
     slots = [(m, t) for m in media for t in m.get("tracks") or []]
     by_position = {(m.get("position"), t.get("position")): (m, t) for m, t in slots}
-    placed, taken = {}, set()
-
-    for entry in entries:
-        if entry.track is None:
-            continue
-        continuous = None
-        if 1 <= entry.track <= len(slots):              # numérotation continue d'un album à plusieurs disques
-            medium, track = slots[entry.track - 1]
-            continuous = (medium.get("position"), track.get("position"))
-        if len(media) == 1:
-            key = (media[0].get("position"), entry.track)
-        elif entry.disc is not None and (entry.disc, entry.track) in by_position:
-            key = (entry.disc, entry.track)
-        else:                                           # "CD 2/10 - Distortion" : les tags d'une édition en 16 pistes d'un seul tenant
-            key = continuous
-        if key is None:
-            continue
-        if key in by_position and key not in taken:
-            placed[entry.path] = key
-            taken.add(key)
+    placed, taken = _place_by_number(entries, media, slots, by_position)
 
     # Un numéro qui tombe sur une piste au titre sans rapport avec celui du fichier est peut-être celui d'une autre édition ("12 - San" quand San est la piste 1) : sa place est remise en jeu, et il la retrouve si aucun titre ne le réclame mieux.
-    by_path = {e.path: e for e in entries}
-    doubtful = {path: key for path, key in placed.items() if by_path[path].titled and similarity(by_path[path].title, by_position[key][1].get("title")) < MIN_TITLE / 2}
+    doubtful = _doubtful(entries, placed, by_position)
     for path, key in doubtful.items():
         del placed[path]
         taken.discard(key)
-
-    rest = [e for e in entries if e.path not in placed]
-    scores = sorted(((similarity(e.title, t.get("title")), str(e.path), e, (m.get("position"), t.get("position"))) for e in rest for m, t in slots if (m.get("position"), t.get("position")) not in taken), key=lambda x: (-x[0], x[1], x[3]))
-    for score, _, entry, key in scores:
-        if score < MIN_TITLE or entry.path in placed or key in taken:
-            continue
-        placed[entry.path] = key
-        taken.add(key)
+    _place_by_title(entries, slots, placed, taken)
     for path, key in doubtful.items():
         if path not in placed and key not in taken:
-            placed[path] = key
-            taken.add(key)
+            _claim(placed, taken, path, key)
 
     missing = [e.path.name for e in entries if e.path not in placed]
     if missing:
@@ -460,31 +478,54 @@ def genres(group, release, limit=MAX_GENRES):
     return [g["name"][:1].upper() + g["name"][1:] for g in ranked[:limit]]
 
 
+def _credits(release, track, artist):
+    """(crédit de l'album, crédit de la piste), sans les invités quand `artist` impose un nom."""
+    recording = track.get("recording") or {}
+    album_credit = release.get("artist-credit") or []
+    track_credit = track.get("artist-credit") or recording.get("artist-credit") or album_credit
+    hidden = guest_ids(album_credit, artist)
+    return without_guests(album_credit, artist, hidden), without_guests(track_credit, artist, hidden)
+
+
+def _track_tags(release, rg, medium, track, album_credit, track_credit, artist):
+    """Titre, artistes, numéros de piste et de disque, dates."""
+    recording = track.get("recording") or {}
+    media = release.get("media") or []
+    first = rg.get("first-release-date") or ""
+    count = str(medium.get("track-count") or len(medium.get("tracks") or []))
+    return [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True)), ("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
+
+
+def _edition_tags(release, rg, medium):
+    """Type, statut, pays, support, code-barres, label et numéro de catalogue : ce qui tient à l'édition."""
+    labels = release.get("label-info") or []
+    tags = [("RELEASETYPE", t.lower()) for t in unique([rg.get("primary-type")] + list(rg.get("secondary-types") or []))]
+    tags += [("RELEASESTATUS", (release.get("status") or "").lower()), ("RELEASECOUNTRY", release.get("country")), ("MEDIA", medium.get("format")), ("BARCODE", release.get("barcode"))]
+    tags += [("LABEL", name) for name in unique((i.get("label") or {}).get("name") for i in labels)]
+    tags += [("CATALOGNUMBER", number) for number in unique(i.get("catalog-number") for i in labels)]
+    return tags
+
+
+def _musicbrainz_ids(release, rg, track, album_credit, track_credit):
+    recording = track.get("recording") or {}
+    tags = [("MUSICBRAINZ_ALBUMID", release.get("id")), ("MUSICBRAINZ_RELEASEGROUPID", rg.get("id"))]
+    tags += [("MUSICBRAINZ_ALBUMARTISTID", a) for a in unique((c.get("artist") or {}).get("id") for c in album_credit)]
+    tags += [("MUSICBRAINZ_ARTISTID", a) for a in unique((c.get("artist") or {}).get("id") for c in track_credit)]
+    tags += [("MUSICBRAINZ_TRACKID", recording.get("id")), ("MUSICBRAINZ_RELEASETRACKID", track.get("id"))]
+    return tags
+
+
 def target_tags(release, group, medium, track, with_genres=True, artist=""):
     """[(clé, valeur)] visés pour une piste.
 
     Les noms de clés sont ceux de Picard : un fichier étiqueté ici doit se relire à l'identique dans Picard ou dans un lecteur, et un fichier déjà passé par Picard ne doit pas paraître différent. `artist` remplace l'écriture que MusicBrainz donne de l'artiste (voir artist_override).
     """
     rg = group or release.get("release-group") or {}
-    recording = track.get("recording") or {}
-    album_credit = release.get("artist-credit") or []
-    track_credit = track.get("artist-credit") or recording.get("artist-credit") or album_credit
-    hidden = guest_ids(album_credit, artist)
-    album_credit, track_credit = without_guests(album_credit, artist, hidden), without_guests(track_credit, artist, hidden)
-    media = release.get("media") or []
-    labels = release.get("label-info") or []
-    first = rg.get("first-release-date") or ""
-    count = str(medium.get("track-count") or len(medium.get("tracks") or []))
-    tags = [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True)), ("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
+    album_credit, track_credit = _credits(release, track, artist)
+    tags = _track_tags(release, rg, medium, track, album_credit, track_credit, artist)
     tags += [("GENRE", g) for g in (genres(rg, release) if with_genres else [])]
-    tags += [("RELEASETYPE", t.lower()) for t in unique([rg.get("primary-type")] + list(rg.get("secondary-types") or []))]
-    tags += [("RELEASESTATUS", (release.get("status") or "").lower()), ("RELEASECOUNTRY", release.get("country")), ("MEDIA", medium.get("format")), ("BARCODE", release.get("barcode"))]
-    tags += [("LABEL", name) for name in unique((i.get("label") or {}).get("name") for i in labels)]
-    tags += [("CATALOGNUMBER", number) for number in unique(i.get("catalog-number") for i in labels)]
-    tags += [("MUSICBRAINZ_ALBUMID", release.get("id")), ("MUSICBRAINZ_RELEASEGROUPID", rg.get("id"))]
-    tags += [("MUSICBRAINZ_ALBUMARTISTID", a) for a in unique((c.get("artist") or {}).get("id") for c in album_credit)]
-    tags += [("MUSICBRAINZ_ARTISTID", a) for a in unique((c.get("artist") or {}).get("id") for c in track_credit)]
-    tags += [("MUSICBRAINZ_TRACKID", recording.get("id")), ("MUSICBRAINZ_RELEASETRACKID", track.get("id"))]
+    tags += _edition_tags(release, rg, medium)
+    tags += _musicbrainz_ids(release, rg, track, album_credit, track_credit)
     return [(key, str(value)) for key, value in tags if value]
 
 
