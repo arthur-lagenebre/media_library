@@ -11,7 +11,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import cast, doubts, lookup, mkv, movietags, naming
+from libraries.video import cast, doubts, lookup, mkv, movietags, naming, passfiles
 from libraries.video.tmdb import TmdbError
 from libraries.common.report import Report
 from scripts.Movies import Metadata as films
@@ -173,7 +173,7 @@ class TestValidationDuTitreDeCollection(unittest.TestCase):
 
     def test_une_reponse_deja_consignee_n_est_pas_redemandee(self):
         self.fichier.write_text("# commentaire\nIron Man Collection => Iron Man (MCU)\n", encoding="utf-8")
-        library = films.Library([], {}, {}, titles=films.read_collections(self.fichier), titles_file=self.fichier)
+        library = films.Library([], {}, {}, titles=passfiles.read_collections(self.fichier), titles_file=self.fichier)
         titre, questions, _, _ = self.regler(library=library)
         self.assertEqual((titre, questions), ("Iron Man (MCU)", 0))
 
@@ -202,7 +202,7 @@ class TestValidationDuTitreDeCollection(unittest.TestCase):
         self.assertFalse(self.fichier.exists())
 
     def test_fichier_absent_ou_illisible(self):
-        self.assertEqual(films.read_collections(self.fichier), {})
+        self.assertEqual(passfiles.read_collections(self.fichier), {})
 
 
 def sous_titre(langue, nom):
@@ -470,7 +470,7 @@ class TestFilmsValides(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             fichier = Path(d) / "metadata.ok"
             fichier.write_text(texte, encoding="utf-8")
-            return films.read_approved(fichier)
+            return passfiles.read_approved(fichier)
 
     def test_identifiant_seul_ou_lien(self):
         self.assertEqual(self.lire("1437733\nhttps://www.themoviedb.org/movie/949\n"), {1437733, 949})
@@ -484,7 +484,7 @@ class TestFilmsValides(unittest.TestCase):
         self.assertEqual(self.lire("# valides\n\n1437733  # Bref. De bons amis, ok\n  # 99\ntexte sans identifiant\n"), {1437733})
 
     def test_fichier_absent_ne_valide_rien(self):
-        self.assertEqual(films.read_approved(Path("introuvable") / "metadata.ok"), set())
+        self.assertEqual(passfiles.read_approved(Path("introuvable") / "metadata.ok"), set())
 
 
 

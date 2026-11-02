@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import lookup, mkv, movietags, naming
+from libraries.video import lookup, mkv, movietags, naming, passfiles
 from libraries.video.tmdb import TmdbError
 from scripts.Movies import Metadata as films
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
@@ -167,7 +167,7 @@ class TestJournal(unittest.TestCase):
 
     def ecrire(self, racine=None):
         with redirect_stdout(io.StringIO()) as sortie:
-            films.write_log(racine or self.racine, self.library, arguments(), films.Report(matched=1, total=2))
+            passfiles.write_log(racine or self.racine, self.library.journal, arguments(), films.Report(matched=1, total=2))
         return sortie.getvalue()
 
     def test_liens_d_abord_puis_les_films_sans_lien(self):
@@ -187,17 +187,17 @@ class TestJournal(unittest.TestCase):
         sortie = self.racine / "sortie" / "logs"
         args = arguments(log_dir=str(sortie))
         with redirect_stdout(io.StringIO()):
-            films.write_log(self.racine, self.library, args, films.Report(matched=1, total=2))
+            passfiles.write_log(self.racine, self.library.journal, args, films.Report(matched=1, total=2))
         self.assertTrue((sortie / "metadata.log").exists())
         self.assertFalse((self.racine / "metadata.log").exists())
-        self.assertEqual(films.approved_path(self.racine, args), sortie / "metadata.ok")
-        self.assertEqual(films.collections_path(self.racine, args), sortie / "metadata.collections")
+        self.assertEqual(passfiles.approved_path(self.racine, args), sortie / "metadata.ok")
+        self.assertEqual(passfiles.collections_path(self.racine, args), sortie / "metadata.collections")
 
     def test_reponse_de_collection_creee_dans_log_dir(self):
         fichier = self.racine / "sortie" / "metadata.collections"
         with redirect_stdout(io.StringIO()):
-            films.remember_collection(fichier, "Iron Man Collection", "Iron Man")
-        self.assertEqual(films.read_collections(fichier), {"Iron Man Collection": "Iron Man"})
+            passfiles.remember_collection(fichier, "Iron Man Collection", "Iron Man")
+        self.assertEqual(passfiles.read_collections(fichier), {"Iron Man Collection": "Iron Man"})
 
     def test_journal_impossible_a_ecrire_n_arrete_pas_le_script(self):
         self.assertIn("metadata.log non écrit", self.ecrire(self.racine / "absent"))
