@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from libraries.video import remux
 from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
 from scripts.Maintenance import Verify_Files
 from tests.test_conversion_atomique import INFO, MkvmergeSimule
@@ -41,13 +42,16 @@ class ProgrammeTestCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.racine = Path(self._tmp.name)
 
-    def lancer_main(self, module, *argv, **patches):
-        """(code, affichage). Un sys.exit("message") rend le message comme code, comme le fait Python."""
+    def lancer_main(self, module, *argv, sur=None, **patches):
+        """(code, affichage). Un sys.exit("message") rend le message comme code, comme le fait Python.
+
+        `patches` remplace des attributs de `module`, ou de `sur` quand le passage vit ailleurs (les convertisseurs vivent dans remux).
+        """
         ligne = [str(Path(module.__file__)), "--dir", str(self.racine), *argv]
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(sys, "argv", ligne))
             for nom, valeur in patches.items():
-                stack.enter_context(mock.patch.object(module, nom, valeur))
+                stack.enter_context(mock.patch.object(sur or module, nom, valeur))
             texte = stack.enter_context(redirect_stdout(io.StringIO()))
             try:
                 code = module.main()
@@ -75,7 +79,7 @@ class MainConvertisseur:
         (self.racine / "Sous" / f"Film B.{self.extension}").write_bytes(b"B")
 
     def lancer(self, *argv, mux=None, tools=("mkvmerge", "ffprobe"), duree=100.0):
-        return self.lancer_main(self.module, *argv,
+        return self.lancer_main(self.module, *argv, sur=remux,
                                 shutil=types.SimpleNamespace(which=outils(*tools)),
                                 run_tool=mux or MkvmergeSimule(),
                                 identify=lambda chemin: (INFO, ""),
@@ -149,7 +153,7 @@ class MainConvertisseur:
 
     def test_un_ecart_de_duree_donne_le_code_1(self):
         durees = iter([100.0, 10.0, 100.0, 100.0])      # source A, résultat A (trop court), source B, résultat B
-        code, texte = self.lancer_main(self.module, "--apply",
+        code, texte = self.lancer_main(self.module, "--apply", sur=remux,
                                        shutil=types.SimpleNamespace(which=outils("mkvmerge", "ffprobe")),
                                        run_tool=MkvmergeSimule(),
                                        identify=lambda chemin: (INFO, ""),
@@ -257,13 +261,12 @@ class TestOrdreDesFichiers(ProgrammeTestCase):
     def test_deux_convertisseurs_ne_prennent_que_leur_extension(self):
         for nom in ("a.avi", "b.AVI", "c.mp4", "d.MP4", "e.mkv"):
             (self.racine / nom).write_bytes(b"")
-        self.assertEqual([p.name for p in Avi_To_Mkv.avi_files(self.racine)], ["a.avi", "b.AVI"])
-        self.assertEqual([p.name for p in Mp4_To_Mkv.mp4_files(self.racine)], ["c.mp4", "d.MP4"])
+        self.assertEqual([p.name for p in remux.source_files(self.racine, ".avi")], ["a.avi", "b.AVI"])
+        self.assertEqual([p.name for p in remux.source_files(self.racine, ".mp4")], ["c.mp4", "d.MP4"])
 
     def test_commande_affichee_avec_ses_guillemets(self):
         commande = ["mkvmerge", "--output", "D:\\Mes Films\\a.mkv", "a.avi"]
-        self.assertEqual(Avi_To_Mkv.display_command(commande), 'mkvmerge --output "D:\\Mes Films\\a.mkv" a.avi')
-        self.assertEqual(Mp4_To_Mkv.display_command(commande), Avi_To_Mkv.display_command(commande))
+        self.assertEqual(remux.display_command(commande), 'mkvmerge --output "D:\\Mes Films\\a.mkv" a.avi')
 
 
 # ----------------------------------------------------------------------------

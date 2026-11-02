@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from libraries.video import remux
 from scripts.Converters.Video import Mp4_To_Mkv as conversion
 
 
@@ -46,11 +47,11 @@ class TestSelectionDesFichiers(unittest.TestCase):
 
     def test_recursif_par_defaut(self):
         # Les films posés à la racine d'abord, puis dossier par dossier.
-        names = [p.name for p in conversion.mp4_files(self.root)]
+        names = [p.name for p in remux.source_files(self.root, ".mp4")]
         self.assertEqual(names, ["Blade (1998).mp4", "film.MP4"])
 
     def test_sans_recursion_l_etage_seul(self):
-        names = [p.name for p in conversion.mp4_files(self.root, recursive=False)]
+        names = [p.name for p in remux.source_files(self.root, ".mp4", recursive=False)]
         self.assertEqual(names, ["Blade (1998).mp4"])
 
 
@@ -94,16 +95,16 @@ class TestSousTitresAdjacents(unittest.TestCase):
             (self.folder / name).write_bytes(b"")
 
     def test_les_sous_titres_de_ce_film_seulement(self):
-        names = [p.name for p in conversion.find_subtitles(self.video)]
+        names = [p.name for p in remux.find_subtitles(self.video)]
         self.assertEqual(names, ["Le Film.en.srt", "Le Film.fr.srt", "Le Film.idx"])
 
     def test_le_sub_reste_a_son_idx(self):
         # Cité en plus du .idx, il ferait entrer la même piste deux fois.
-        names = [p.name for p in conversion.find_subtitles(self.video)]
+        names = [p.name for p in remux.find_subtitles(self.video)]
         self.assertNotIn("Le Film.sub", names)
 
     def test_langue_lue_dans_le_suffixe(self):
-        language = lambda name: conversion.guess_sub_language(self.folder / name, self.video, "fre")
+        language = lambda name: remux.guess_sub_language(self.folder / name, self.video, "fre")
         self.assertEqual(language("Le Film.en.srt"), "eng")
         self.assertEqual(language("Le Film.vostfr.srt"), "fre")     # suffixe inconnu -> le défaut
         self.assertEqual(language("Le Film.srt"), "fre")            # rien à lire -> le défaut
@@ -124,15 +125,15 @@ class TestEncodageDesSousTitres(unittest.TestCase):
 
     def test_utf8_reconnu(self):
         path = self.write("a.srt", "Déjà vu".encode("utf-8"))
-        self.assertEqual(conversion.detect_charset(path, "windows-1252"), "UTF-8")
+        self.assertEqual(remux.detect_charset(path, "windows-1252"), "UTF-8")
 
     def test_latin1_retombe_sur_le_repli(self):
         path = self.write("b.srt", "Déjà vu".encode("cp1252"))
-        self.assertEqual(conversion.detect_charset(path, "windows-1252"), "windows-1252")
+        self.assertEqual(remux.detect_charset(path, "windows-1252"), "windows-1252")
 
     def test_les_bom_parlent_d_eux_memes(self):
-        self.assertEqual(conversion.detect_charset(self.write("c.srt", b"\xef\xbb\xbfok"), "windows-1252"), "UTF-8")
-        self.assertEqual(conversion.detect_charset(self.write("d.srt", b"\xff\xfeo\x00k\x00"), "windows-1252"), "UTF-16")
+        self.assertEqual(remux.detect_charset(self.write("c.srt", b"\xef\xbb\xbfok"), "windows-1252"), "UTF-8")
+        self.assertEqual(remux.detect_charset(self.write("d.srt", b"\xff\xfeo\x00k\x00"), "windows-1252"), "UTF-16")
 
 
 class TestCommandeMkvmerge(unittest.TestCase):
@@ -223,8 +224,8 @@ class TestSousTitresDejaDansLeMp4(unittest.TestCase):
 
     def convert(self, tracks, **overrides):
         info = {"tracks": [self.VIDEO, audio(1)] + tracks}
-        with mock.patch.object(conversion, "identify", return_value=(info, "")):
-            return conversion.convert(self.video, options(**overrides), check_duration=False)
+        with mock.patch.object(remux, "identify", return_value=(info, "")):
+            return remux.convert(self.video, options(**overrides), False, conversion.CONTAINER)
 
     def test_require_accepte_un_sous_titre_embarque(self):
         status, _ = self.convert([{"id": 2, "type": "subtitles", "properties": {}}], subs="require")
@@ -237,8 +238,8 @@ class TestSousTitresDejaDansLeMp4(unittest.TestCase):
 
     def test_un_film_sans_piste_video_est_une_erreur(self):
         info = {"tracks": [audio(1)]}
-        with mock.patch.object(conversion, "identify", return_value=(info, "")):
-            status, detail = conversion.convert(self.video, options(), check_duration=False)
+        with mock.patch.object(remux, "identify", return_value=(info, "")):
+            status, detail = remux.convert(self.video, options(), False, conversion.CONTAINER)
         self.assertEqual(status, "erreur")
         self.assertEqual(detail, "aucune piste vidéo")
 
