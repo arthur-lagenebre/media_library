@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import mkv
+from libraries.video import mkv, remux
 from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
 from scripts.Maintenance import Verify_Files
 
@@ -68,10 +68,10 @@ class ConversionAtomique:
         """(statut, détail), pour une source de `source` minutes et un résultat de `produced` minutes (None : durée illisible)."""
         # Le résultat se reconnaît à son suffixe provisoire, où qu'il soit écrit (--output-dir compris).
         probes = lambda path: types.SimpleNamespace(duration_min=produced if Path(path).name.endswith(mkv.PARTIAL_SUFFIX) else source)
-        with mock.patch.object(self.module, "identify", return_value=(INFO, "")), \
-                mock.patch.object(self.module, "run_tool", mux), \
-                mock.patch.object(self.module, "probe", probes):
-            return self.module.convert(self.video, options(**overrides), check_duration)
+        with mock.patch.object(remux, "identify", return_value=(INFO, "")), \
+                mock.patch.object(remux, "run_tool", mux), \
+                mock.patch.object(remux, "probe", probes):
+            return remux.convert(self.video, options(**overrides), check_duration, self.module.CONTAINER)
 
     def folder_content(self):
         return sorted(p.name for p in self.folder.iterdir())
@@ -177,7 +177,7 @@ class ConversionAtomique:
         self.assertEqual(self.final.read_bytes(), b"ANCIEN")
 
     def test_un_remplacement_impossible_est_une_erreur_sans_reste(self):
-        with mock.patch.object(self.module.os, "replace", side_effect=PermissionError(13, "Accès refusé")):
+        with mock.patch.object(remux.os, "replace", side_effect=PermissionError(13, "Accès refusé")):
             status, detail = self.convert(MkvmergeSimule(), delete_source=True)
         self.assertEqual(status, "erreur")
         self.assertIn("Accès refusé", detail)
@@ -193,8 +193,8 @@ class ConversionAtomique:
     def convert_avec(self, identification, mux=None, **overrides):
         mux = mux or MkvmergeSimule()
         sonde = types.SimpleNamespace(duration_min=100.0)
-        with mock.patch.object(self.module, "identify", return_value=identification), mock.patch.object(self.module, "run_tool", mux), mock.patch.object(self.module, "probe", return_value=sonde):
-            return self.module.convert(self.video, options(**overrides), True), mux
+        with mock.patch.object(remux, "identify", return_value=identification), mock.patch.object(remux, "run_tool", mux), mock.patch.object(remux, "probe", return_value=sonde):
+            return remux.convert(self.video, options(**overrides), True, self.module.CONTAINER), mux
 
     def test_fichier_illisible_par_mkvmerge(self):
         (status, detail), mux = self.convert_avec((None, "lecture impossible par mkvmerge (code 2)"))
@@ -241,7 +241,7 @@ class ConversionAtomique:
         self.assertTrue(self.video.is_file())
 
     def test_encodage_d_un_sous_titre_illisible_retombe_sur_le_repli(self):
-        self.assertEqual(self.module.detect_charset(self.folder / "absent.srt", "windows-1252"), "windows-1252")
+        self.assertEqual(remux.detect_charset(self.folder / "absent.srt", "windows-1252"), "windows-1252")
 
     # ------------------------------------------------------------ durée non contrôlable
     def test_sans_ffprobe_converti_mais_non_verifie_et_source_gardee(self):

@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from libraries.video import remux
 from scripts.Converters.Video import Avi_To_Mkv as conversion
 
 
@@ -37,11 +38,11 @@ class TestSelectionDesFichiers(unittest.TestCase):
 
     def test_recursif_par_defaut(self):
         # Les films posés à la racine d'abord, puis dossier par dossier.
-        names = [p.name for p in conversion.avi_files(self.root)]
+        names = [p.name for p in remux.source_files(self.root, ".avi")]
         self.assertEqual(names, ["Blade (1998).avi", "film.AVI"])
 
     def test_sans_recursion_l_etage_seul(self):
-        names = [p.name for p in conversion.avi_files(self.root, recursive=False)]
+        names = [p.name for p in remux.source_files(self.root, ".avi", recursive=False)]
         self.assertEqual(names, ["Blade (1998).avi"])
 
 
@@ -58,16 +59,16 @@ class TestSousTitresAdjacents(unittest.TestCase):
             (self.folder / name).write_bytes(b"")
 
     def test_les_sous_titres_de_ce_film_seulement(self):
-        names = [p.name for p in conversion.find_subtitles(self.video)]
+        names = [p.name for p in remux.find_subtitles(self.video)]
         self.assertEqual(names, ["Le Film.en.srt", "Le Film.fr.srt", "Le Film.idx"])
 
     def test_le_sub_reste_a_son_idx(self):
         # Cité en plus du .idx, il ferait entrer la même piste deux fois.
-        names = [p.name for p in conversion.find_subtitles(self.video)]
+        names = [p.name for p in remux.find_subtitles(self.video)]
         self.assertNotIn("Le Film.sub", names)
 
     def test_langue_lue_dans_le_suffixe(self):
-        language = lambda name: conversion.guess_sub_language(self.folder / name, self.video, "fre")
+        language = lambda name: remux.guess_sub_language(self.folder / name, self.video, "fre")
         self.assertEqual(language("Le Film.en.srt"), "eng")
         self.assertEqual(language("Le Film.vostfr.srt"), "fre")     # suffixe inconnu -> le défaut
         self.assertEqual(language("Le Film.srt"), "fre")            # rien à lire -> le défaut
@@ -88,20 +89,20 @@ class TestEncodageDesSousTitres(unittest.TestCase):
 
     def test_utf8_reconnu(self):
         path = self.write("a.srt", "Déjà vu".encode("utf-8"))
-        self.assertEqual(conversion.detect_charset(path, "windows-1252"), "UTF-8")
+        self.assertEqual(remux.detect_charset(path, "windows-1252"), "UTF-8")
 
     def test_latin1_retombe_sur_le_repli(self):
         path = self.write("b.srt", "Déjà vu".encode("cp1252"))
-        self.assertEqual(conversion.detect_charset(path, "windows-1252"), "windows-1252")
+        self.assertEqual(remux.detect_charset(path, "windows-1252"), "windows-1252")
 
     def test_les_bom_parlent_d_eux_memes(self):
-        self.assertEqual(conversion.detect_charset(self.write("c.srt", b"\xef\xbb\xbfok"), "windows-1252"), "UTF-8")
-        self.assertEqual(conversion.detect_charset(self.write("d.srt", b"\xff\xfeo\x00k\x00"), "windows-1252"), "UTF-16")
+        self.assertEqual(remux.detect_charset(self.write("c.srt", b"\xef\xbb\xbfok"), "windows-1252"), "UTF-8")
+        self.assertEqual(remux.detect_charset(self.write("d.srt", b"\xff\xfeo\x00k\x00"), "windows-1252"), "UTF-16")
 
     def test_un_texte_sans_accent_est_de_l_utf8(self):
         # L'ASCII est de l'UTF-8 valide : rien à convertir, donc rien à casser.
         path = self.write("e.srt", b"plain text")
-        self.assertEqual(conversion.detect_charset(path, "windows-1252"), "UTF-8")
+        self.assertEqual(remux.detect_charset(path, "windows-1252"), "UTF-8")
 
 
 class TestCommandeMkvmerge(unittest.TestCase):

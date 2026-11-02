@@ -38,7 +38,7 @@ libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.e
 tests/                 les tests
 ```
 
-[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers. [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers, le chemin commun des conversions en `.mkv` (`Avi_To_Mkv.py` et `Mp4_To_Mkv.py`). [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
