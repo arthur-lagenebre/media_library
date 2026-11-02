@@ -9,6 +9,7 @@ import json
 import random
 import re
 import time
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -90,7 +91,7 @@ class MusicBrainz:
                 if e.code not in (429, 503) and e.code < 500:
                     raise MusicBrainzError(f"HTTP {e.code} {e.reason}", e.code) from e
                 failure, wait = e, _retry_after(e.headers)
-            except (URLError, OSError) as e:  # réseau, DNS, timeout, connexion coupée
+            except (URLError, OSError, HTTPException) as e:  # réseau, DNS, timeout, connexion coupée, réponse coupée en route (IncompleteRead n'est pas un OSError)
                 failure = e
             if attempt == self.attempts:
                 raise MusicBrainzError(str(failure)) from failure

@@ -3,6 +3,7 @@
 Aucun appel réseau : urlopen est remplacé par un double qui rejoue une file de réponses préparées.
 """
 
+import http.client
 import io
 import json
 import sys
@@ -30,6 +31,15 @@ class FakeResponse(io.BytesIO):
     def __exit__(self, *exc):
         self.close()
         return False
+
+
+class CoupeEnRoute(FakeResponse):
+    """Réponse que le serveur interrompt en plein envoi : http.client lève IncompleteRead, qui n'est pas un OSError."""
+    def __init__(self):
+        super().__init__(b"")
+
+    def read(self, *args):
+        raise http.client.IncompleteRead(b"{", 99)
 
 
 def http_error(code, headers=None):
@@ -128,6 +138,19 @@ class TestErreurs(ClientTestCase):
     def test_json_illisible(self):
         with self.assertRaises(TmdbError):
             self.call([FakeResponse(b"<html>maintenance</html>")])
+
+    def test_reponse_coupee_en_route_reessayee(self):
+        data, reqs = self.call([CoupeEnRoute(), FakeResponse(b'{"id": 7}')])
+        self.assertEqual((data, len(reqs)), ({"id": 7}, 2))
+
+    def test_reponse_coupee_en_route_abandonnee_en_erreur_du_client(self):
+        # Les scripts ne rattrapent que TmdbError : une autre exception arrêterait tout le passage.
+        with self.assertRaises(TmdbError):
+            self.call([CoupeEnRoute()] * 3, attempts=3)
+
+    def test_image_coupee_en_route_est_une_erreur_du_client(self):
+        with self.assertRaises(TmdbError):
+            self.call([CoupeEnRoute()] * 3, methode="image", args=("/p.jpg", "w500"), attempts=3)
 
 
 class TestImages(ClientTestCase):
