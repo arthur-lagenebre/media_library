@@ -8,7 +8,7 @@ Suivi de l'analyse du code (novembre 2026). Cocher une case dans la PR qui règl
 
 ## À améliorer
 
-- [ ] **2. Duplication** — `Avi_To_Mkv.py` et `Mp4_To_Mkv.py` partagent 253 lignes sur ~300 (`convert` : complexité 30 et 32) ; `Tmdb` et `MusicBrainz` recopient `_request` / `_retry_after`. Extraire une base commune (`libraries/common/http.py`, cœur de conversion dans `libraries/video/`).
+- [x] **2. Duplication** — `Avi_To_Mkv.py` et `Mp4_To_Mkv.py` partageaient 253 lignes sur ~300 : chemin commun dans `libraries/video/remux.py`. `Tmdb` et `MusicBrainz` recopiaient `_request` / `_retry_after` : boucle commune dans `libraries/common/http.py`. Reste `display_command`, aussi défini dans `Wav_To_Flac.py`.
 - [ ] **3. `process_album` trop complexe** (`scripts/Music/Metadata.py:135`, complexité 42) — séparer l'affichage de `--verify`, le plan et l'écriture. Idem `match_tracks` (33) et `target_tags` (32) dans `libraries/music/album.py`.
 - [ ] **4. Renommage « casse seule » interrompu** — si la 2e étape de `rename_path` échoue (`libraries/common/rename.py:29`), le fichier reste sous `X.tmpN.ext` et le message ne le dit pas. Remettre le nom d'origine.
 

@@ -16,6 +16,7 @@ from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cache
+from libraries.common import http as http_mod
 from libraries.video import tmdb as tmdb_mod
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError, release_region
 
@@ -59,7 +60,7 @@ class ClientTestCase(unittest.TestCase):
             return item
 
         client = Tmdb(kwargs.pop("key", "0123456789abcdef"), **kwargs)
-        with mock.patch.object(tmdb_mod, "urlopen", fake_urlopen), mock.patch.object(tmdb_mod.time, "sleep", lambda *_: None):
+        with mock.patch.object(http_mod, "urlopen", fake_urlopen), mock.patch.object(http_mod.time, "sleep", lambda *_: None):
             return getattr(client, methode)(*args), requetes
 
 
@@ -185,7 +186,7 @@ class TestCacheDesReponses(ClientTestCase):
             requetes.append(request)
             return reponses.pop(0)
 
-        patch = mock.patch.object(tmdb_mod, "urlopen", fake_urlopen)
+        patch = mock.patch.object(http_mod, "urlopen", fake_urlopen)
         patch.start()
         self.addCleanup(patch.stop)
         return Tmdb("0123456789abcdef", cache=cache, **kwargs), requetes
@@ -244,7 +245,7 @@ class TestAttentes(unittest.TestCase):
                 raise item
             return item
 
-        with mock.patch.object(tmdb_mod, "urlopen", fake_urlopen), mock.patch.object(tmdb_mod.time, "sleep", pauses.append):
+        with mock.patch.object(http_mod, "urlopen", fake_urlopen), mock.patch.object(http_mod.time, "sleep", pauses.append):
             try:
                 client.get("movie/1")
             except TmdbError:
@@ -255,7 +256,7 @@ class TestAttentes(unittest.TestCase):
         self.assertEqual(self.attentes([http_error(429, {"Retry-After": "7"}), FakeResponse(b"{}")]), [7])
 
     def test_le_delai_demande_est_plafonne(self):
-        self.assertEqual(self.attentes([http_error(429, {"Retry-After": "3600"}), FakeResponse(b"{}")]), [tmdb_mod.MAX_RETRY_WAIT])
+        self.assertEqual(self.attentes([http_error(429, {"Retry-After": "3600"}), FakeResponse(b"{}")]), [http_mod.MAX_RETRY_WAIT])
 
     def test_un_delai_incomprehensible_retombe_sur_l_attente_exponentielle(self):
         (pause,) = self.attentes([http_error(503, {"Retry-After": "bientôt"}), FakeResponse(b"{}")])
@@ -273,8 +274,8 @@ class TestAttentes(unittest.TestCase):
         self.assertEqual(len(self.attentes([http_error(500), http_error(502), FakeResponse(b"{}")], attempts=3)), 2)
 
     def test_retry_after_absent(self):
-        self.assertIsNone(Tmdb._retry_after(None))
-        self.assertIsNone(Tmdb._retry_after({}))
+        self.assertIsNone(http_mod.retry_after(None))
+        self.assertIsNone(http_mod.retry_after({}))
 
 
 class TestErreursDefinitives(ClientTestCase):

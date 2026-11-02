@@ -6,13 +6,11 @@ Deux règles d'usage, que l'API fait respecter : un User-Agent qui dit qui appel
 """
 
 import json
-import random
 import re
 import time
-from http.client import HTTPException
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+from libraries.common import http
 
 API = "https://musicbrainz.org/ws/2"
 WEB_BASE = "https://musicbrainz.org"
@@ -21,7 +19,6 @@ USER_AGENT = "media_library/1.0 ( https://github.com/arthur-lagenebre/media_libr
 
 # Une requête par seconde, c'est la règle ; mesuré, 1,1 s d'écart entre deux départs passe là où une relance à 1 s déclenchait déjà un 503.
 MIN_INTERVAL = 1.1
-MAX_RETRY_WAIT = 30
 COVER_SIZES = ("250", "500", "1200", "original")
 
 # Caractères qui ont un sens dans la syntaxe de recherche Lucene : "TRON: Legacy" chercherait sinon un champ nommé TRON.
@@ -50,13 +47,6 @@ class MusicBrainzError(Exception):
         self.code = code
 
 
-def _retry_after(headers):
-    value = (headers or {}).get("Retry-After")
-    if value and str(value).strip().isdigit():
-        return min(int(value), MAX_RETRY_WAIT)
-    return None
-
-
 class MusicBrainz:
     def __init__(self, user_agent=USER_AGENT, timeout=30, attempts=4, cache=None, interval=MIN_INTERVAL):
         self.user_agent = user_agent
@@ -78,24 +68,15 @@ class MusicBrainz:
     def _request(self, url, accept, throttle=True):
         """GET brut avec réessais. Retourne (octets, en-têtes). Chaque tentative compte pour la limite : une connexion coupée a été vue par le serveur."""
         headers = {"User-Agent": self.user_agent, "Accept": accept}
-        for attempt in range(1, self.attempts + 1):
-            if throttle:
-                self._wait_turn()
-            wait = None
-            try:
-                with urlopen(Request(url, headers=headers), timeout=self.timeout) as r:
-                    return r.read(), r.headers
-            except HTTPError as e:            # sous-classe d'URLError : à rattraper avant
-                if e.code == 404:
-                    raise MusicBrainzError("introuvable (HTTP 404)", 404) from e
-                if e.code not in (429, 503) and e.code < 500:
-                    raise MusicBrainzError(f"HTTP {e.code} {e.reason}", e.code) from e
-                failure, wait = e, _retry_after(e.headers)
-            except (URLError, OSError, HTTPException) as e:  # réseau, DNS, timeout, connexion coupée, réponse coupée en route (IncompleteRead n'est pas un OSError)
-                failure = e
-            if attempt == self.attempts:
-                raise MusicBrainzError(str(failure)) from failure
-            time.sleep(wait if wait is not None else 2 ** attempt + random.uniform(0, 0.5))
+        return http.fetch(url, headers, self.timeout, self.attempts, fail=MusicBrainzError, refuse=self._refuse,
+                          base=2, before_attempt=self._wait_turn if throttle else None)
+
+    @staticmethod
+    def _refuse(e):
+        """L'exception d'un échec que réessayer ne changerait pas."""
+        if e.code == 404:
+            return MusicBrainzError("introuvable (HTTP 404)", 404)
+        return MusicBrainzError(f"HTTP {e.code} {e.reason}", e.code)
 
     def get(self, endpoint):
         """GET sur un endpoint de l'API, décodé en JSON. Passe par le cache s'il y en a un."""

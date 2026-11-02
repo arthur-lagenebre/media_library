@@ -13,6 +13,7 @@ from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cache
+from libraries.common import http as http_mod
 from libraries.music import musicbrainz as mb_mod
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError
 from tests.test_tmdb import CoupeEnRoute, FakeResponse, http_error
@@ -31,7 +32,7 @@ class ClientTestCase(unittest.TestCase):
             return item
 
         client = kwargs.pop("client", None) or MusicBrainz(**kwargs)
-        with mock.patch.object(mb_mod, "urlopen", fake_urlopen), mock.patch.object(mb_mod.time, "sleep", attentes.append), mock.patch.object(mb_mod.time, "monotonic", lambda: 100.0):
+        with mock.patch.object(http_mod, "urlopen", fake_urlopen), mock.patch.object(http_mod.time, "sleep", attentes.append), mock.patch.object(mb_mod.time, "monotonic", lambda: 100.0):
             return getattr(client, methode)(*args), requetes, attentes
 
 

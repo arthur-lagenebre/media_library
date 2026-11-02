@@ -31,14 +31,14 @@ scripts/TV_Shows/      la même chose pour les séries
 scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, pochettes, albums manquants
 scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
 scripts/Converters/    conversions qui précèdent l'étiquetage : Video/ (conteneur .mkv) et Music/ (.wav en .flac)
-libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage
+libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage, GET HTTP avec réessais
 libraries/video/       tout ce qui touche aux films et aux séries
 libraries/music/       tout ce qui touche à la musique
 libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
 tests/                 les tests
 ```
 
-[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres. [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers, le chemin commun des conversions en `.mkv` (`Avi_To_Mkv.py` et `Mp4_To_Mkv.py`). [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
+[libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres, GET HTTP avec réessais (partagé par TMDB et MusicBrainz). [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers, le chemin commun des conversions en `.mkv` (`Avi_To_Mkv.py` et `Mp4_To_Mkv.py`). [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
 
 ## Prérequis
 
