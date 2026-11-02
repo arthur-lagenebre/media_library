@@ -32,7 +32,7 @@ Rien d'alarmant : la syntaxe est compatible 3.8, aucun `shell=True`, `eval` ou d
 - [x] **7. Aucun délai sur les outils externes** — `mkvmerge -J`, `ffprobe` et `mkvextract` (lectures) reçoivent 120 s quand le fichier est sur un partage réseau (`tools.read_timeout`) ; une lecture suspendue est rapportée comme illisible (`sans réponse après 120 s (partage réseau injoignable ?)`) au lieu de figer le passage. Le réseau est reconnu par `libraries/common/volumes.py` : chemin UNC ou lecteur mappé (`GetDriveTypeW`) sous Windows, montage NFS / SMB / sshfs… d'après `/proc/mounts` sous Linux ; en cas de doute (macOS) le volume est tenu pour local, donc sans délai. Disque local et conversions : aucun délai. `Wav_To_Flac.py` n'est pas concerné (son `ffprobe` n'attrape déjà aucune panne d'outil).
 - [x] **8. Complexité restante** — découpées par étape, chaque fois avec une comparaison avant/après (#60 à #66) : `remux.convert` (31 → 14), `mp3._comments` (30 → 18 au plus dans `mp3.py`), `mkv.write` (27 → 11) et `mkv.verify` (25 → 3), `ebml._rapide` (22 → 9), `epub.parse_opf` (23 → 10), `shelf.scan` (24 → 3), `Verify_Files.py main` (24 → 7), `Movies/Metadata.py main` (24 → 9). La comparaison de `_rapide` a aussi révélé un `TypeError` sur un Segment ou un SeekHead de taille illisible, corrigé à part (#64).
 - [x] **9. `Movies/Metadata.py` faisait 748 lignes** — 388 lignes aujourd'hui (#67 à #70) : la logique pure du film est dans `libraries/video/movietags.py` et `doubts.py`, les fichiers du passage dans `passfiles.py`, l'association à TMDB et le replacement par saga dans `resolve.py`. Le script garde la ligne de commande, le traitement d'un film et l'enchaînement.
-- [x] **11. Les fonctions restantes à 20 ou plus** — découpées (#73 à #76), chacune avec une comparaison avant/après : `Wav_To_Flac.convert` (21 → 12), `Discography.complete` (22 → moins de 9), `Rename_Tracks.main` (21 → 9), `TV_Shows/Metadata.process_season` (21 → 8). Les tags et la cible d'un épisode restent dans le script ; ils pourraient suivre le chemin pris pour les films (`libraries/video/movietags.py`) si l'envie vient.
+- [x] **11. Les fonctions restantes à 20 ou plus** — découpées (#73 à #76), chacune avec une comparaison avant/après : `Wav_To_Flac.convert` (21 → 12), `Discography.complete` (22 → moins de 9), `Rename_Tracks.main` (21 → 9), `TV_Shows/Metadata.process_season` (21 → 8). Les tags et la cible d'un épisode ont ensuite rejoint `libraries/video/episodetags.py`, comme ceux des films (#78).
 
 ## À décider
 
@@ -43,3 +43,14 @@ Rien d'alarmant : la syntaxe est compatible 3.8, aucun `shell=True`, `eval` ou d
 - [x] `apply_renames` : le déblocage d'un cycle passe par `X.tmpN.ext` ; si le renommage suivant échouait, le fichier y restait. `put_back` lui rend maintenant son nom d'origine quand celui-ci est libre (`[REMIS]`) et, quand un autre fichier l'a pris (cycle presque terminé), dit sous quel nom provisoire il est resté. (`libraries/common/rename.py`)
 - [x] `libraries/common/http.py` : l'`HTTPError` retenue entre deux essais gardait sa connexion ouverte ; elle est fermée dès qu'elle est reçue.
 - [x] Les contrôles `Content-Length` de `Tmdb.image` et `MusicBrainz._image` ne se déclenchent plus en pratique (`http.client` lève `IncompleteRead` avant) : décision de les garder comme ceinture, avec un commentaire qui le dit, plutôt que de retirer du code et des tests sans gain.
+
+# Troisième passe (novembre 2026) : arrêtée là
+
+Un seul angle a été exploré : les lecteurs de fichiers confrontés à des fichiers abîmés au hasard, comme `ebml` l'avait été pour la seconde passe. 24 000 fichiers (4000 par lecteur : `flac.read`, `mp3.read`, `epub.read_info` et `cover`, `cbz.read_info` et `cover`) : aucun plantage hors erreur métier (`FlacError`, `Mp3Error`, `BookError`), aucun blocage. Rien à corriger de ce côté.
+
+Ce qui n'a pas été fait, à reprendre si l'envie vient (rendement attendu plus faible que pour les deux premières passes) :
+
+- [ ] Relire à froid le code écrit pendant les points 5 à 11 : `libraries/common/volumes.py` (détection d'un partage réseau, jamais essayée sur un vrai NAS), `tools.read_timeout`, `rename.put_back`, `textfile.write` atomique, l'inventaire de `Discography`.
+- [ ] Mesurer la couverture réelle des tests sur les fichiers touchés (module `trace` de la bibliothèque standard) pour repérer les branches qu'aucun test n'exerce.
+- [ ] Vérifier à la lecture les API utilisées par rapport à Python 3.8, faute d'un interpréteur 3.8 en local : la CI en a déjà pris un en défaut (`HTTPError.close()`, #72).
+- [ ] Essayer sur de vrais fichiers ce que tout le travail a seulement simulé : `Verify_Files.py --repair` avec ses `.orig`, le délai de lecture sur le NAS, un renommage de casse sous Windows avec un fichier verrouillé.
