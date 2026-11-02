@@ -11,7 +11,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import cast, doubts, lookup, mkv, movietags, naming, passfiles
+from libraries.video import cast, doubts, lookup, mkv, movietags, naming, passfiles, resolve
 from libraries.video.tmdb import TmdbError
 from libraries.common.report import Report
 from scripts.Movies import Metadata as films
@@ -346,7 +346,7 @@ class TestQuestionsDeFinDePassage(unittest.TestCase):
     def resoudre(self):
         tmdb = FauxTmdbFilms(self.CANDIDATS)
         with redirect_stdout(io.StringIO()):
-            movie, doute = films.resolve_movie("Les Quatre Fantastiques", self.args, tmdb, single=False)
+            movie, doute = resolve.resolve_movie("Les Quatre Fantastiques", self.args, tmdb, single=False)
         return movie, doute, tmdb
 
     def test_no_ask_garde_le_premier_resultat(self):
@@ -371,7 +371,7 @@ class TestIdentifiantLuDansLeFilm(unittest.TestCase):
     def resoudre(self, rawname, tag_id):
         tmdb = FauxTmdbFilms([{"id": 999, "title": "Autre chose"}])
         with redirect_stdout(io.StringIO()) as sortie:
-            movie, _ = films.resolve_movie(rawname, self.args, tmdb, single=False, tag_id=tag_id)
+            movie, _ = resolve.resolve_movie(rawname, self.args, tmdb, single=False, tag_id=tag_id)
         return movie, tmdb, sortie.getvalue()
 
     def test_l_identifiant_du_fichier_evite_la_recherche(self):

@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import lookup, mkv, movietags, naming, passfiles
+from libraries.video import lookup, mkv, movietags, naming, passfiles, resolve
 from libraries.video.tmdb import TmdbError
 from scripts.Movies import Metadata as films
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
@@ -126,7 +126,7 @@ class TestDateNationale(unittest.TestCase):
 
     def details(self, date, **changes):
         with redirect_stdout(io.StringIO()):
-            return films.movie_details(1, None, arguments(**changes), self.Tmdb(date))
+            return resolve.movie_details(1, None, arguments(**changes), self.Tmdb(date))
 
     def test_sortie_nationale_remplace_celle_d_origine(self):
         film = self.details("2021-09-22")
@@ -142,7 +142,7 @@ class TestDateNationale(unittest.TestCase):
 
     def test_ordre_de_saga_retenu(self):
         with redirect_stdout(io.StringIO()):
-            self.assertEqual(films.movie_details(1, 2, arguments(), self.Tmdb(None))["_order"], 2)
+            self.assertEqual(resolve.movie_details(1, 2, arguments(), self.Tmdb(None))["_order"], 2)
 
 
 class TestQuestionAvecRemarques(unittest.TestCase):
@@ -254,7 +254,7 @@ class SagaTestCase(unittest.TestCase):
 
 class TestPistesDeSaga(SagaTestCase):
     def candidats(self, tmdb, vues=(), dossier=None):
-        return films.saga_candidates(dossier or self.dossier, list(vues), tmdb)
+        return resolve.saga_candidates(dossier or self.dossier, list(vues), tmdb)
 
     def test_la_saga_du_nom_du_dossier(self):
         self.assertEqual(self.candidats(TmdbSaga()), [[MAN_OF_STEEL, BATMAN_V_SUPERMAN]])
@@ -291,7 +291,7 @@ class TestCorrectionsDeSaga(SagaTestCase):
     def corrections(self, tmdb, lectures=None):
         movies = naming.find_movies(self.racine)
         with redirect_stdout(io.StringIO()):
-            return films.saga_corrections(movies, lectures or {}, arguments(), tmdb), movies
+            return resolve.saga_corrections(movies, lectures or {}, arguments(), tmdb), movies
 
     def test_l_homonyme_est_remplace_par_le_film_de_la_saga(self):
         corrections, movies = self.corrections(TmdbSaga())
