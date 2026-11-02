@@ -266,42 +266,59 @@ def _number_comments(frame_id, body):
     return comments + ([(key, total.strip()) for key in totals] if total.strip() else [])
 
 
+def _frame_comments(frame):
+    """[(clé, valeur)] d'une trame de texte, de numéro, TXXX ou UFID ; None pour une trame que cette fonction ne gère pas."""
+    if frame.id in KEYS_BY_FRAME:
+        comments = []
+        for value in _texts(frame.body):
+            if frame.id == "TCON":
+                found = GENRE_REFERENCE_RE.match(value)
+                value = found.group(1) if found else value
+            comments.append((KEYS_BY_FRAME[frame.id], value))
+        return comments
+    if frame.id in NUMBER_FRAMES:
+        return _number_comments(frame.id, frame.body)
+    if frame.id == "TXXX" and frame.body:
+        description, rest = _take(frame.body[0], frame.body[1:])
+        key = KEYS_BY_DESCRIPTION.get(description.upper(), description)
+        return [(key, value) for value in _texts(frame.body[:1] + rest)]
+    if frame.id == "UFID":
+        owner, _, identifier = frame.body.partition(b"\x00")
+        if owner == MB_OWNER and identifier:
+            return [("MUSICBRAINZ_TRACKID", identifier.decode("ascii", "replace"))]
+        return []
+    return None
+
+
+def _legacy_dates(comments, years, days, original):
+    """[(clé, valeur)] tirées des trames de date d'ID3v2.3 (TYER, TDAT, TORY), quand les trames gérées n'ont pas déjà donné DATE ou ORIGINALYEAR.
+
+    ID3v2.3 n'a pas de date complète : l'année (TYER) et "JJMM" (TDAT) sont deux trames.
+    """
+    dates = []
+    if years and not any(key == "DATE" for key, _ in comments):
+        dates.append(("DATE", years + (f"-{days[2:]}-{days[:2]}" if days and re.fullmatch(r"\d{4}", days) and re.fullmatch(r"\d{4}", years) else "")))
+    if original and not any(key == "ORIGINALYEAR" for key, _ in comments):
+        dates.append(("ORIGINALYEAR", original))
+    return dates
+
+
 def _comments(frames, version):
     """([(clé, valeur)], [Picture]) : les trames gérées, sous leurs noms de clé Vorbis."""
-    comments, pictures, years, days, original = [], [], None, None, None
+    comments, pictures, legacy = [], [], {}
     for frame in frames:
         if frame.id == "APIC":
             try:
                 pictures.append(parse_picture(frame.body))
             except Mp3Error:
                 continue
-        elif frame.id in KEYS_BY_FRAME:
-            for value in _texts(frame.body):
-                if frame.id == "TCON":
-                    found = GENRE_REFERENCE_RE.match(value)
-                    value = found.group(1) if found else value
-                comments.append((KEYS_BY_FRAME[frame.id], value))
-        elif frame.id in NUMBER_FRAMES:
-            comments += _number_comments(frame.id, frame.body)
-        elif frame.id == "TXXX" and frame.body:
-            description, rest = _take(frame.body[0], frame.body[1:])
-            key = KEYS_BY_DESCRIPTION.get(description.upper(), description)
-            comments += [(key, value) for value in _texts(frame.body[:1] + rest)]
-        elif frame.id == "UFID":
-            owner, _, identifier = frame.body.partition(b"\x00")
-            if owner == MB_OWNER and identifier:
-                comments.append(("MUSICBRAINZ_TRACKID", identifier.decode("ascii", "replace")))
-        elif frame.id == "TYER":
-            years = (_texts(frame.body) or [None])[0]
-        elif frame.id == "TDAT":
-            days = (_texts(frame.body) or [None])[0]
-        elif frame.id == "TORY":
-            original = (_texts(frame.body) or [None])[0]
-    # ID3v2.3 n'a pas de date complète : l'année (TYER) et "JJMM" (TDAT) sont deux trames.
-    if years and not any(key == "DATE" for key, _ in comments):
-        comments.append(("DATE", years + (f"-{days[2:]}-{days[:2]}" if days and re.fullmatch(r"\d{4}", days) and re.fullmatch(r"\d{4}", years) else "")))
-    if original and not any(key == "ORIGINALYEAR" for key, _ in comments):
-        comments.append(("ORIGINALYEAR", original))
+            continue
+        found = _frame_comments(frame)
+        if found is not None:
+            comments += found
+        elif frame.id in ("TYER", "TDAT", "TORY"):
+            legacy[frame.id] = (_texts(frame.body) or [None])[0]
+    comments += _legacy_dates(comments, legacy.get("TYER"), legacy.get("TDAT"), legacy.get("TORY"))
     return comments, pictures
 
 
