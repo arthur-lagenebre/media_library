@@ -129,6 +129,53 @@ def place(todo, cover):
     return path
 
 
+def preview_item(item, root, args, count):
+    """Simulation : dit ce qui serait posé."""
+    name = filenames.relative_name(item.path, root)
+    print(f"  {'~' if item.replaces else '+'} {name}" + ("  (pochette si disponible)" if args.covers else ""))
+    count["files"] += 1
+
+
+def lay_item(item, root, args, mb, report, count):
+    """Pose le fichier d'un album manquant, avec sa pochette si on en trouve une. Vrai quand l'album est déjà déclaré par un fichier vide et reste tel quel, faute de pochette."""
+    name = filenames.relative_name(item.path, root)
+    cover = fetch_cover(mb, item.release, args.image_size) if args.covers else None
+    try:
+        path = place(item, cover)
+    except OSError as e:
+        print(f"  [ÉCHEC] {name} : {e.strerror or e}")
+        report.failures += 1
+        return False
+    if path is None:
+        return True
+    count["files"] += 1
+    if cover is not None:
+        count["covers"] += 1
+        print(f"  + {filenames.relative_name(path, root)} ({len(cover[0]) / 1024:.0f} Ko)")
+    else:
+        print(f"  + {name}")
+    return False
+
+
+def create_folder(target, report):
+    """Crée le dossier d'un artiste nouveau, même quand aucun album ne s'y pose."""
+    try:
+        target.folder.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"  [ÉCHEC] {target.folder.name} : {e.strerror or e}")
+        report.failures += 1
+
+
+def print_closing(report, count, bare, undated):
+    """Ce qui reste à dire d'un artiste : albums gardés tels quels, « à jour », sorties sans année."""
+    if bare:
+        print(f"  {bare} album(s) déjà déclaré(s) par un fichier vide, sans pochette sur Cover Art Archive : gardé(s) tel(s)")
+    if not count["files"] and not report.failures:
+        print("  à jour")
+    if undated:
+        print(f"  {undated} sortie(s) sans année sur MusicBrainz : laissée(s) de côté")
+
+
 def complete(target, mbid, origin, args, mb, root):
     """Pose les fichiers qui manquent pour cet artiste. Retourne (Report, Counter des fichiers posés - ou à poser en simulation - et de ceux qui sont des pochettes)."""
     print(f"  {origin}")
@@ -148,39 +195,13 @@ def complete(target, mbid, origin, args, mb, root):
     if target.new and not target.folder.exists():
         print(f"  + {filenames.relative_name(target.folder, root)}/ (dossier de l'artiste)")
     for item in todo:
-        name = filenames.relative_name(item.path, root)
-        if not args.apply:
-            print(f"  {'~' if item.replaces else '+'} {name}" + ("  (pochette si disponible)" if args.covers else ""))
-            count["files"] += 1
-            continue
-        cover = fetch_cover(mb, item.release, args.image_size) if args.covers else None
-        try:
-            path = place(item, cover)
-        except OSError as e:
-            print(f"  [ÉCHEC] {name} : {e.strerror or e}")
-            report.failures += 1
-            continue
-        if path is None:
-            bare += 1
-            continue
-        count["files"] += 1
-        if cover is not None:
-            count["covers"] += 1
-            print(f"  + {filenames.relative_name(path, root)} ({len(cover[0]) / 1024:.0f} Ko)")
+        if args.apply:
+            bare += lay_item(item, root, args, mb, report, count)
         else:
-            print(f"  + {name}")
+            preview_item(item, root, args, count)
     if args.apply and target.new:
-        try:
-            target.folder.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            print(f"  [ÉCHEC] {target.folder.name} : {e.strerror or e}")
-            report.failures += 1
-    if bare:
-        print(f"  {bare} album(s) déjà déclaré(s) par un fichier vide, sans pochette sur Cover Art Archive : gardé(s) tel(s)")
-    if not count["files"] and not report.failures:
-        print("  à jour")
-    if undated:
-        print(f"  {undated} sortie(s) sans année sur MusicBrainz : laissée(s) de côté")
+        create_folder(target, report)
+    print_closing(report, count, bare, undated)
     return report, count
 
 
