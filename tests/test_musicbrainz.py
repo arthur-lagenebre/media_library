@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cache
 from libraries.music import musicbrainz as mb_mod
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError
-from tests.test_tmdb import FakeResponse, http_error
+from tests.test_tmdb import CoupeEnRoute, FakeResponse, http_error
 
 
 class ClientTestCase(unittest.TestCase):
@@ -148,6 +148,19 @@ class TestErreurs(ClientTestCase):
     def test_panne_persistante_abandonnee(self):
         with self.assertRaises(MusicBrainzError):
             self.call([URLError("coupure")] * 2, attempts=2)
+
+    def test_reponse_coupee_en_route_reessayee(self):
+        data, reqs, _ = self.call([CoupeEnRoute(), FakeResponse(b'{"id": 7}')])
+        self.assertEqual((data, len(reqs)), ({"id": 7}, 2))
+
+    def test_reponse_coupee_en_route_abandonnee_en_erreur_du_client(self):
+        # Les scripts ne rattrapent que MusicBrainzError : une autre exception arrêterait tout le passage.
+        with self.assertRaises(MusicBrainzError):
+            self.call([CoupeEnRoute()] * 2, attempts=2)
+
+    def test_pochette_coupee_en_route_est_une_erreur_du_client(self):
+        with self.assertRaises(MusicBrainzError):
+            self.call([CoupeEnRoute()] * 4, methode="cover", args=("rel",))
 
     def test_404_n_est_pas_reessaye(self):
         reponses = [http_error(404), FakeResponse(b"{}")]

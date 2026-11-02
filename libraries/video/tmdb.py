@@ -6,6 +6,7 @@ Gère les deux formes de clé (clé v3 en paramètre, token v4 en Bearer), disti
 import json
 import random
 import time
+from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -72,7 +73,7 @@ class Tmdb:
                 if e.code != 429 and e.code < 500:
                     raise TmdbError(f"HTTP {e.code} {e.reason}") from e
                 failure, wait = e, self._retry_after(e.headers)   # 429 / panne serveur
-            except (URLError, OSError) as e:                      # réseau, DNS, timeout
+            except (URLError, OSError, HTTPException) as e:       # réseau, DNS, timeout, réponse coupée en route (IncompleteRead n'est pas un OSError)
                 failure = e
             if attempt == self.attempts:
                 raise TmdbError(str(failure)) from failure
