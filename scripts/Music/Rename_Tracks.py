@@ -137,6 +137,50 @@ def parse_args():
     return args
 
 
+def handle_album(album, writable, args, mb, pending):
+    """Lit un album, retrouve son édition et le renomme. Retourne son Tally ; l'album que l'édition laisse à confirmer est mis de côté pour la fin du passage (`pending`)."""
+    tally = rename.Tally()
+    print(f"--- {album.display} ---")
+    if not album.files:
+        kinds = ", ".join(sorted({p.suffix.lower() for p in album.unsupported}))
+        print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont renommés\n")
+        return tally
+    if album.unsupported:
+        print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignoré(s) : l'album est compté sans eux")
+    metas, errors = lookup.read_album(album)
+    if errors:
+        print("  [NON TRAITÉ] fichier(s) illisible(s) :")
+        for error in errors:
+            print(f"      - {error}")
+        print()
+        tally.unresolved += 1
+        return tally
+
+    found = lookup.Found(album, metas)
+    try:
+        release, _ = lookup.resolve(found, mb, forced=args.mbid if len(writable) == 1 else None, country=args.country, ask=not args.no_ask, with_genres=False)
+    except MusicBrainzError as e:
+        print(f"  échec MusicBrainz : {e}\n")
+        tally.unresolved += 1
+        return tally
+    if found.choice is not None:
+        pending.append(found)
+    elif release is None:
+        tally.unresolved += 1
+    else:
+        tally += rename_album(found, release, args)
+    print()
+    return tally
+
+
+def print_total(tally, args):
+    """Le bilan du passage, et ce qu'il reste à corriger."""
+    lyrics = (f", {tally.subtitles} fichier(s) de paroles " + ("renommé(s)" if args.apply else "à renommer")) if tally.subtitles else ""
+    print(f"TOTAL : {tally.named}/{tally.total} piste(s) au bon nom{lyrics}.")
+    if tally.unresolved:
+        print(f"\nÀ CORRIGER : {tally.unresolved} album(s) non traité(s) (non reconnu(s), illisible(s), à confirmer ou MusicBrainz injoignable).")
+
+
 def main():
     args = parse_args()
     cli.setup_console()
@@ -156,44 +200,12 @@ def main():
     # Le total est compté d'avance : les pistes d'un album non reconnu restent comptées comme mal nommées, sans que chaque échec ait à y penser.
     tally, pending = rename.Tally(total=sum(len(a.files) for a in writable)), []
     for album in found_albums:
-        print(f"--- {album.display} ---")
-        if not album.files:
-            kinds = ", ".join(sorted({p.suffix.lower() for p in album.unsupported}))
-            print(f"  [NON PRIS EN CHARGE] {len(album.unsupported)} fichier(s) {kinds} : seuls les .flac et .mp3 sont renommés\n")
-            continue
-        if album.unsupported:
-            print(f"  /!\\ {len(album.unsupported)} fichier(s) d'un autre format ignoré(s) : l'album est compté sans eux")
-        metas, errors = lookup.read_album(album)
-        if errors:
-            print("  [NON TRAITÉ] fichier(s) illisible(s) :")
-            for error in errors:
-                print(f"      - {error}")
-            print()
-            tally.unresolved += 1
-            continue
-
-        found = lookup.Found(album, metas)
-        try:
-            release, _ = lookup.resolve(found, mb, forced=args.mbid if len(writable) == 1 else None, country=args.country, ask=not args.no_ask, with_genres=False)
-        except MusicBrainzError as e:
-            print(f"  échec MusicBrainz : {e}\n")
-            tally.unresolved += 1
-            continue
-        if found.choice is not None:
-            pending.append(found)
-        elif release is None:
-            tally.unresolved += 1
-        else:
-            tally += rename_album(found, release, args)
-        print()
+        tally += handle_album(album, writable, args, mb, pending)
 
     if pending:
         tally += rename_pending(pending, args, mb)
 
-    lyrics = (f", {tally.subtitles} fichier(s) de paroles " + ("renommé(s)" if args.apply else "à renommer")) if tally.subtitles else ""
-    print(f"TOTAL : {tally.named}/{tally.total} piste(s) au bon nom{lyrics}.")
-    if tally.unresolved:
-        print(f"\nÀ CORRIGER : {tally.unresolved} album(s) non traité(s) (non reconnu(s), illisible(s), à confirmer ou MusicBrainz injoignable).")
+    print_total(tally, args)
     return 1 if tally.unresolved else 0
 
 
