@@ -102,6 +102,47 @@ def sound_hash(path):
     return line if result.returncode == 0 and line.startswith("MD5=") else None
 
 
+def _check_codec(wav):
+    """(refus, codec) : le codec du fichier, ou le (statut, détail) qui dit pourquoi FLAC ne le garderait pas à l'identique."""
+    codec = audio_codec(wav)
+    if codec is None:
+        return ("erreur", "aucune piste audio lisible"), None
+    if codec not in LOSSLESS_CODECS:
+        return ("erreur", f"{codec} : FLAC ne le garderait pas à l'identique (seuls les entiers 16 et 24 bits le sont)"), None
+    return None, codec
+
+
+def _encode(command, partial):
+    """Lance ffmpeg, qui écrit sous le nom provisoire. L'échec est un (statut, détail), None quand il a écrit."""
+    partial.unlink(missing_ok=True)           # reste d'un passage interrompu : il ne doit pas passer pour la sortie de celui-ci
+    result = run_tool(command)
+    if result.returncode != 0 or not partial.exists():
+        return "erreur", last_error(result) or "ffmpeg n'a rien pu écrire"
+    return None
+
+
+def _compare_sound(wav, partial, final):
+    """Le son décodé du résultat contre celui de la source. L'échec est un (statut, détail), None quand ils sont identiques."""
+    source, produced = sound_hash(wav), sound_hash(partial)
+    if source is None or produced is None:
+        return "erreur", "le son n'a pas pu être relu pour être comparé : le .flac n'a pas été écrit"
+    if source != produced:
+        return "écart", f"le son décodé diffère de la source : {final.name} n'a pas été écrit, l'original est gardé"
+    return None
+
+
+def _conclude(wav, args, codec, size_wav, size_flac):
+    """(statut, détail) d'une conversion réussie ; la source n'est effacée que sur demande, et le son déjà comparé."""
+    note = f"son identique ({LOSSLESS_CODECS[codec]}), {size_flac / size_wav:.0%} de la taille d'origine" if size_wav else "son identique"
+    if args.delete_source:
+        try:
+            wav.unlink()
+            note += ", source effacée"
+        except OSError as exc:
+            note += f", source non effacée : {exc.strerror or exc}"
+    return "converti", note
+
+
 def convert(wav, args):
     """(statut, détail) : ce qu'on a fait du fichier, et ce qu'il y a à en dire.
 
@@ -111,11 +152,9 @@ def convert(wav, args):
     if final.exists() and not args.overwrite:
         return "ignoré", f"{final.name} existe déjà (--overwrite pour l'écraser)"
 
-    codec = audio_codec(wav)
-    if codec is None:
-        return "erreur", "aucune piste audio lisible"
-    if codec not in LOSSLESS_CODECS:
-        return "erreur", f"{codec} : FLAC ne le garderait pas à l'identique (seuls les entiers 16 et 24 bits le sont)"
+    refusal, codec = _check_codec(wav)
+    if refusal:
+        return refusal
 
     partial = partial_path(final)
     command = build_command(wav, partial if args.apply else final, args)
@@ -125,16 +164,9 @@ def convert(wav, args):
     if args.output_dir:
         args.output_dir.mkdir(parents=True, exist_ok=True)
     try:
-        partial.unlink(missing_ok=True)       # reste d'un passage interrompu : il ne doit pas passer pour la sortie de celui-ci
-        result = run_tool(command)
-        if result.returncode != 0 or not partial.exists():
-            return "erreur", last_error(result) or "ffmpeg n'a rien pu écrire"
-
-        source, produced = sound_hash(wav), sound_hash(partial)
-        if source is None or produced is None:
-            return "erreur", "le son n'a pas pu être relu pour être comparé : le .flac n'a pas été écrit"
-        if source != produced:
-            return "écart", f"le son décodé diffère de la source : {final.name} n'a pas été écrit, l'original est gardé"
+        failure = _encode(command, partial) or _compare_sound(wav, partial, final)
+        if failure:
+            return failure
         size_wav, size_flac = wav.stat().st_size, partial.stat().st_size
         try:
             os.replace(partial, final)
@@ -142,15 +174,7 @@ def convert(wav, args):
             return "erreur", f"{final.name} n'a pas pu être écrit : {exc.strerror or exc}"
     finally:
         partial.unlink(missing_ok=True)       # déjà renommé : rien à faire ; sinon (échec, écart, Ctrl-C) rien ne doit traîner
-
-    note = f"son identique ({LOSSLESS_CODECS[codec]}), {size_flac / size_wav:.0%} de la taille d'origine" if size_wav else "son identique"
-    if args.delete_source:
-        try:
-            wav.unlink()
-            note += ", source effacée"
-        except OSError as exc:
-            note += f", source non effacée : {exc.strerror or exc}"
-    return "converti", note
+    return _conclude(wav, args, codec, size_wav, size_flac)
 
 
 def write_log(destination, root, entries, args, summary):
