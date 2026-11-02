@@ -11,7 +11,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import cast, doubts, lookup, mkv, movietags, naming, passfiles, resolve
+from libraries.video import cast, doubts, episodetags, lookup, mkv, movietags, naming, passfiles, resolve
 from libraries.video.tmdb import TmdbError
 from libraries.common.report import Report
 from scripts.Movies import Metadata as films
@@ -49,7 +49,7 @@ class TestPlanDeSaison(unittest.TestCase):
 
 class TestTagsEpisode(unittest.TestCase):
     def setUp(self):
-        xml = series.build_tags_xml(SAISON, SAISON["episodes"][0], "Ma Serie")
+        xml = episodetags.build_tags_xml(SAISON, SAISON["episodes"][0], "Ma Serie")
         self.root = ElementTree.fromstring(xml)
 
     def valeur(self, cible, nom):
@@ -78,13 +78,13 @@ class TestTagsEpisode(unittest.TestCase):
         self.assertEqual(self.valeur(50, "COMMENT"), "TMDB 7.8/10 (12 votes)")
 
     def test_cible_de_l_episode(self):
-        target = series.episode_target(SAISON, SAISON["episodes"][0], "Ma Serie", OPTS)
+        target = episodetags.episode_target(SAISON, SAISON["episodes"][0], "Ma Serie", OPTS)
         self.assertEqual((target.title, target.date), ("Pilote", "2024-01-02"))
         self.assertIsNone(target.poster)                  # opts.cover est False
 
     def test_jaquette_repliee_sur_l_affiche_de_saison(self):
         opts = mkv.Options(cover=True, date=True, audio_names=True, sub_names=True, flags=True, stats=True, image_size="w780")
-        sans_vignette = series.episode_target(SAISON, SAISON["episodes"][1], "Ma Serie", opts)
+        sans_vignette = episodetags.episode_target(SAISON, SAISON["episodes"][1], "Ma Serie", opts)
         self.assertEqual(sans_vignette.poster, "/p.jpg")
 
 
