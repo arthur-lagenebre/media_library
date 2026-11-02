@@ -4,10 +4,11 @@ MusicBrainz est faux ; les dossiers et les .flac sont fabriqués dans un dossier
 """
 
 import io
+import os
 import sys
 import tempfile
 import unittest
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -43,6 +44,20 @@ DISCOGRAPHIE = [
     groupe("I Might Be Wrong", "2001-11-12", "Album", ["Live"]),
     groupe("Sans date", "", "Album"),
 ]
+
+
+@contextmanager
+def refuser_la_lecture(nom):
+    """Le disque refuse de lister les dossiers appelés `nom` (NAS qui lâche, droits) ; les autres se lisent normalement."""
+    vrai = os.scandir
+
+    def capricieux(path="."):
+        if os.path.basename(os.fspath(path)) == nom:
+            raise PermissionError(13, "Accès refusé", os.fspath(path))
+        return vrai(path)
+
+    with mock.patch.object(os, "scandir", capricieux):
+        yield
 
 
 class TestClassement(unittest.TestCase):
@@ -142,6 +157,19 @@ class TestInventaire(DisqueTestCase):
         self.assertEqual(discography.inventory(self.racine / "Absent").have, set())
         (self.racine / "Vide").mkdir()
         self.assertEqual(discography.inventory(self.racine / "Vide").have, set())
+
+    def test_dossier_illisible_n_est_pas_pris_pour_vide(self):
+        # find_albums prend un dossier qu'il ne peut pas lister pour un dossier vide : l'album passerait pour manquant.
+        self.album("Radiohead", "1995 - The Bends")
+        with refuser_la_lecture("1995 - The Bends"), self.assertRaisesRegex(OSError, "dossier illisible.*1995 - The Bends"):
+            discography.inventory(self.racine / "Radiohead")
+
+    def test_dossiers_caches_et_de_rangement_systeme_ne_comptent_pas(self):
+        self.album("Radiohead", "1995 - The Bends")
+        for nom in (".cache", "@eaDir", "#recycle", "__Data__"):
+            (self.racine / "Radiohead" / nom).mkdir()
+            with refuser_la_lecture(nom):
+                self.assertEqual(discography.inventory(self.racine / "Radiohead").have, {discography.title_key("The Bends")})
 
     def test_albums_ranges_et_fichiers_deja_declares(self):
         self.album("Radiohead", "1995 - The Bends")
@@ -533,6 +561,14 @@ class TestPannes(ProgrammeTestCase):
         code, texte = self.lancer(FauxArtistes(groupes={RADIOHEAD: []}))
         self.assertEqual(code, 1)
         self.assertIn("aucune sortie référencée", texte)
+
+    def test_album_illisible_ne_devient_pas_un_album_manquant(self):
+        self.album("Radiohead", "1995 - The Bends", mbid=RADIOHEAD)
+        with refuser_la_lecture("1995 - The Bends"):
+            code, texte = self.lancer(FauxArtistes({"Radiohead": [radiohead()]}), "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC] inventaire impossible", texte)
+        self.assertEqual(self.noms("Radiohead"), ["1995 - The Bends"])
 
     def test_ecriture_impossible(self):
         self.album("Radiohead", "1995 - The Bends", mbid=RADIOHEAD)
