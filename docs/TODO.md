@@ -1,6 +1,6 @@
 # TODO
 
-Suivi de l'analyse du code (novembre 2026). Cocher une case dans la PR qui règle le point.
+Suivi de l'analyse du code (novembre 2026). État au 2 novembre : tous les points sont faits (PR #46 à #52), le fichier en garde la trace. Une prochaine passe d'analyse s'y ajoute ici ; cocher une case dans la PR qui règle le point.
 
 ## À corriger
 
