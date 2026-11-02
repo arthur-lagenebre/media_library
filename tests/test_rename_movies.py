@@ -78,6 +78,12 @@ class TestNomVise(unittest.TestCase):
         film = {"id": 1, "title": "Mission: Impossible", "release_date": "1996-05-22"}
         self.assertEqual(renommeur.target_stem(film, None, False), "Mission Impossible (1996)")
 
+    def test_titre_sans_rien_d_utilisable(self):
+        # « ... », « ??? » : une fois les signes interdits retirés il ne reste rien, et l'année seule ne fait pas un nom.
+        for titre in ("...", "???", "", "\x07\x1f"):
+            with self.subTest(titre=titre):
+                self.assertEqual(renommeur.target_stem({"id": 1, "title": titre, "release_date": "2010-05-01"}, 3, True), "")
+
     def test_epinglage_conserve_sans_l_option(self):
         # Régression : un passage sans --pin-id retirait les identifiants déjà posés.
         self.assertTrue(renommeur.wants_pin("Dune (2021) [tmdbid-438631]", False))
@@ -156,6 +162,20 @@ class TestRenommage(RenameMoviesTestCase):
         self.assertEqual(tally.named, 0)
         self.assertIn("NON ASSOCIÉ", self.sortie)
 
+
+    def test_titre_inutilisable_laisse_en_place_et_se_signale(self):
+        # Sans date, le nom vide faisait lever ValueError à Path.with_name : le passage s'arrêtait sur une trace.
+        for film in ({"id": 7, "title": "..."}, {"id": 7, "title": "???", "release_date": "2010-05-01"}):
+            with self.subTest(film=film):
+                for dossier in list(self.racine.iterdir()):
+                    for f in dossier.iterdir():
+                        f.unlink()
+                    dossier.rmdir()
+                self.creer_dossiers("Un film")
+                tally, contenu, _ = self.lancer(tmdb=FauxTmdb(film))
+                self.assertEqual(contenu, ["Un film"])
+                self.assertEqual((tally.named, tally.unresolved), (0, 1))
+                self.assertIn("[IGNORÉ]", self.sortie)
 
     def test_dossier_de_saga_renomme_les_films_pas_le_dossier(self):
         # Le dossier de saga n'est pas un film : il garde son nom, et ce sont les .mkv qu'il contient qui prennent le leur.

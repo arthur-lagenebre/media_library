@@ -20,6 +20,15 @@ class TestNomValide(unittest.TestCase):
     def test_titre_vide(self):
         self.assertEqual(filenames.safe_name(None), "")
 
+    def test_caracteres_de_controle_retires(self):
+        # Windows refuse les caractères de code < 32 dans un nom.
+        self.assertEqual(filenames.safe_name("Bell\x07 Tower\x1f\x00"), "Bell Tower")
+
+    def test_rien_d_utilisable_ne_laisse_rien(self):
+        for brut in ("...", "???", " . . ", "\x07"):
+            with self.subTest(brut=brut):
+                self.assertEqual(filenames.safe_name(brut), "")
+
 
 class TestFichiersParExtension(unittest.TestCase):
     def test_extensions_triees_sans_casse(self):
