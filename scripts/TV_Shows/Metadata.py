@@ -167,6 +167,45 @@ def build_plan(mkv_dir, season, args, opts):
     return plan
 
 
+def show_candidate(c, season, args, opts, report):
+    """Affiche l'association d'un fichier à son épisode, puis - sous --verify - son écart avec l'état visé, sinon ce qui serait écrit."""
+    sn, en = season.get("season_number", 1), c.episode.get("episode_number", 0)
+    print(f"  [S{sn:02d}E{en:02d}] {c.path.name}")
+    print(f"            -> {c.episode.get('name', '')}   ({c.method})")
+    for note in c.notes:
+        print(f"            /!\\ {note}")
+    target = episode_target(season, c.episode, args.series_name, opts)
+    if args.verify:                     # mode vérification : état actuel vs vise
+        diffs = [(lbl, det) for lbl, ok, det in mkv.verify(c.info, target, opts, c.tags) if not ok]
+        for lbl, det in diffs:
+            print(f"      [DIFF] {lbl} : actuel = {det!r}")
+        if diffs:
+            report.diffs += 1
+        else:
+            print("      [OK] déjà conforme")
+        return
+    if opts.date and target.date:
+        print(f"      date segment -> {target.date}")
+    for line in mkv.track_preview_lines(c.info, opts):
+        print(line)
+
+
+def write_season(plan, season, args, opts, tmdb, report):
+    """Écrit les épisodes associés (sous --apply), en sautant ceux qui sont déjà à jour si --skip-done."""
+    print("  --- écriture ---")
+    for c in plan:
+        if c.episode is None:
+            continue
+        target = episode_target(season, c.episode, args.series_name, opts)
+        if args.skip_done and mkv.is_conform(c.info, target, opts, c.tags):
+            print(f"  [SKIP] {c.path.name} (déjà à jour)")
+            continue
+        code, msg = mkv.write(c.path, c.info, target, opts, tmdb)
+        if code:
+            report.failures += 1
+        print(f"  [{'OK' if code == 0 else 'ÉCHEC'}] {c.path.name}" + (f"  -> {msg}" if code else ""))
+
+
 def process_season(mkv_dir, season, args, opts, tmdb):
     """Construit le plan d'une saison, l'affiche, et applique si --apply. Retourne le Report de la saison."""
     plan = build_plan(mkv_dir, season, args, opts)
@@ -180,39 +219,10 @@ def process_season(mkv_dir, season, args, opts, tmdb):
             print(f"  [NON ASSOCIÉ] {c.path.name}")
             continue
         report.matched += 1
-        sn, en = season.get("season_number", 1), c.episode.get("episode_number", 0)
-        print(f"  [S{sn:02d}E{en:02d}] {c.path.name}")
-        print(f"            -> {c.episode.get('name', '')}   ({c.method})")
-        for note in c.notes:
-            print(f"            /!\\ {note}")
-        target = episode_target(season, c.episode, args.series_name, opts)
-        if args.verify:                     # mode vérification : état actuel vs vise
-            diffs = [(lbl, det) for lbl, ok, det in mkv.verify(c.info, target, opts, c.tags) if not ok]
-            for lbl, det in diffs:
-                print(f"      [DIFF] {lbl} : actuel = {det!r}")
-            if diffs:
-                report.diffs += 1
-            else:
-                print("      [OK] déjà conforme")
-            continue
-        if opts.date and target.date:
-            print(f"      date segment -> {target.date}")
-        for line in mkv.track_preview_lines(c.info, opts):
-            print(line)
+        show_candidate(c, season, args, opts, report)
 
     if args.apply and not args.verify:
-        print("  --- écriture ---")
-        for c in plan:
-            if c.episode is None:
-                continue
-            target = episode_target(season, c.episode, args.series_name, opts)
-            if args.skip_done and mkv.is_conform(c.info, target, opts, c.tags):
-                print(f"  [SKIP] {c.path.name} (déjà à jour)")
-                continue
-            code, msg = mkv.write(c.path, c.info, target, opts, tmdb)
-            if code:
-                report.failures += 1
-            print(f"  [{'OK' if code == 0 else 'ÉCHEC'}] {c.path.name}" + (f"  -> {msg}" if code else ""))
+        write_season(plan, season, args, opts, tmdb, report)
 
     print(f"  => {report.matched}/{report.total} associé(s).")
     return report
