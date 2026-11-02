@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from libraries.common import cli, filenames
+from libraries.common.tools import display_command
 from libraries.video.mkv import first_error, identify, partial_path, probe, run_tool
 
 TEXT_SUB_EXT = {".srt", ".ass", ".ssa"}   # sous-titres texte : eux seuls ont un encodage
@@ -102,11 +103,6 @@ def attach_subtitles(command, video, subs, args):
         command.append(str(sub))
         attached.append((sub.name, language, charset))
     return attached
-
-
-def display_command(command):
-    """La commande telle qu'on la retaperait, guillemets compris."""
-    return " ".join(f'"{word}"' if " " in word else word for word in command)
 
 
 def convert(video, args, check_duration, container):

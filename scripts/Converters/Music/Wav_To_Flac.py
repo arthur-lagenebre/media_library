@@ -32,7 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
-from libraries.common.tools import partial_path, run_tool  # noqa: E402
+from libraries.common.tools import display_command, partial_path, run_tool  # noqa: E402
 
 # Les seuls codecs que FLAC garde à l'identique. ffmpeg arrondit tout le reste (virgule flottante, 32 bits, 8 bits) sans rien dire.
 LOSSLESS_CODECS = {"pcm_s16le": "16 bits", "pcm_s24le": "24 bits"}
@@ -72,11 +72,6 @@ def build_command(wav, output, args):
     """
     return ["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-map", "0:a:0", "-map_metadata", "0",
             "-c:a", "flac", "-compression_level", str(args.compression), "-fflags", "+bitexact", "-f", "flac", str(output)]
-
-
-def display_command(command):
-    """La commande telle qu'on la retaperait, guillemets compris."""
-    return " ".join(f'"{word}"' if " " in word else word for word in command)
 
 
 def last_error(result):
