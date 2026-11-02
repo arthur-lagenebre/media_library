@@ -53,6 +53,7 @@ class TestDependances(unittest.TestCase):
                 self.assertNotIn("video", imported_domains(path))
 
     def test_les_scripts_de_livres_n_importent_ni_la_video_ni_la_musique(self):
+        # Ce dépôt n'a pas (encore) de scripts/Books : les livres portent déjà leur fiche, libraries/books/ sert à media_hub qui les lit. La garde attend le premier script, et passe à vide d'ici là.
         for path in sorted((ROOT / "scripts" / "Books").glob("*.py")):
             with self.subTest(path.relative_to(ROOT).as_posix()):
                 self.assertEqual(imported_domains(path) & {"video", "music"}, set())

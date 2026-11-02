@@ -11,6 +11,11 @@ def run_tool(cmd, **kwargs):
     return subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", **kwargs)
 
 
+def display_command(command):
+    """La commande telle qu'on la retaperait, guillemets compris."""
+    return " ".join(f'"{word}"' if " " in word else word for word in command)
+
+
 PARTIAL_SUFFIX = ".part"
 
 
