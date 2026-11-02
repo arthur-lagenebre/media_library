@@ -189,54 +189,64 @@ def write_log(destination, racine, total, defauts, repares, echecs, complet, rec
         print(f"[log] impossible d'écrire {destination} : {exc.strerror or exc}")
 
 
-def main():
-    cli.setup_console()
-    args = parse_args()
+def locate(args):
+    """(racine, fichiers) à contrôler, ou la sortie du programme avec ce qui manque."""
     racine = Path(args.dir)
     if not racine.is_dir():
         sys.exit(f"Dossier introuvable : {racine}")
     if shutil.which("mkvmerge") is None:
         sys.exit("mkvmerge est introuvable dans le PATH.\n"
                  "  Installe MKVToolNix : winget install MoritzBunkus.MKVToolNix")
-
     fichiers = mkv_files(racine, recursif=not args.no_recursive)
-    total = len(fichiers)
+    if not fichiers:
+        sys.exit(f"Aucun .mkv {'dans' if args.no_recursive else 'sous'} {racine}")
+    return racine, fichiers
+
+
+def announce(racine, fichiers, args):
+    """Ce qu'on va contrôler, et à quelle profondeur."""
     portee = "dans" if args.no_recursive else "sous"
-    if not total:
-        sys.exit(f"Aucun .mkv {portee} {racine}")
     octets = sum(f.stat().st_size for f in fichiers)
-    print(f"{total} fichier(s), {readable_size(octets)} {portee} {racine}" + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
+    print(f"{len(fichiers)} fichier(s), {readable_size(octets)} {portee} {racine}" + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
     print("Contrôle " + ("complet : toute la chaîne, clusters compris "
                          f"(~{readable_time(octets / 1e9 * SECONDES_PAR_GO)} de lecture)"
                          if args.full else
                          "rapide : index, table Cues et queue de fichier"))
 
+
+def check_all(fichiers, racine, complet):
+    """[(chemin, message)] des fichiers en défaut, signalés au fur et à mesure."""
     defauts = []
-    debut = time.time()
     for n, chemin in enumerate(fichiers, 1):
-        progress(n, total, filenames.relative_name(chemin, racine))
-        message = check(chemin, args.full)
+        progress(n, len(fichiers), filenames.relative_name(chemin, racine))
+        message = check(chemin, complet)
         if message:
             clear_line()
             print(f"  [DÉFAUT] {filenames.relative_name(chemin, racine)}")
             print(f"           {message}")
             defauts.append((chemin, message))
     clear_line()
+    return defauts
 
+
+def repair_all(defauts, racine, complet):
+    """(réparés, échecs, originaux gardés) : remultiplexe chaque fichier en défaut, un par un."""
     repares, echecs, gardes = [], [], {}
-    if args.repair and defauts:
-        print(f"\nRéparation de {len(defauts)} fichier(s) : remux, contrôle du "
-              "résultat, puis remplacement.")
-        for n, (chemin, _) in enumerate(defauts, 1):
-            nom = filenames.relative_name(chemin, racine)
-            print(f"  [{n}/{len(defauts)}] {nom} ...", end="", flush=True)
-            reussi, souci = repair(chemin, args.full)
-            print(f" réparé ({souci})" if reussi else f" ÉCHEC : {souci}")
-            (repares if reussi else echecs).append(nom)
-            if reussi:
-                gardes[nom] = souci
+    print(f"\nRéparation de {len(defauts)} fichier(s) : remux, contrôle du "
+          "résultat, puis remplacement.")
+    for n, (chemin, _) in enumerate(defauts, 1):
+        nom = filenames.relative_name(chemin, racine)
+        print(f"  [{n}/{len(defauts)}] {nom} ...", end="", flush=True)
+        reussi, souci = repair(chemin, complet)
+        print(f" réparé ({souci})" if reussi else f" ÉCHEC : {souci}")
+        (repares if reussi else echecs).append(nom)
+        if reussi:
+            gardes[nom] = souci
+    return repares, echecs, gardes
 
-    duree = time.time() - debut
+
+def summarize(total, duree, defauts, repares, echecs, gardes, args):
+    """Le bilan du passage, et ce qu'il reste à faire."""
     print(f"\nTOTAL : {total} fichier(s) contrôlé(s) en {readable_time(duree)}, "
           f"{len(defauts)} en défaut"
           + (f", {len(repares)} réparé(s), {len(echecs)} échec(s)" if args.repair else "")
@@ -249,7 +259,19 @@ def main():
         print("Le contrôle rapide ne juge que l'index et la queue : --full "
               "descend dans les clusters.")
 
-    write_log(Path(args.log) if args.log else racine / "verification.log", racine, total, defauts, repares, echecs, args.full, not args.no_recursive, gardes)
+
+def main():
+    cli.setup_console()
+    args = parse_args()
+    racine, fichiers = locate(args)
+    announce(racine, fichiers, args)
+
+    debut = time.time()
+    defauts = check_all(fichiers, racine, args.full)
+    repares, echecs, gardes = repair_all(defauts, racine, args.full) if args.repair and defauts else ([], [], {})
+
+    summarize(len(fichiers), time.time() - debut, defauts, repares, echecs, gardes, args)
+    write_log(Path(args.log) if args.log else racine / "verification.log", racine, len(fichiers), defauts, repares, echecs, args.full, not args.no_recursive, gardes)
     return 1 if echecs or (defauts and not args.repair) else 0
 
 
