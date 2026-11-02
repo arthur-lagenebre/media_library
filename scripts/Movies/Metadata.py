@@ -78,70 +78,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer l
 from libraries.common import cache, cli, textfile  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
+from libraries.video.doubts import identity_doubts  # noqa: E402
+from libraries.video.movietags import collection_proposal, collection_title, movie_target  # noqa: E402
 from libraries.video import saga as saga_module  # noqa: E402
 from libraries.video.tmdb import (Tmdb, TmdbAuthError, TmdbError,   # noqa: E402
                         movie_url, release_region)
 
 
 # ----------------------------------------------------------------------------
-# 1. État vise pour un film (TargetTypeValue 50 = film, 70 = collection/saga)
-# ----------------------------------------------------------------------------
-SAGA_SUFFIX_RE = re.compile(r"\s+-\s+saga\s*$", re.IGNORECASE)
-COLLECTION_SUFFIX_RE = re.compile(r"(?:\s+-)?\s+collection\s*$", re.IGNORECASE)
-
-
-def collection_title(name):
-    """Le nom de la collection sans le " - Saga" que TMDB ajoute en français ("Iron Man - Saga" -> "Iron Man").
-
-    Ce suffixe est un invariant : il part toujours. Le " Collection" anglais, lui, peut faire partie du nom ("The Criterion Collection") : voir `collection_proposal`, qui ne le retire qu'avec l'accord de l'utilisateur.
-    """
-    name = (name or "").strip()
-    return SAGA_SUFFIX_RE.sub("", name).strip() or name
-
-
-def collection_proposal(name):
-    """Le nom sans son " Collection" final, ou None quand il n'y a rien à proposer."""
-    name = collection_title(name)
-    proposal = COLLECTION_SUFFIX_RE.sub("", name).strip()
-    return proposal if proposal and proposal != name else None
-
-
-def build_movie_tags_xml(movie, max_actors=20):
-    credits = movie.get("credits", {})
-    blocks = []
-
-    # `_collection_title` : le titre arrêté avec l'utilisateur (voir `settle_collection`) ; à défaut, seul l'invariant " - Saga" est appliqué.
-    collection = movie.get("_collection_title") or collection_title((movie.get("belongs_to_collection") or {}).get("name"))
-    if collection:
-        lines = [mkv.simple("TITLE", collection)]
-        if movie.get("_order"):                       # ordre de la saga (préfixe "{n} - ")
-            lines.append(mkv.simple("PART_NUMBER", movie["_order"]))
-        blocks.append(mkv.tag_block(70, lines))
-
-    lines = [mkv.simple("TITLE", movie.get("title", ""))]
-    if movie.get("id"):
-        # L'association elle-même, inscrite dans le film : au passage suivant, plus rien n'est cherché, donc plus rien ne peut se tromper.
-        lines.append(mkv.simple(mkv.TMDB_TAG, mkv.tmdb_value(movie["id"])))
-    if movie.get("overview"):
-        lines.append(mkv.simple("SYNOPSIS", movie["overview"]))
-        lines.append(mkv.simple("SUMMARY", movie["overview"]))
-    if movie.get("release_date"):
-        lines.append(mkv.simple("DATE_RELEASED", movie["release_date"]))
-    lines += mkv.credits_lines(credits.get("crew", []), credits.get("cast", []), max_actors)
-    genres = ", ".join(g.get("name", "") for g in movie.get("genres", []))
-    if genres:
-        lines.append(mkv.simple("GENRE", genres))
-    blocks.append(mkv.tag_block(50, lines))
-    return mkv.tags_document(blocks)
-
-
-def movie_target(movie, opts):
-    """Ce que le .mkv de ce film devrait contenir."""
-    return mkv.Target(title=movie.get("title", ""), date=movie.get("release_date"), tags_xml=build_movie_tags_xml(movie), poster=movie.get("poster_path") if opts.cover else None,)
-
-
-# ----------------------------------------------------------------------------
-# 2. Traitement d'un film
+# 1. Traitement d'un film
 # ----------------------------------------------------------------------------
 def process_file(path, lecture, movie, args, opts, tmdb):
     """Traite UN fichier du film. Retourne (non_conforme, echec_ecriture), 0 ou 1 chacun."""
@@ -377,40 +322,6 @@ def write_log(root_dir, library, args, report):
     print(f"[log] {out.name} écrit ({len(trouves)} lien(s), {len(vides)} sans lien)")
 
 
-# Une durée qui sort de cette fourchette ne s'explique ni par une version longue (Kingdom of Heaven : 144 -> 189 min, x1.31) ni par l'accélération PAL (-4 %) : c'est un autre film. Les cinq erreurs relevées sur une vraie médiathèque en sortaient toutes - Microcosmos pris pour un court métrage de 3 min, Catwoman pour un DC Showcase de 15 min, Destruction finale (95 min) pour un film coréen de 128.
-LENGTH_MIN, LENGTH_MAX = 0.75, 1.35
-LENGTH_GAP = 10            # en dessous, un écart de minutes ne dit rien (courts métrages, génériques)
-MIN_VOTES = 10              # une fiche que presque personne n'a notée : rarement le film qu'on possède
-
-
-def file_minutes(entry, lectures):
-    """Durée totale du film sur le disque, toutes parties (CD1, CD2...) comprises ; None si l'une manque."""
-    total = 0.0
-    for path in entry.files:
-        m = mkv.minutes(lectures.get(path))
-        if not m:
-            return None
-        total += m
-    return total
-
-
-def identity_doubts(entry, movie, lectures):
-    """Raisons de douter que `movie` soit bien le film du fichier : [texte, ...].
-
-    Un identifiant épinglé dans le nom est une décision de l'utilisateur, et n'est pas remis en cause : une version longue qu'on a épinglée ne doit pas revenir à chaque passage.
-    """
-    if naming.extract_tmdb_id(entry.rawname)[0]:
-        return []
-    doubts = []
-    length, runtime = file_minutes(entry, lectures), movie.get("runtime")
-    if length and runtime and abs(length - runtime) >= LENGTH_GAP and not (LENGTH_MIN <= length / runtime <= LENGTH_MAX):
-        doubts.append(f"durée {length:.0f} min, la fiche TMDB en annonce {runtime}")
-    votes = movie.get("vote_count")
-    if votes is not None and votes < MIN_VOTES:
-        doubts.append(f"fiche TMDB presque inconnue ({votes} vote(s))")
-    return doubts
-
-
 def handle_movie(entry, movie, library, args, opts, tmdb):
     """Traite un film dont l'association est arrêtée. Retourne son Report."""
     jumeau = library.seen.setdefault(movie.get("id"), entry.display)
@@ -641,7 +552,7 @@ def resolve_movie(rawname, args, tmdb, single, contexts=(), tag_id=None, saga=No
 
 
 # ----------------------------------------------------------------------------
-# 3. Programme principal
+# 2. Programme principal
 # ----------------------------------------------------------------------------
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
