@@ -17,7 +17,7 @@ def piste(kind, **props):
 
 class TestNomProvisoire(unittest.TestCase):
     def test_le_nom_provisoire_n_est_plus_un_mkv(self):
-        # Sous ce nom, aucun script ne prend le fichier pour un film : ni les `*.mkv` de Verify_Files, ni les extensions de Metadata.
+        # Sous ce nom, aucun script ne prend le fichier pour un film : ni les `*.mkv` de Verify_Mkv, ni les extensions de Metadata.
         partiel = mkv.partial_path(Path("D:/Films/Le Film.mkv"))
         self.assertEqual(partiel, Path("D:/Films/Le Film.mkv.part"))
         self.assertNotEqual(partiel.suffix.lower(), ".mkv")

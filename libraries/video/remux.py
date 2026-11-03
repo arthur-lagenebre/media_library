@@ -44,7 +44,7 @@ class Container:
 def source_files(root, extension, recursive=True):
     """Les fichiers de cette extension sous root : ceux posés à la racine d'abord, puis dossier par dossier.
 
-    Le même ordre que Verify_Files, pour qu'un passage se relise pareil d'un script à l'autre. L'extension est comparée en minuscules plutôt que filtrée par glob : les rips d'époque écrivent volontiers ".AVI", et sous Linux le glob ne les verrait pas.
+    Le même ordre que Verify_Mkv, pour qu'un passage se relise pareil d'un script à l'autre. L'extension est comparée en minuscules plutôt que filtrée par glob : les rips d'époque écrivent volontiers ".AVI", et sous Linux le glob ne les verrait pas.
     """
     found = root.rglob("*") if recursive else root.glob("*")
     files = (f for f in found if f.is_file() and f.suffix.lower() == extension)
