@@ -36,7 +36,7 @@ Rien d'alarmant : la syntaxe est compatible 3.8, aucun `shell=True`, `eval` ou d
 
 ## À décider
 
-- [x] **10. `Verify_Files.py --repair` remplaçait l'original sans le garder** — sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie du film. L'original est maintenant gardé à côté (`Film.mkv.orig`, puis `.orig2`… sans jamais en écraser un), remis en place si le remux ne peut pas prendre sa place, et le journal dit où il est. Décision prise : on garde (le traitement se fait sur le PC avant transfert au NAS, la place n'est pas en jeu). Les `.orig` se suppriment à la main une fois les films vérifiés ; une option pour ne pas les garder reste possible si le script tourne un jour sur le NAS.
+- [x] **10. `Verify_Mkv.py --repair` remplaçait l'original sans le garder** — sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie du film. L'original est maintenant gardé à côté (`Film.mkv.orig`, puis `.orig2`… sans jamais en écraser un), remis en place si le remux ne peut pas prendre sa place, et le journal dit où il est. Décision prise : on garde (le traitement se fait sur le PC avant transfert au NAS, la place n'est pas en jeu). Les `.orig` se suppriment à la main une fois les films vérifiés ; une option pour ne pas les garder reste possible si le script tourne un jour sur le NAS.
 
 ## Détails
 
@@ -53,4 +53,4 @@ Ce qui n'a pas été fait, à reprendre si l'envie vient (rendement attendu plus
 - [ ] Relire à froid le code écrit pendant les points 5 à 11 : `libraries/common/volumes.py` (détection d'un partage réseau, jamais essayée sur un vrai NAS), `tools.read_timeout`, `rename.put_back`, `textfile.write` atomique, l'inventaire de `Discography`.
 - [ ] Mesurer la couverture réelle des tests sur les fichiers touchés (module `trace` de la bibliothèque standard) pour repérer les branches qu'aucun test n'exerce.
 - [ ] Vérifier à la lecture les API utilisées par rapport à Python 3.8, faute d'un interpréteur 3.8 en local : la CI en a déjà pris un en défaut (`HTTPError.close()`, #72).
-- [ ] Essayer sur de vrais fichiers ce que tout le travail a seulement simulé : `Verify_Files.py --repair` avec ses `.orig`, le délai de lecture sur le NAS, un renommage de casse sous Windows avec un fichier verrouillé.
+- [ ] Essayer sur de vrais fichiers ce que tout le travail a seulement simulé : `Maintenance/Music/Verify_Flac.py` et `Verify_Mp3.py` sur la vraie médiathèque (temps du contrôle rapide d'un `.mp3` sur le NAS, `--full`, faux positifs sur des fichiers anciens), `Verify_Mkv.py --repair` avec ses `.orig`, le délai de lecture sur le NAS, un renommage de casse sous Windows avec un fichier verrouillé.
