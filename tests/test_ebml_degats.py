@@ -292,7 +292,7 @@ class TestRecherchePuisLecture(unittest.TestCase):
         self.assertEqual((etiquettes, minutes), (set(), None))
 
     def test_octets_en_trop_n_empechent_pas_la_lecture(self):
-        # Le défaut de structure est l'affaire de Verify_Files : la fiche lit ce qu'elle peut.
+        # Le défaut de structure est l'affaire de Verify_Mkv : la fiche lit ce qu'elle peut.
         etiquettes, minutes = self.lire(with_metadata() + b"\x00" * 7)
         self.assertIn((50, "TMDB", "movie/9312"), etiquettes)
         self.assertAlmostEqual(minutes, 95.5, places=3)

@@ -1,4 +1,4 @@
-"""Avi_To_Mkv.py, Mp4_To_Mkv.py et Verify_Files.py de bout en bout : outils manquants, bilan, journal, code de sortie.
+"""Avi_To_Mkv.py, Mp4_To_Mkv.py et Verify_Mkv.py de bout en bout : outils manquants, bilan, journal, code de sortie.
 
 mkvmerge, ffprobe et ebml sont simulés (voir test_conversion_atomique pour ce que devient un fichier) : ici on vérifie ce qu'un passage entier dit, écrit dans son journal, et rend à un script qui l'enchaîne.
 """
@@ -13,9 +13,10 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from libraries.common import cli
 from libraries.video import remux
 from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
-from scripts.Maintenance import Verify_Files
+from scripts.Maintenance.Video import Verify_Mkv
 from tests.test_conversion_atomique import INFO, MkvmergeSimule
 
 
@@ -270,7 +271,7 @@ class TestOrdreDesFichiers(ProgrammeTestCase):
 
 
 # ----------------------------------------------------------------------------
-# Verify_Files.py
+# Verify_Mkv.py
 # ----------------------------------------------------------------------------
 class TestMainVerify(ProgrammeTestCase):
     """Des fichiers dont on décide d'avance s'ils sont sains (`defauts` : {nom: message})."""
@@ -291,7 +292,7 @@ class TestMainVerify(ProgrammeTestCase):
             nom = Path(chemin).name
             return "" if nom.endswith(".part") else defauts.get(nom, "")
 
-        return self.lancer_main(Verify_Files, *argv,
+        return self.lancer_main(Verify_Mkv, *argv,
                                 shutil=types.SimpleNamespace(which=outils(*tools)),
                                 check=check, run_tool=mux or MkvmergeSimule(writes=b"REMUX SAIN"))
 
@@ -351,7 +352,7 @@ class TestMainVerify(ProgrammeTestCase):
         self.assertEqual(self.contenu("Blade (1998).mkv.orig"), b"ORIGINAL Blade (1998).mkv")
         self.assertIn("réparé (original gardé : Blade (1998).mkv.orig)", texte)
         self.assertIn("Les originaux abîmés sont gardés à côté (1 fichier(s) *.mkv.orig)", texte)
-        self.assertNotIn("Blade (1998).mkv.orig", [p.name for p in Verify_Files.mkv_files(self.racine)])
+        self.assertNotIn("Blade (1998).mkv.orig", [p.name for p in Verify_Mkv.mkv_files(self.racine)])
 
     def test_repair_qui_echoue_laisse_l_original_et_donne_le_code_1(self):
         code, texte = self.lancer("--repair", defauts={"Blade (1998).mkv": "x"}, mux=MkvmergeSimule(code=2, writes=b"TRONQUE", stderr="Erreur : disque plein"))
@@ -401,9 +402,9 @@ class TestControleReel(unittest.TestCase):
     """check() : la structure d'abord, puis ce que mkvmerge sait lire."""
 
     def check(self, structure=None, identification=(INFO, ""), complet=False):
-        with mock.patch.object(Verify_Files.ebml, "verifier", return_value=structure) as verifier, \
-                mock.patch.object(Verify_Files, "identify", return_value=identification) as identifier:
-            resultat = Verify_Files.check(Path("Film.mkv"), complet)
+        with mock.patch.object(Verify_Mkv.ebml, "verifier", return_value=structure) as verifier, \
+                mock.patch.object(Verify_Mkv, "identify", return_value=identification) as identifier:
+            resultat = Verify_Mkv.check(Path("Film.mkv"), complet)
         self.verifier, self.identifier = verifier, identifier
         return resultat
 
@@ -428,20 +429,20 @@ class TestControleReel(unittest.TestCase):
 
 class TestAffichage(unittest.TestCase):
     def test_tailles_lisibles(self):
-        self.assertEqual(Verify_Files.readable_size(2_000), "2 ko")
-        self.assertEqual(Verify_Files.readable_size(5_000_000), "5.00 Mo")
-        self.assertEqual(Verify_Files.readable_size(3_500_000_000), "3.50 Go")
-        self.assertEqual(Verify_Files.readable_size(4_490_000_000_000), "4.49 To")
+        self.assertEqual(Verify_Mkv.readable_size(2_000), "2 ko")
+        self.assertEqual(Verify_Mkv.readable_size(5_000_000), "5.00 Mo")
+        self.assertEqual(Verify_Mkv.readable_size(3_500_000_000), "3.50 Go")
+        self.assertEqual(Verify_Mkv.readable_size(4_490_000_000_000), "4.49 To")
 
     def test_durees_lisibles(self):
-        self.assertEqual(Verify_Files.readable_time(5), "5 s")
-        self.assertEqual(Verify_Files.readable_time(90), "1.5 min")
-        self.assertEqual(Verify_Files.readable_time(7200), "2.0 h")
+        self.assertEqual(Verify_Mkv.readable_time(5), "5 s")
+        self.assertEqual(Verify_Mkv.readable_time(90), "1.5 min")
+        self.assertEqual(Verify_Mkv.readable_time(7200), "2.0 h")
 
     def test_progression_muette_hors_terminal(self):
         with redirect_stdout(io.StringIO()) as sortie:
-            Verify_Files.progress(1, 3, "Film.mkv")
-            Verify_Files.clear_line()
+            Verify_Mkv.progress(1, 3, "Film.mkv")
+            Verify_Mkv.clear_line()
         self.assertEqual(sortie.getvalue(), "")
 
     def test_progression_en_terminal(self):
@@ -449,7 +450,7 @@ class TestAffichage(unittest.TestCase):
             def isatty(self):
                 return True
         with redirect_stdout(Terminal()) as sortie:
-            Verify_Files.progress(2, 3, "Film.mkv")
+            Verify_Mkv.progress(2, 3, "Film.mkv")
         self.assertIn("2/3  Film.mkv", sortie.getvalue())
         self.assertTrue(sortie.getvalue().startswith("\r"))
 
@@ -458,15 +459,15 @@ class TestAffichage(unittest.TestCase):
             def isatty(self):
                 return True
         with redirect_stdout(Terminal()) as sortie:
-            Verify_Files.progress(1, 1, "x" * 500)
-        self.assertEqual(len(sortie.getvalue()), 1 + Verify_Files.LARGEUR)
+            Verify_Mkv.progress(1, 1, "x" * 500)
+        self.assertEqual(len(sortie.getvalue()), 1 + cli.PROGRESS_WIDTH)
 
     def test_flux_ferme_ne_plante_pas(self):
         def ferme():
             raise ValueError("I/O operation on closed file")
-        with mock.patch.object(Verify_Files.sys, "stdout", types.SimpleNamespace(isatty=ferme)):
-            Verify_Files.progress(1, 1, "x")
-            Verify_Files.clear_line()
+        with mock.patch.object(Verify_Mkv.sys, "stdout", types.SimpleNamespace(isatty=ferme)):
+            Verify_Mkv.progress(1, 1, "x")
+            Verify_Mkv.clear_line()
 
 
 if __name__ == "__main__":

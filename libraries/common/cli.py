@@ -133,3 +133,46 @@ def mode_label(args, simulation="rien ne sera écrit ; ajoute --apply pour appli
     if getattr(args, "verify", False):
         return "VÉRIFICATION (aucune écriture)"
     return "APPLICATION" if args.apply else f"SIMULATION ({simulation})"
+
+
+PROGRESS_WIDTH = 100     # ligne de progression : de quoi tenir dans un terminal étroit
+
+
+def readable_size(octets):
+    """Taille lisible : on ne parle pas en téraoctets d'un dossier de trois films."""
+    for unite, seuil in (("To", 1e12), ("Go", 1e9), ("Mo", 1e6)):
+        if octets >= seuil:
+            return f"{octets / seuil:.2f} {unite}"
+    return f"{octets / 1e3:.0f} ko"
+
+
+def readable_time(secondes):
+    """Durée lisible, de la seconde à l'heure."""
+    if secondes < 60:
+        return f"{secondes:.0f} s"
+    if secondes < 3600:
+        return f"{secondes / 60:.1f} min"
+    return f"{secondes / 3600:.1f} h"
+
+
+def progress(fait, total, nom):
+    """Ligne réécrite sur place. Muette hors terminal : redirigée, elle salirait.
+
+    Le nom du fichier en cours compte autant que le compteur : un contrôle rapide passe une demi-seconde par fichier, mais un contrôle complet peut rester dix minutes sur le même, et il faut voir lequel.
+    """
+    try:
+        if not sys.stdout.isatty():
+            return
+    except (AttributeError, ValueError):            # flux ferme ou remplace
+        return
+    ligne = f"  {fait}/{total}  {nom}"
+    print(f"\r{ligne[:PROGRESS_WIDTH]:<{PROGRESS_WIDTH}}", end="", flush=True)
+
+
+def clear_line():
+    """Rend la ligne de progression au message qui va s'afficher à sa place."""
+    try:
+        if sys.stdout.isatty():
+            print(f"\r{'':<{PROGRESS_WIDTH}}\r", end="")
+    except (AttributeError, ValueError):
+        pass

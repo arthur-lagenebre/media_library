@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-Verify_Files.py - Contrôle la structure des .mkv d'un dossier, et les répare au besoin.
+Verify_Mkv.py - Contrôle la structure des .mkv d'un dossier, et les répare au besoin.
 
 Un film peut se lire du début à la fin et avoir le conteneur abîmé : la vidéo sort, mais la chaîne des éléments Matroska déraille quelque part - typiquement une fin de fichier écrite à moitié après une coupure.
 Ça se manifeste par un "erreur dans la structure du fichier Matroska à la position ..." que mkvpropedit répète à chaque passage, et par rien d'autre.
@@ -19,10 +19,10 @@ Rien ne se perd au passage - identifiant TMDB, jaquette, titre du segment, nom d
 L'original abîmé est GARDÉ à côté sous le nom "Film.mkv.orig" ("Film.mkv.orig2" si un original plus ancien y est déjà) : sur un fichier abîmé, mkvmerge peut ne récupérer qu'une partie du film, et l'original est alors tout ce qui reste de la suite. À supprimer à la main une fois les films vérifiés ; il faut donc la place d'un film de plus sur le volume, durablement.
 
 Usage :
-  python Verify_Files.py --dir "\\Asgard\films"                 # contrôle rapide
-  python Verify_Files.py --dir "\\Asgard\films\Ghibli" --full   # contrôle intégral
-  python Verify_Files.py --dir "\\Asgard\films" --repair        # contrôle puis répare
-  python Verify_Files.py --dir "\\Asgard\films" --no-recursive  # cet étage seul
+  python Verify_Mkv.py --dir "\\Asgard\films"                 # contrôle rapide
+  python Verify_Mkv.py --dir "\\Asgard\films\Ghibli" --full   # contrôle intégral
+  python Verify_Mkv.py --dir "\\Asgard\films" --repair        # contrôle puis répare
+  python Verify_Mkv.py --dir "\\Asgard\films" --no-recursive  # cet étage seul
 
 --no-recursive s'en tient aux .mkv posés directement dans --dir, sans descendre dans les sous-dossiers : de quoi contrôler l'étage d'une médiathèque - les films posés à plat - sans relire les dossiers qu'elle range.
 
@@ -39,12 +39,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
+from libraries.common.cli import clear_line, progress, readable_size, readable_time  # noqa: E402
 from libraries.video import ebml, naming  # noqa: E402
 from libraries.video.mkv import first_error, identify, partial_path, run_tool  # noqa: E402
 
-LARGEUR = 100         # ligne de progression : de quoi tenir dans un terminal étroit
 SECONDES_PAR_GO = 10  # --full lit le fichier entier : mesuré sur un partage gigabit, qui rend ~110 Mo/s
 
 
@@ -65,46 +65,6 @@ def mkv_files(racine, recursif=True):
     """
     fichiers = racine.rglob("*.mkv") if recursif else racine.glob("*.mkv")
     return sorted(fichiers, key=lambda p: (p.parent != racine, str(p.parent).lower(), p.name.lower()))
-
-
-def readable_size(octets):
-    """Taille lisible : on ne parle pas en téraoctets d'un dossier de trois films."""
-    for unite, seuil in (("To", 1e12), ("Go", 1e9), ("Mo", 1e6)):
-        if octets >= seuil:
-            return f"{octets / seuil:.2f} {unite}"
-    return f"{octets / 1e3:.0f} ko"
-
-
-def readable_time(secondes):
-    """Durée lisible, de la seconde à l'heure."""
-    if secondes < 60:
-        return f"{secondes:.0f} s"
-    if secondes < 3600:
-        return f"{secondes / 60:.1f} min"
-    return f"{secondes / 3600:.1f} h"
-
-
-def progress(fait, total, nom):
-    """Ligne réécrite sur place. Muette hors terminal : redirigée, elle salirait.
-
-    Le nom du fichier en cours compte autant que le compteur : un contrôle rapide passe une demi-seconde par film, mais un contrôle complet peut rester dix minutes sur le même, et il faut voir lequel.
-    """
-    try:
-        if not sys.stdout.isatty():
-            return
-    except (AttributeError, ValueError):            # flux ferme ou remplace
-        return
-    ligne = f"  {fait}/{total}  {nom}"
-    print(f"\r{ligne[:LARGEUR]:<{LARGEUR}}", end="", flush=True)
-
-
-def clear_line():
-    """Rend la ligne de progression au message qui va s'afficher à sa place."""
-    try:
-        if sys.stdout.isatty():
-            print(f"\r{'':<{LARGEUR}}\r", end="")
-    except (AttributeError, ValueError):
-        pass
 
 
 def check(chemin, complet):

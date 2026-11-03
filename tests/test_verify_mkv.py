@@ -1,4 +1,4 @@
-"""Verify_Files : quels fichiers un passage prend en charge."""
+"""Verify_Mkv : quels fichiers un passage prend en charge."""
 
 import sys
 import tempfile
@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.Maintenance import Verify_Files as verificateur
+from scripts.Maintenance.Video import Verify_Mkv as verificateur
 
 
 class TestSelectionDesFichiers(unittest.TestCase):

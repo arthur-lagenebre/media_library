@@ -14,7 +14,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import mkv, remux
 from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
-from scripts.Maintenance import Verify_Files
+from scripts.Maintenance.Video import Verify_Mkv
 
 INFO = {"tracks": [{"id": 0, "type": "video", "properties": {}}, {"id": 1, "type": "audio", "properties": {}}]}
 
@@ -30,7 +30,7 @@ def options(**overrides):
 class MkvmergeSimule:
     """Remplace run_tool : écrit (ou pas) le fichier de sortie, comme le ferait mkvmerge, puis rend son code de retour.
 
-    La sortie se lit après `--output` (convertisseurs) ou `-o` (Verify_Files).
+    La sortie se lit après `--output` (convertisseurs) ou `-o` (Verify_Mkv).
     """
 
     def __init__(self, code=0, writes=b"MKV", error=None, stderr=""):
@@ -269,7 +269,7 @@ class TestMp4Atomique(ConversionAtomique, unittest.TestCase):
 
 
 class TestReparationAtomique(unittest.TestCase):
-    """Verify_Files --repair : l'original n'est remplacé que par un remux sain, et rien ne traîne."""
+    """Verify_Mkv --repair : l'original n'est remplacé que par un remux sain, et rien ne traîne."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -280,9 +280,9 @@ class TestReparationAtomique(unittest.TestCase):
         self.neuf = mkv.partial_path(self.film)
 
     def repair(self, mux, remux_check=""):
-        with mock.patch.object(Verify_Files, "run_tool", mux), \
-                mock.patch.object(Verify_Files, "check", return_value=remux_check):
-            return Verify_Files.repair(self.film, complet=False)
+        with mock.patch.object(Verify_Mkv, "run_tool", mux), \
+                mock.patch.object(Verify_Mkv, "check", return_value=remux_check):
+            return Verify_Mkv.repair(self.film, complet=False)
 
     def folder_content(self):
         return sorted(p.name for p in self.folder.iterdir())
@@ -310,7 +310,7 @@ class TestReparationAtomique(unittest.TestCase):
                 raise PermissionError(13, "Accès refusé")
             return vrai(src, dst)
 
-        with mock.patch.object(Verify_Files.os, "replace", capricieux):
+        with mock.patch.object(Verify_Mkv.os, "replace", capricieux):
             reussi, souci = self.repair(MkvmergeSimule(writes=b"SAIN"))
         self.assertFalse(reussi)
         self.assertIn("Accès refusé", souci)
@@ -325,7 +325,7 @@ class TestReparationAtomique(unittest.TestCase):
                 raise PermissionError(13, "Accès refusé")
             return vrai(src, dst)
 
-        with mock.patch.object(Verify_Files.os, "replace", capricieux):
+        with mock.patch.object(Verify_Mkv.os, "replace", capricieux):
             reussi, souci = self.repair(MkvmergeSimule(writes=b"SAIN"))
         self.assertFalse(reussi)
         self.assertIn("Le Film.mkv.orig", souci)
@@ -365,7 +365,7 @@ class TestReparationAtomique(unittest.TestCase):
         self.assertEqual(self.folder_content(), ["Le Film.mkv"])
 
     def test_remplacement_impossible(self):
-        with mock.patch.object(Verify_Files.os, "replace", side_effect=PermissionError(13, "Accès refusé")):
+        with mock.patch.object(Verify_Mkv.os, "replace", side_effect=PermissionError(13, "Accès refusé")):
             reussi, souci = self.repair(MkvmergeSimule(writes=b"SAIN"))
         self.assertFalse(reussi)
         self.assertIn("Accès refusé", souci)
@@ -374,7 +374,7 @@ class TestReparationAtomique(unittest.TestCase):
 
     def test_un_reste_provisoire_n_est_pas_un_film_a_controler(self):
         self.neuf.write_bytes(b"RESTE")
-        self.assertEqual([p.name for p in Verify_Files.mkv_files(self.folder)], ["Le Film.mkv"])
+        self.assertEqual([p.name for p in Verify_Mkv.mkv_files(self.folder)], ["Le Film.mkv"])
 
 
 if __name__ == "__main__":

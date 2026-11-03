@@ -18,7 +18,9 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
-| [scripts/Maintenance/Verify_Files.py](scripts/Maintenance/Verify_Files.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
+| [scripts/Maintenance/Video/Verify_Mkv.py](scripts/Maintenance/Video/Verify_Mkv.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
+| [scripts/Maintenance/Music/Verify_Flac.py](scripts/Maintenance/Music/Verify_Flac.py) | Contrôle les `.flac` d'un dossier, en lecture seule : fichier coupé, CRC de chaque trame, empreinte MD5 du son |
+| [scripts/Maintenance/Music/Verify_Mp3.py](scripts/Maintenance/Music/Verify_Mp3.py) | Contrôle les `.mp3` d'un dossier, en lecture seule : fichier coupé, trou, bruit dans la chaîne de trames, nombre de trames annoncé |
 | [scripts/Converters/Video/Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
 | [scripts/Converters/Video/Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
 | [scripts/Converters/Music/Wav_To_Flac.py](scripts/Converters/Music/Wav_To_Flac.py) | Encode les `.wav` en `.flac`, sans perte et vérifié : le son décodé des deux fichiers doit avoir la même empreinte |
@@ -29,7 +31,7 @@ Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine ; 
 scripts/Movies/        étiquetage et renommage des films
 scripts/TV_Shows/      la même chose pour les séries
 scripts/Music/         étiquetage et renommage des albums, depuis MusicBrainz, pochettes, albums manquants
-scripts/Maintenance/   contrôle et réparation des fichiers, sans rapport avec TMDB
+scripts/Maintenance/   contrôle des fichiers, sans rapport avec TMDB : Video/ (structure des .mkv, avec réparation) et Music/ (.flac et .mp3, un script par format)
 scripts/Converters/    conversions qui précèdent l'étiquetage : Video/ (conteneur .mkv) et Music/ (.wav en .flac)
 libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage, GET HTTP avec réessais, disque local ou partage réseau
 libraries/video/       tout ce qui touche aux films et aux séries
@@ -277,17 +279,38 @@ Les tags du `.wav` (titre, artiste, album, année, numéro de piste…) suivent 
 Un `.mkv` peut se lire du début à la fin et avoir le conteneur abîmé — une fin de fichier écrite à moitié après une coupure, par exemple. `mkvpropedit` s'en plaint alors à chaque passage (« erreur dans la structure du fichier Matroska à la position … ») et **rien d'autre ne le dit** : mesuré sur des fichiers volontairement cassés, `mkvmerge` (même en démultiplexant tout vers `NUL`) et `mkvinfo` se resynchronisent en silence et sortent en code 0.
 
 ```powershell
-python scripts\Maintenance\Verify_Files.py --dir "D:\Films"                # contrôle rapide
-python scripts\Maintenance\Verify_Files.py --dir "D:\Films\Ghibli" --full  # toute la chaîne, clusters compris
-python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --repair       # contrôle puis remultiplexe
-python scripts\Maintenance\Verify_Files.py --dir "D:\Films" --no-recursive # cet étage seul
+python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films"                # contrôle rapide
+python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films\Ghibli" --full  # toute la chaîne, clusters compris
+python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films" --repair       # contrôle puis remultiplexe
+python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films" --no-recursive # cet étage seul
 ```
 
-[Verify_Files.py](scripts/Maintenance/Verify_Files.py) suit lui-même la chaîne des éléments EBML, en lecture seule. Par défaut il s'en tient aux points de repère — l'index, la table Cues, la queue du fichier — dont le prix **ne dépend pas de la taille du film** : mesuré sur un partage réseau, 489 films et 4,49 To en 15 minutes (dont les deux tiers passés dans la lecture d'en-tête par `mkvmerge`). `--full` descend dans les clusters, mais lit chaque fichier en entier (compter ~10 s par Go sur un partage réseau) ; il voit alors tout ce que voit `mkvpropedit`, plus la troncature.
+[Verify_Mkv.py](scripts/Maintenance/Video/Verify_Mkv.py) suit lui-même la chaîne des éléments EBML, en lecture seule. Par défaut il s'en tient aux points de repère — l'index, la table Cues, la queue du fichier — dont le prix **ne dépend pas de la taille du film** : mesuré sur un partage réseau, 489 films et 4,49 To en 15 minutes (dont les deux tiers passés dans la lecture d'en-tête par `mkvmerge`). `--full` descend dans les clusters, mais lit chaque fichier en entier (compter ~10 s par Go sur un partage réseau) ; il voit alors tout ce que voit `mkvpropedit`, plus la troncature.
 
 `--dir` est parcouru **récursivement**, comme partout ailleurs. `--no-recursive` s'en tient aux `.mkv` posés directement dedans : de quoi contrôler l'étage d'une médiathèque — les films rangés à plat — sans relire les dossiers de films qu'elle contient, ni les repasser après coup un par un.
 
 `--repair` remultiplexe les fichiers en défaut : `mkvmerge` réécrit le film proprement à côté (sous le nom provisoire `Film.mkv.part`, effacé quoi qu'il arrive), le résultat est contrôlé à son tour, et l'original n'est remplacé que s'il ressort sain — identifiant TMDB, jaquette, titre du segment, noms de pistes et statistiques sont conservés. Au moindre échec l'original reste en place. Quand le remux le remplace, l'original abîmé est **gardé à côté** sous `Film.mkv.orig` (`.orig2`… si un plus ancien y est déjà) : sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie du film, et l'original est alors tout ce qui reste de la suite. À supprimer à la main une fois les films vérifiés. Un `verification.log` est écrit à la racine de `--dir` (ou là où `--log` le place), et le script sort en **code 1** s'il reste un fichier abîmé.
+
+### Vérifier les pistes
+
+Une piste abîmée se lit presque toujours jusqu'au bout : le lecteur saute ce qu'il ne comprend pas, et le défaut ne se remarque qu'à l'écoute. Un script par format, parce que ce qu'on peut en dire est très différent. Tous deux sont **en lecture seule** — une piste abîmée ne se répare pas, elle se remplace (nouveau rip, sauvegarde) —, sortent en **code 1** s'il en reste une, et écrivent un journal (`verification_flac.log`, `verification_mp3.log`) à la racine de `--dir`, ou là où `--log` le place. `--dir` est parcouru récursivement, `--no-recursive` s'en tient à l'étage.
+
+```powershell
+python scripts\Maintenance\Music\Verify_Flac.py --dir "D:\Musique"                  # contrôle rapide
+python scripts\Maintenance\Music\Verify_Flac.py --dir "D:\Musique\Radiohead" --full # CRC de chaque trame + empreinte MD5
+python scripts\Maintenance\Music\Verify_Mp3.py --dir "D:\Musique"                   # chaîne de trames
+python scripts\Maintenance\Music\Verify_Mp3.py --dir "D:\Musique" --no-recursive    # cet étage seul
+```
+
+| | [Verify_Flac.py](scripts/Maintenance/Music/Verify_Flac.py) | [Verify_Mp3.py](scripts/Maintenance/Music/Verify_Mp3.py) |
+| --- | --- | --- |
+| **Rapide** (défaut, sans outil externe) | l'en-tête, puis la **queue** du fichier : la dernière trame doit être complète (son CRC-16 est bon) et s'arrêter à l'échantillon exact que `STREAMINFO` annonce — voit un fichier coupé où que la coupure tombe, même juste entre deux trames | toute la **chaîne de trames**, de l'étiquette ID3 à la fin : une trame coupée, un trou, du bruit au milieu ou à la fin, et le nombre de trames que l'en-tête Xing/Info annonce |
+| **`--full`** (`ffmpeg`) | le CRC de **chaque** trame, puis l'empreinte **MD5** du son décodé comparée à celle de `STREAMINFO` (16 et 24 bits, mono ou stéréo) — ce que fait `flac -t` | toute erreur de décodage, en plus : mesuré, il ne voit rien de plus sur des fichiers coupés ou troués |
+| **Coût** | la queue seulement ; `--full` lit et décode tout | le fichier en entier (ils sont petits) ; `--full` le décode en plus |
+
+Ce que ni l'un ni l'autre ne voit : **un octet altéré dans le son d'un `.mp3`**. Le format n'a aucune somme de contrôle (hors un CRC optionnel que presque aucun encodeur ne pose) et le décodeur accepte n'importe quel octet. Seul un `.flac` se vérifie à l'octet près — et seulement avec `--full` pour une trame abîmée au milieu : mesuré sur des fichiers volontairement abîmés, le contrôle rapide attrape les fichiers coupés mais pas un octet changé, que `--full` attrape par le CRC de la trame.
+
+`ffmpeg` n'est requis que pour `--full`, et **il faut le régler** : il sort en code 0 sur un `.flac` dont un octet a changé, sauf avec `-err_detect +crccheck+bitstream+buffer+explode`, que les scripts passent eux-mêmes. Un `.flac` sans empreinte dans `STREAMINFO` (certains encodeurs ne la calculent pas), en 20 ou 32 bits ou en multicanal n'est contrôlé que par ses CRC.
 
 ### Options communes
 
