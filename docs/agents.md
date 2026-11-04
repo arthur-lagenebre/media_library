@@ -1,6 +1,6 @@
 # Utiliser les agents et les skills Claude Code
 
-Le dépôt contient quatre **sous-agents** dans [.claude/agents/](../.claude/agents/) et quatre **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
+Le dépôt contient quatre **sous-agents** dans [.claude/agents/](../.claude/agents/) et cinq **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
 
 Un sous-agent est un assistant spécialisé : Claude Code lui confie une tâche, il travaille dans son propre contexte avec ses propres outils, puis ne renvoie que son compte rendu. Un skill est une marche à suivre que Claude charge dans la conversation en cours, sans changer d'interlocuteur.
 
@@ -67,9 +67,10 @@ Plusieurs agents peuvent travailler en parallèle s'ils touchent des fichiers di
 | `/check` | vérifier le dépôt avant un commit : toute la suite de tests, le découpage de `libraries/`, la compatibilité Python 3.8, l'absence de secret, le README | par toi, ou quand Claude le juge utile |
 | `/new-script` | créer un script dans les conventions (simulation par défaut, `--apply`, bilan et code de sortie, journal, console Windows, tests, README) | par toi, ou quand tu demandes d'ajouter un script |
 | `/ship` | livrer : vérifications, branche, commits, push et PR au format du dépôt | **par toi seulement** (`disable-model-invocation`) |
+| `/merged` | ranger après une fusion : vérifier que GitHub a fusionné la PR, synchroniser `main`, supprimer la branche fusionnée (`git branch -d`, jamais `-D`), vérifier que sa copie distante a disparu | par toi (`/merged`), ou quand tu dis que la PR est fusionnée |
 | `/ub-mode` | travailler selon les principes réduits : d'abord que ça marche, ensuite que ce soit juste, puis suivre la pratique | par toi |
 
-`/ship` ne se lance jamais seul : il commite, pousse et ouvre une PR. Il ne fusionne pas, c'est toujours à toi de le faire une fois la CI verte.
+`/ship` ne se lance jamais seul : il commite, pousse et ouvre une PR. Il ne fusionne pas, c'est toujours à toi de le faire une fois la CI verte. `/merged` est son pendant, une fois la fusion faite : il ne fusionne ni ne pousse rien, et ne supprime que la branche de la PR fusionnée.
 
 ## Ce qu'ils ne font pas
 
