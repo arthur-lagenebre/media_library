@@ -45,7 +45,8 @@ La numérotation du dossier doit tenir dans la collection, faute de quoi un doss
 L'identifiant TMDB retenu est INSCRIT DANS LE FILM : au passage suivant, il est relu et plus rien n'est cherché - l'association survit donc au renommage, et ne peut plus se tromper deux fois de la même façon.
 La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags : une médiathèque jamais étiquetée ne paie rien.
 Une association suspecte (durée incohérente, fiche presque inconnue) est signalée à chaque passage. Pour la faire taire SANS épingler l'identifiant dans le nom du fichier, ajoute-le à "metadata.ok", à côté du journal : une ligne par film, l'identifiant seul ou son lien TMDB tel que le journal le donne, '#' pour un commentaire. Les doutes de ces films ne sont plus signalés ; rien d'autre ne change.
-Le titre de COLLECTION inscrit dans le film ne garde pas le suffixe " - Saga" que TMDB ajoute en français : il est retiré d'office. Le " Collection" final ("Iron Man Collection") n'est retiré qu'avec ton accord, car il peut faire partie du nom ("The Criterion Collection") : la question est posée une fois par collection, dans le terminal, et la réponse est mémorisée dans "metadata.collections", à côté du journal ("nom TMDB => titre inscrit", une ligne par collection, modifiable à la main). Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le nom est gardé tel quel.
+Le titre de COLLECTION inscrit dans le film ne garde pas le suffixe " - Saga" que TMDB ajoute en français : il est retiré d'office. Le reste se CHOISIT : le nom TMDB, ce nom sans son " Collection" final ("Iron Man Collection" ; il peut faire partie du nom : "The Criterion Collection"), le nom de ton dossier de saga quand il en diffère, ou un titre que tu tapes ("autre"). La question est posée une fois par collection, dans le terminal - Entrée prend la proposition marquée "(défaut)", t prend le défaut pour toutes les suivantes (casse des titres comprise) - et la réponse est mémorisée dans "metadata.collections", à côté du journal ("nom TMDB => titre inscrit", une ligne par collection, modifiable à la main ; supprime la ligne pour que la question soit reposée). Une seule proposition, et il n'y a rien à choisir. Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le nom TMDB est gardé tel quel.
+La CASSE du titre se décide avec toi quand TMDB et ton fichier ne diffèrent que par elle : TMDB écrit ses titres français à l'anglaise ("28 Ans plus tard : Le Temple des morts"), ton fichier à la française ("28 ans plus tard - Le temple des morts"). Rien ne dit lequel est juste ("American History X" doit garder ses majuscules), donc la question est posée une fois par titre, dans le terminal - Entrée prend la casse du fichier pour un titre français, celle de TMDB pour un titre anglais -, et la réponse est mémorisée dans "metadata.titles", à côté du journal ("titre TMDB => titre inscrit", modifiable à la main). Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le titre TMDB est gardé tel quel.
 Ordre de priorité : --tmdb-id, puis l'identifiant épinglé dans le NOM, puis celui lu dans le FICHIER, puis la recherche.
 Si un passage à inscrit le mauvais identifiant, corrige-le en épinglant le bon dans le nom - "Dune (2021) [tmdbid-438631]" ou "Dune {tmdb-438631}" - le passage suivant le réécrira dans le fichier.
 
@@ -60,7 +61,7 @@ Options : --apply --verify --skip-done --artwork --no-tag --no-cache --no-ask
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
 
-À chaque passage, un JOURNAL est écrit à la racine de --dir (ou dans --log-dir, qui accueille alors aussi metadata.ok et metadata.collections - utile quand la médiathèque est en lecture seule) : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
+À chaque passage, un JOURNAL est écrit à la racine de --dir (ou dans --log-dir, qui accueille alors aussi metadata.ok, metadata.collections et metadata.titles - utile quand la médiathèque est en lecture seule) : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
 """
 
 from __future__ import annotations
@@ -73,12 +74,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, casing, lookup, mkv, naming  # noqa: E402
 from libraries.video.doubts import identity_doubts  # noqa: E402
-from libraries.video.movietags import collection_proposal, collection_title, movie_target  # noqa: E402
+from libraries.video.movietags import collection_choices, collection_title, movie_target  # noqa: E402
 from libraries.video.resolve import movie_details, resolve_movie, saga_corrections, tag_movie_id  # noqa: E402
-from libraries.video.passfiles import (APPROVED_NAME, COLLECTIONS_NAME, approved_path, collections_path,   # noqa: E402
-                                      read_approved, read_collections, remember_collection, write_log)
+from libraries.video.passfiles import (APPROVED_NAME, COLLECTIONS_NAME, TITLES_NAME, approved_path, collections_path,   # noqa: E402
+                                      read_approved, read_collections, read_titles, remember_collection, remember_title,
+                                      titles_path, write_log)
 from libraries.video.tmdb import Tmdb, TmdbAuthError  # noqa: E402
 
 
@@ -171,27 +173,52 @@ class Library:
     titles_file: object = None                    # où consigner une réponse (None : on ne mémorise rien)
     asking: bool = True                           # faux dès que l'entrée se ferme : inutile d'insister
     waiting: set = field(default_factory=set)     # collections laissées sans réponse, signalées une seule fois
+    casings: dict = field(default_factory=dict)   # {titre TMDB: titre à écrire}, lu dans metadata.titles
+    casings_file: object = None                   # où consigner une réponse sur la casse (None : on ne mémorise rien)
+    waiting_casings: set = field(default_factory=set)   # titres laissés sans réponse, signalés une seule fois
+    take_defaults: bool = False                   # vrai dès que l'utilisateur répond "t" : la proposition par défaut vaut pour toutes les questions suivantes
 
     def note(self, display, movie_id=None, statut=""):
         """Consigne le sort d'un film pour le journal de fin de passage."""
         self.journal.append((display, movie_id, statut))
 
 
-def settle_collection(movie, library, args):
+def collection_folder(entry):
+    """Nom du dossier de saga qui range ce film : le plus proche, quand le film ne vit pas dans son propre dossier ; "" sinon."""
+    return entry.contexts[0] if entry is not None and not entry.owns_folder and entry.contexts else ""
+
+
+def ask_collection(name, choices, default):
+    """Pose la question et rend le titre choisi - une des propositions, ou un titre tapé -, ou cli.ASK_SKIP / cli.ASK_STOP."""
+    print(f"      collection TMDB : '{name}'")
+    for rang, (title, origin) in enumerate(choices, 1):
+        print(f"      {rang}) {title}   ({origin})" + ("   (défaut)" if rang - 1 == default else ""))
+    print(f"      {len(choices) + 1}) autre : je tape le titre")
+    print(casing.HINT)
+    choice = cli.ask_choice(len(choices) + 1, default, True)
+    if choice in (cli.ASK_SKIP, cli.ASK_STOP, cli.ASK_ALL):
+        return choice
+    if choice < len(choices):
+        return choices[choice][0]
+    typed = cli.ask_text()
+    return cli.ASK_STOP if typed is None else (typed or cli.ASK_SKIP)
+
+
+def settle_collection(movie, library, args, entry=None):
     """Arrête le titre de collection à inscrire dans `movie` (clé `_collection_title`).
 
-    " - Saga" est retiré d'office (voir `collection_title`). Un " Collection" final, lui, n'est retiré qu'avec l'accord de l'utilisateur : "The Criterion Collection" ne doit pas devenir "The Criterion" sans qu'on le lui ait demandé. La réponse vaut pour toute la collection, et est mémorisée dans metadata.collections.
+    " - Saga" est retiré d'office (voir `collection_title`). Le reste se choisit : le nom TMDB, ce nom sans son " Collection" final (qui peut faire partie du nom : "The Criterion Collection" ne doit pas devenir "The Criterion" sans qu'on l'ait demandé), le nom de ton dossier de saga, ou un titre tapé. Une seule proposition, et il n'y a rien à choisir. La réponse vaut pour toute la collection, et est mémorisée dans metadata.collections.
 
     Sans terminal, sous --no-ask, en vérification ou sans étiquetage, rien n'est demandé et le nom est gardé tel quel.
     """
     name = ((movie.get("belongs_to_collection") or {}).get("name") or "").strip()
-    proposal = collection_proposal(name)
-    if not proposal:
+    if not name:
         return
     if name in library.titles:
         movie["_collection_title"] = library.titles[name]
         return
-    if args.verify or args.no_tag:
+    choices, default = collection_choices(name, collection_folder(entry))
+    if len(choices) < 2 or args.verify or args.no_tag:
         return
     if args.no_ask or not library.asking or not cli.can_ask():
         if name not in library.waiting:
@@ -199,16 +226,60 @@ def settle_collection(movie, library, args):
             print(f"      [COLLECTION] '{collection_title(name)}' gardé tel quel (non validé) ; "
                   f"à décider dans {COLLECTIONS_NAME}, ou relance dans un terminal")
         return
-    print(f"      collection TMDB : '{collection_title(name)}' -> retirer ' Collection' pour inscrire '{proposal}' ?")
-    answer = cli.ask_yes_no(True)
-    if answer is None:
+    if library.take_defaults:
+        title = choices[default][0]
+        print(f"      collection : '{name}' -> '{title}' (défaut)")
+    else:
+        title = ask_collection(name, choices, default)
+        if title == cli.ASK_ALL:
+            library.take_defaults, title = True, choices[default][0]
+    if title == cli.ASK_STOP:
         library.asking = False
         return
-    title = proposal if answer else collection_title(name)
+    if title == cli.ASK_SKIP:
+        return
     library.titles[name] = title
     movie["_collection_title"] = title
     if library.titles_file:
         remember_collection(library.titles_file, name, title)
+
+
+def settle_title(entry, movie, library, args):
+    """Arrête la casse du titre à inscrire dans `movie` (clé `title`).
+
+    TMDB écrit ses titres français à l'anglaise ("28 Ans plus tard"), et le fichier s'appelle "28 ans plus tard". Quand les deux ne diffèrent que par la casse, la question est posée une fois ; la réponse vaut pour tous les films de ce titre, et est mémorisée dans metadata.titles. Voir casing.py.
+
+    Sans terminal, sous --no-ask, en vérification ou sans étiquetage, rien n'est demandé et le titre TMDB est gardé tel quel.
+    """
+    title = movie.get("title") or ""
+    if title in library.casings:
+        movie["title"] = library.casings[title]
+        return
+    candidate = casing.recased(title, naming.parse_title_year(naming.extract_tmdb_id(entry.rawname)[1])[0])
+    if not candidate or args.verify or args.no_tag:
+        return
+    if args.no_ask or not library.asking or not cli.can_ask():
+        if title not in library.waiting_casings:
+            library.waiting_casings.add(title)
+            print(f"      [CASSE] '{title}' gardé tel quel (TMDB) ; ton fichier dit '{candidate}' : "
+                  f"à décider dans {TITLES_NAME}, ou relance dans un terminal")
+        return
+    if library.take_defaults:
+        answer = casing.default_choice(title, candidate)
+        print(f"      casse : '{title}' -> '{answer}' (défaut)")
+    else:
+        answer = casing.ask(title, candidate)
+        if answer == cli.ASK_ALL:
+            library.take_defaults, answer = True, casing.default_choice(title, candidate)
+    if answer == cli.ASK_STOP:
+        library.asking = False
+        return
+    if answer == cli.ASK_SKIP:
+        return
+    library.casings[title] = answer
+    movie["title"] = answer
+    if library.casings_file:
+        remember_title(library.casings_file, title, answer)
 
 
 def handle_movie(entry, movie, library, args, opts, tmdb):
@@ -218,7 +289,8 @@ def handle_movie(entry, movie, library, args, opts, tmdb):
         # Deux dossiers pour un même film : les deux sont étiquetés (une VF et une 4K le méritent).
         print(f"  [DOUBLON] même film que '{jumeau}' -> les deux seront traités")
     library.resolved.append(movie)
-    settle_collection(movie, library, args)
+    settle_collection(movie, library, args, entry)
+    settle_title(entry, movie, library, args)
     # Un film validé dans metadata.ok garde ses doutes pour lui : tu les as vus.
     doubts = [] if movie.get("id") in library.approved else identity_doubts(entry, movie, library.lectures)
     if doubts:
@@ -286,7 +358,7 @@ def resolve_pending(attente, library, args, opts, tmdb):
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
     ap.add_argument("--dir", required=True, help="Dossier de films, parcouru récursivement (dossiers de saga compris)")
-    ap.add_argument("--log-dir", help="Dossier où ranger metadata.log, metadata.ok et metadata.collections (défaut : la racine de --dir ; créé au besoin)")
+    ap.add_argument("--log-dir", help="Dossier où ranger metadata.log, metadata.ok, metadata.collections et metadata.titles (défaut : la racine de --dir ; créé au besoin)")
     ap.add_argument("--tmdb-id", help="Force l'id TMDB (utile si --dir ne contient qu'un seul film)")
     ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
@@ -329,10 +401,13 @@ def read_files(movies, args):
 
 def open_library(lectures, args):
     """La Library du passage, avec les films validés (metadata.ok) et les titres de collection arrêtés (metadata.collections)."""
-    titles_file = collections_path(args.dir, args)
-    library = Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)), titles=read_collections(titles_file), titles_file=titles_file)
+    titles_file, casings_file = collections_path(args.dir, args), titles_path(args.dir, args)
+    library = Library([], {}, lectures, approved=read_approved(approved_path(args.dir, args)), titles=read_collections(titles_file), titles_file=titles_file,
+                      casings=read_titles(casings_file), casings_file=casings_file)
     if library.titles:
         print(f"{len(library.titles)} titre(s) de collection arrêté(s) dans {COLLECTIONS_NAME}.\n")
+    if library.casings:
+        print(f"{len(library.casings)} casse(s) de titre arrêtée(s) dans {TITLES_NAME}.\n")
     if library.approved:
         print(f"{len(library.approved)} film(s) validé(s) dans {APPROVED_NAME} : leurs doutes ne sont pas signalés.\n")
     return library

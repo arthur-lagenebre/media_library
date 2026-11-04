@@ -17,6 +17,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
+from ..common.text import straight_quotes
 from ..common.tools import PARTIAL_SUFFIX, partial_path, read_timeout, run_tool  # noqa: F401  (réexportés : mkv.run_tool, mkv.partial_path...)
 from . import ebml
 from .tmdb import TmdbError
@@ -409,8 +410,8 @@ def unique(seq):
 
 
 def simple(name, value):
-    """Une ligne <Simple> de tag Matroska (contenu echappe)."""
-    return f"      <Simple><Name>{escape(name)}</Name><String>{escape(str(value))}</String></Simple>"
+    """Une ligne <Simple> de tag Matroska (contenu echappe, apostrophes et guillemets écrits droits)."""
+    return f"      <Simple><Name>{escape(name)}</Name><String>{escape(straight_quotes(str(value)))}</String></Simple>"
 
 
 def tag_block(target_type, lines):
@@ -466,6 +467,10 @@ class Target:
     date: str | None = None        # "AAAA-MM-JJ"
     tags_xml: str = ""
     poster: str | None = None      # chemin TMDB de la jaquette à embarquer
+
+    def __post_init__(self):
+        if isinstance(self.title, str):                # TMDB peut rendre un titre nul : rien à redresser
+            self.title = straight_quotes(self.title)    # le titre du conteneur s'écrit comme les tags : apostrophes et guillemets droits
 
 
 def track_preview_lines(info, opts):

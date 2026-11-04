@@ -340,6 +340,34 @@ class TestTagsVises(unittest.TestCase):
         duo = [dict(credit("Thiéfaine"), joinphrase=" / "), {"name": "Mairet", "joinphrase": "", "artist": {"id": "y", "name": "Mairet", "sort-name": "Mairet"}}]
         self.assertEqual(album.credit_name(duo, artist="Hubert-Félix Thiéfaine"), "Hubert-Félix Thiéfaine / Mairet")
 
+    def test_apostrophes_et_guillemets_typographiques_ecrits_droits(self):
+        # MusicBrainz écrit souvent l'apostrophe et les guillemets courbes : la médiathèque n'en garde qu'une écriture, la droite, dans le titre, l'album et les artistes.
+        courbe, ouvrant, fermant = chr(0x2019), chr(0x201C), chr(0x201D)
+        credit = {"name": f"Guns N{courbe} Roses", "joinphrase": "", "artist": {"id": "gnr", "name": f"Guns N{courbe} Roses", "sort-name": f"Guns N{courbe} Roses"}}
+        sortie = dict(OUTRUN, title=f"L{courbe}album", **{"artist-credit": [credit]})
+        sortie["media"] = [{"position": 1, "format": "CD", "track-count": 1, "tracks": [piste(1, f"C{courbe}est {ouvrant}ça{fermant}", **{"artist-credit": [credit]})]}]
+        tags = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0])
+        self.assertEqual(self.valeurs(tags, "TITLE"), ["C'est \"ça\""])
+        self.assertEqual(self.valeurs(tags, "ALBUM"), ["L'album"])
+        for cle in ("ARTIST", "ALBUMARTIST", "ARTISTSORT", "ALBUMARTISTSORT"):
+            self.assertEqual(self.valeurs(tags, cle), ["Guns N' Roses"], cle)
+        self.assertFalse([v for _, v in tags if any(c in v for c in (courbe, ouvrant, fermant))])
+
+    def test_artiste_impose_par_le_dossier_ecrit_droit_lui_aussi(self):
+        courbe = chr(0x2019)
+        credit = {"name": "Kavinsky", "joinphrase": "", "artist": {"id": "art-1", "name": "Kavinsky", "sort-name": "Kavinsky"}}
+        sortie = dict(OUTRUN, **{"artist-credit": [credit]})
+        sortie["media"] = [{"position": 1, "format": "CD", "track-count": 1, "tracks": [piste(1, "Prelude", **{"artist-credit": [credit]})]}]
+        tags = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0], artist=f"Kavinsky{courbe}s")
+        self.assertEqual(self.valeurs(tags, "ARTIST"), ["Kavinsky's"])
+
+    def test_une_apostrophe_courbe_deja_ecrite_est_une_difference(self):
+        # --verify, --skip-done et l'écriture la voient : une médiathèque déjà étiquetée se met à jour au prochain passage.
+        courbe = chr(0x2019)
+        cible = [("TITLE", "C'est ça")]
+        self.assertEqual(album.differences([("TITLE", f"C{courbe}est ça")], cible), [("TITLE", [f"C{courbe}est ça"], ["C'est ça"])])
+        self.assertEqual(album.differences([("TITLE", "C'est ça")], cible), [])
+
     def test_valeurs_multiples_sans_doublon(self):
         tags = self.tags()
         self.assertEqual(self.valeurs(tags, "LABEL"), ["Record Makers", "Vertigo"])

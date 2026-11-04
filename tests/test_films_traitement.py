@@ -40,6 +40,18 @@ class TestTagsDuFilm(unittest.TestCase):
         xml = movietags.movie_target(dict(DUNE, overview=""), OPTS).tags_xml
         self.assertNotIn("SYNOPSIS", xml)
 
+    def test_apostrophes_et_guillemets_courbes_ecrits_droits(self):
+        courbe, ouvrant, fermant = chr(0x2019), chr(0x201C), chr(0x201D)
+        film = dict(DUNE, title=f"L{courbe}Empire contre-attaque", overview=f"Un {ouvrant}désert{fermant} d{courbe}épices.",
+                    belongs_to_collection={"name": f"La saga d{courbe}Étoiles - Saga"}, credits={"cast": [{"name": "A. Acteur", "character": f"L{courbe}Oracle"}], "crew": []})
+        cible = movietags.movie_target(film, OPTS)
+        self.assertEqual(cible.title, "L'Empire contre-attaque")
+        self.assertIn('Un "désert" d\'épices.', cible.tags_xml)
+        self.assertIn("A. Acteur (L'Oracle)", cible.tags_xml)
+        self.assertIn("La saga d'Étoiles", cible.tags_xml)
+        for courbe_ecrite in (courbe, ouvrant, fermant):
+            self.assertNotIn(courbe_ecrite, cible.tags_xml)
+
     def test_identifiant_inscrit_dans_le_film(self):
         self.assertIn("movie/438631", movietags.movie_target(DUNE, OPTS).tags_xml)
 

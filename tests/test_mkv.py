@@ -276,6 +276,22 @@ class TestTagsXML(unittest.TestCase):
         self.assertEqual(root.find("./Tag/Simple/String").text, "Rock & <Roll>")
         self.assertEqual(root.find("./Tag/Targets/TargetTypeValue").text, "50")
 
+    def test_apostrophes_et_guillemets_ecrits_droits(self):
+        # TMDB écrit souvent l'apostrophe et les guillemets courbes : un seul jeu de caractères dans les tags, comme pour la musique.
+        courbe, ouvrant, fermant, droit = chr(0x2019), chr(0x201C), chr(0x201D), chr(0x22)
+        xml = mkv.tags_document([mkv.tag_block(50, [mkv.simple("SYNOPSIS", f"L{courbe}île {ouvrant}secrète{fermant}")])])
+        self.assertEqual(ElementTree.fromstring(xml).find("./Tag/Simple/String").text, f"L'île {droit}secrète{droit}")
+
+    def test_titre_du_conteneur_ecrit_droit_et_compare_tel_quel(self):
+        courbe = chr(0x2019)
+        cible = mkv.Target(title=f"L{courbe}île")
+        self.assertEqual(cible.title, "L'île")
+        # Un fichier déjà étiqueté avec l'apostrophe courbe n'est plus conforme : --verify le signale, le passage suivant le réécrit.
+        deja = {"container": {"properties": {"title": f"L{courbe}île"}}}
+        self.assertIn(("titre", False, f"L{courbe}île"), mkv.verify(deja, cible, mkv.Options(cover=False, date=False)))
+        droit = {"container": {"properties": {"title": "L'île"}}}
+        self.assertIn(("titre", True, "L'île"), mkv.verify(droit, cible, mkv.Options(cover=False, date=False)))
+
     def test_credits_sans_doublon_et_plafonnes(self):
         crew = [{"name": "A", "job": "Director", "department": "Directing"}, {"name": "A", "job": "Director", "department": "Directing"}, {"name": "B", "department": "Writing"}]
         cast = [{"name": f"Acteur{i}", "character": f"Role{i}"} for i in range(5)]
