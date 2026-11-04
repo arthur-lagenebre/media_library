@@ -1,4 +1,4 @@
-"""TV_Shows/Metadata.py : le plan d'une saison, la vérification, l'écriture, et le déroulé complet avec étiquetage.
+"""Video/TV_Shows/Metadata.py : le plan d'une saison, la vérification, l'écriture, et le déroulé complet avec étiquetage.
 
 Les lectures de fichiers (mkvmerge, ffprobe) et l'écriture (mkvpropedit) sont simulées : on regarde ce que le script décide d'écrire, fichier par fichier, et ce qu'il en dit.
 """
@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import mkv
-from scripts.TV_Shows import Metadata as series
+from scripts.Video.TV_Shows import Metadata as series
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
 from tests.test_flux import FauxTmdbSerie
 

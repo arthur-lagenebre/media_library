@@ -10,36 +10,35 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 
 | Script | Rôle |
 | --- | --- |
-| [scripts/Movies/Metadata.py](scripts/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes  |
-| [scripts/TV_Shows/Metadata.py](scripts/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
+| [scripts/Video/Movies/Metadata.py](scripts/Video/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes  |
+| [scripts/Video/TV_Shows/Metadata.py](scripts/Video/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
 | [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
 | [scripts/Music/Discography.py](scripts/Music/Discography.py) | Pose dans le dossier de chaque artiste la pochette `1997 - OK Computer.jpg` (ou un fichier vide `1997 - OK Computer` sans pochette) de chaque album qu'il a sorti d'après MusicBrainz et que la médiathèque n'a pas ; les albums possédés ne sont jamais touchés |
-| [scripts/TV_Shows/Rename_Episodes.py](scripts/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
-| [scripts/Movies/Rename_Movies.py](scripts/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
+| [scripts/Video/TV_Shows/Rename_Episodes.py](scripts/Video/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
+| [scripts/Video/Movies/Rename_Movies.py](scripts/Video/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
-| [scripts/Maintenance/Video/Verify_Mkv.py](scripts/Maintenance/Video/Verify_Mkv.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
+| [scripts/Video/Verify_Mkv.py](scripts/Video/Verify_Mkv.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
 | [scripts/Music/Verify_Flac.py](scripts/Music/Verify_Flac.py) | Contrôle les `.flac` d'un dossier, en lecture seule : fichier coupé, CRC de chaque trame, empreinte MD5 du son |
 | [scripts/Music/Verify_Mp3.py](scripts/Music/Verify_Mp3.py) | Contrôle les `.mp3` d'un dossier, en lecture seule : fichier coupé, trou, bruit dans la chaîne de trames, nombre de trames annoncé |
-| [scripts/Converters/Video/Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
-| [scripts/Converters/Video/Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
+| [scripts/Video/Avi_To_Mkv.py](scripts/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
+| [scripts/Video/Mp4_To_Mkv.py](scripts/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
 | [scripts/Music/Wav_To_Flac.py](scripts/Music/Wav_To_Flac.py) | Encode les `.wav` en `.flac`, sans perte et vérifié : le son décodé des deux fichiers doit avoir la même empreinte |
 
-Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine comme [libraries/](libraries/) : un dossier par domaine, et tous les scripts de musique à plat dans `scripts/Music/` (la vidéo n'est pas encore regroupée de la même façon). Le reste est interne :
+Les scripts qu'on lance vivent sous [scripts/](scripts/), rangés par domaine comme [libraries/](libraries/) : un dossier par domaine, jamais un dossier par type d'action. Les scripts de musique sont à plat dans `scripts/Music/` ; ceux de vidéo sont à plat dans `scripts/Video/`, sauf l'étiquetage et le renommage, qui existent en deux exemplaires (films, séries) et ont chacun leur sous-dossier. Le reste est interne :
 
 ```text
-scripts/Movies/        étiquetage et renommage des films
-scripts/TV_Shows/      la même chose pour les séries
-scripts/Music/         tout ce qui se lance pour la musique : étiquetage et renommage des albums depuis MusicBrainz, pochettes, albums manquants, conversion des .wav en .flac, contrôle des .flac et des .mp3
-scripts/Maintenance/   contrôle des fichiers vidéo, sans rapport avec TMDB : Video/ (structure des .mkv, avec réparation)
-scripts/Converters/    conversions vidéo qui précèdent l'étiquetage : Video/ (conteneur .mkv)
-libraries/common/      ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage, GET HTTP avec réessais, disque local ou partage réseau
-libraries/video/       tout ce qui touche aux films et aux séries
-libraries/music/       tout ce qui touche à la musique
-libraries/books/       tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
-tests/                 les tests
-docs/                  le suivi (TODO) et l'usage des agents et des skills Claude Code
-.claude/               les agents et les skills du dépôt (ce dossier doit rester à la racine)
+scripts/Video/Movies/   étiquetage et renommage des films
+scripts/Video/TV_Shows/ la même chose pour les séries
+scripts/Video/          à plat : conversions en .mkv qui précèdent l'étiquetage (Avi_To_Mkv.py, Mp4_To_Mkv.py) et contrôle de la structure des .mkv, avec réparation (Verify_Mkv.py)
+scripts/Music/          tout ce qui se lance pour la musique : étiquetage et renommage des albums depuis MusicBrainz, pochettes, albums manquants, conversion des .wav en .flac, contrôle des .flac et des .mp3
+libraries/common/       ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage, GET HTTP avec réessais, disque local ou partage réseau
+libraries/video/        tout ce qui touche aux films et aux séries
+libraries/music/        tout ce qui touche à la musique
+libraries/books/        tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
+tests/                  les tests
+docs/                   le suivi (TODO) et l'usage des agents et des skills Claude Code
+.claude/                les agents et les skills du dépôt (ce dossier doit rester à la racine)
 ```
 
 [libraries/common/](libraries/common/) porte ce qui ne dépend d'aucun domaine : cache disque, ligne de commande, bilan d'un passage, noms de fichiers, renommage sans perte, tri des titres, GET HTTP avec réessais (partagé par TMDB et MusicBrainz), reconnaissance d'un partage réseau (les lectures de `mkvmerge`, `ffprobe` et `mkvextract` y reçoivent un délai de 120 s, pour qu'un NAS qui ne répond plus ne fige pas le passage). [libraries/video/](libraries/video/) porte l'accès TMDB, la lecture/écriture des `.mkv`, l'analyse des noms de fichiers, le chemin commun des conversions en `.mkv` (`Avi_To_Mkv.py` et `Mp4_To_Mkv.py`), les tags visés pour un film ou un épisode, les raisons de douter d'une association, l'association d'un fichier à sa fiche TMDB (et le replacement des films par leur saga) et les fichiers d'un passage de `Movies/Metadata.py` (`metadata.log`, `metadata.ok`, `metadata.collections`). [libraries/music/](libraries/music/) porte l'accès MusicBrainz, la lecture/écriture des `.flac` et des `.mp3`, la reconnaissance des albums, le catalogue et les albums manquants. `video` et `music` ne se connaissent pas : chacun n'emprunte qu'à `common` (un test le vérifie). Aucune dépendance pip : uniquement la bibliothèque standard.
@@ -88,21 +87,21 @@ Un dossier de saga n'est pas une réunion de fichiers indépendants : c'est une 
 À chaque passage, un **journal** est écrit à la racine de `--dir` : `metadata.log` donne le lien TMDB de chaque film trouvé, et groupe en fin de fichier ceux qui n'en ont pas — non associés, ou laissés en attente d'une réponse.
 
 ```powershell
-python scripts\Movies\Metadata.py --dir "D:\Films"                    # simulation
-python scripts\Movies\Metadata.py --dir "D:\Films" --apply            # applique
-python scripts\Movies\Metadata.py --dir "D:\Films\Dune (2021)" --tmdb-id 438631 --apply   # force l'id
-python scripts\Movies\Metadata.py --dir "D:\Films" --no-tag --artwork --apply   # folder.jpg seul, sans toucher aux .mkv
+python scripts\Video\Movies\Metadata.py --dir "D:\Films"                    # simulation
+python scripts\Video\Movies\Metadata.py --dir "D:\Films" --apply            # applique
+python scripts\Video\Movies\Metadata.py --dir "D:\Films\Dune (2021)" --tmdb-id 438631 --apply   # force l'id
+python scripts\Video\Movies\Metadata.py --dir "D:\Films" --no-tag --artwork --apply   # folder.jpg seul, sans toucher aux .mkv
 ```
 
 L'identifiant TMDB retenu est **inscrit dans le film** (tag Matroska `TMDB`, au format `movie/1234`) : au passage suivant il est relu, plus rien n'est cherché, et l'association survit au renommage. La relecture ne coûte un sous-processus de plus que sur les fichiers qui déclarent des tags — une médiathèque jamais étiquetée ne paie rien. Priorité : `--tmdb-id`, puis l'identifiant épinglé dans le **nom**, puis celui lu dans le **fichier**, puis la recherche.
 
 Chaque association est aussi **contrôlée** : un film dont la durée sur le disque sort de 75 % à 135 % de celle que TMDB annonce (à 10 min près), ou dont la fiche n'a presque aucun vote, est signalé sous `/!\`, repris en fin de passage sous `A VERIFIER` et marqué dans `metadata.log`. Les versions longues et l'accélération PAL passent ; un court métrage homonyme pris pour le film, ou un fichier tronqué, ne passent pas. Un identifiant épinglé dans le nom n'est jamais remis en cause. Pour faire taire un doute **sans toucher au nom du fichier**, ajoute le film à `metadata.ok`, rangé avec `metadata.log` : une ligne par film, l'identifiant seul ou son lien TMDB recopié du journal, `#` pour un commentaire (`https://www.themoviedb.org/movie/1437733  # Bref. De bons amis, ok`). Ses doutes ne sont plus signalés ; rien d'autre ne change.
 
-Comme toute la reconnaissance repose sur les noms, [Rename_Movies.py](scripts/Movies/Rename_Movies.py) le remet d'aplomb depuis TMDB — et `--pin-id` y écrit l'identifiant, après quoi plus rien n'est cherché ni ne peut se tromper :
+Comme toute la reconnaissance repose sur les noms, [Rename_Movies.py](scripts/Video/Movies/Rename_Movies.py) le remet d'aplomb depuis TMDB — et `--pin-id` y écrit l'identifiant, après quoi plus rien n'est cherché ni ne peut se tromper :
 
 ```powershell
-python scripts\Movies\Rename_Movies.py --dir "D:\Films"                    # simulation
-python scripts\Movies\Rename_Movies.py --dir "D:\Films" --apply --pin-id   # renomme et épingle
+python scripts\Video\Movies\Rename_Movies.py --dir "D:\Films"                    # simulation
+python scripts\Video\Movies\Rename_Movies.py --dir "D:\Films" --apply --pin-id   # renomme et épingle
 ```
 
 Un préfixe d'ordre de saga est conservé (`1 - Iron Man` → `1 - Iron Man (2008)`), les sous-titres suivent leur film en mode « `.mkv` à plat », et un identifiant déjà épinglé n'est jamais retiré.
@@ -114,8 +113,8 @@ Sous `--no-tag`, les films ne sont lus que pour leurs tags et leur durée, en Py
 Un sous-dossier `Saison N` par saison, les `.mkv` dedans, préfixés par leur numéro d'épisode. `--dir` peut aussi pointer directement sur un dossier de saison.
 
 ```powershell
-python scripts\TV_Shows\Rename_Episodes.py --dir "D:\Series\Ma Serie" --apply
-python scripts\TV_Shows\Metadata.py --dir "D:\Series\Ma Serie" --apply
+python scripts\Video\TV_Shows\Rename_Episodes.py --dir "D:\Series\Ma Serie" --apply
+python scripts\Video\TV_Shows\Metadata.py --dir "D:\Series\Ma Serie" --apply
 ```
 
 Les sous-titres posés à côté d'une vidéo (`.srt`, `.ass`, `.idx`/`.sub`…) sont renommés avec elle, en conservant ce qui suit le nom : `S01E02.fr.forced.srt` → `02 - Titre.fr.forced.srt`.
@@ -230,28 +229,28 @@ Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, n
 
 ### Convertir les AVI
 
-Un `.avi` ne sait rien porter : ni jaquette, ni synopsis, ni identifiant TMDB. Tant qu'un film reste dans ce conteneur, `Metadata.py` n'a nulle part où écrire — [Avi_To_Mkv.py](scripts/Converters/Video/Avi_To_Mkv.py) fait donc la passe qui précède l'étiquetage. Rien n'est réencodé : les pistes sont recopiées telles quelles, à la vitesse du disque, et l'image comme le son ressortent identiques.
+Un `.avi` ne sait rien porter : ni jaquette, ni synopsis, ni identifiant TMDB. Tant qu'un film reste dans ce conteneur, `Metadata.py` n'a nulle part où écrire — [Avi_To_Mkv.py](scripts/Video/Avi_To_Mkv.py) fait donc la passe qui précède l'étiquetage. Rien n'est réencodé : les pistes sont recopiées telles quelles, à la vitesse du disque, et l'image comme le son ressortent identiques.
 
 ```powershell
-python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films"                          # simulation
-python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films" --apply                  # convertit
-python scripts\Converters\Video\Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi vérifié
+python scripts\Video\Avi_To_Mkv.py --dir "D:\Films"                          # simulation
+python scripts\Video\Avi_To_Mkv.py --dir "D:\Films" --apply                  # convertit
+python scripts\Video\Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi vérifié
 ```
 
 Les sous-titres posés à côté sont embarqués au passage, et leur **encodage est mesuré fichier par fichier** : `mkvmerge` suppose de l'UTF-8, alors qu'un `.srt` d'époque est en général en `windows-1252` — et le malentendu ne se voit qu'aux accents cassés, souvent une fois l'original effacé. La langue est lue dans le suffixe du nom (`Film.fr.srt` → `fre`), `--sub-lang` tranche pour ceux qui n'en ont pas, et un `.sub` est laissé à son `.idx`, qui l'embarque déjà. `--subs none` les ignore, `--subs require` ne convertit que les films qui en ont.
 
 La **durée** du `.mkv` produit est comparée à celle de la source (`--tolerance`, 2 s par défaut) : c'est ce qui attrape un index AVI qui ment ou un flux mal recopié, que `mkvmerge` ne signale pas toujours. `--delete-source` n'efface l'original qu'après ce contrôle — et réclame donc `ffprobe`. Le `.mkv` s'écrit d'abord sous un nom provisoire (`Film.mkv.part`) et ne prend son nom qu'une fois ce contrôle passé : un échec de `mkvmerge`, un écart de durée ou un Ctrl-C ne laissent aucun `.mkv` tronqué, que le passage suivant aurait pris pour un film déjà converti — et `--overwrite` ne détruit l'ancien qu'au moment de le remplacer. Un `conversion.log` est écrit à la racine de `--dir`, et le script sort en **code 1** s'il reste un fichier non converti.
 
-`--lang` donne la langue des pistes audio (`fre` par défaut, code ISO 639-2 à trois lettres), `--default-audio` et `--default-sub` posent les drapeaux « piste par défaut », `--title` inscrit le nom du fichier comme titre du segment, et `--output-dir` écrit ailleurs qu'à côté de la source. `--overwrite` remplace un `.mkv` déjà présent (sans lui, le fichier est passé), `--sub-charset` fixe l'encodage de repli des sous-titres qui ne sont pas en UTF-8 (`windows-1252` par défaut) et `--log` place le journal ailleurs qu'à la racine de `--dir`. Le `.mkv` obtenu est prêt pour [Metadata.py](scripts/Movies/Metadata.py), qui y écrira le reste.
+`--lang` donne la langue des pistes audio (`fre` par défaut, code ISO 639-2 à trois lettres), `--default-audio` et `--default-sub` posent les drapeaux « piste par défaut », `--title` inscrit le nom du fichier comme titre du segment, et `--output-dir` écrit ailleurs qu'à côté de la source. `--overwrite` remplace un `.mkv` déjà présent (sans lui, le fichier est passé), `--sub-charset` fixe l'encodage de repli des sous-titres qui ne sont pas en UTF-8 (`windows-1252` par défaut) et `--log` place le journal ailleurs qu'à la racine de `--dir`. Le `.mkv` obtenu est prêt pour [Metadata.py](scripts/Video/Movies/Metadata.py), qui y écrira le reste.
 
 ### Convertir les MP4
 
-Même passe pour les `.mp4`, avec [Mp4_To_Mkv.py](scripts/Converters/Video/Mp4_To_Mkv.py). Un `.mp4` sait porter une jaquette et quelques tags, mais à la mode iTunes : `Metadata.py` écrit des tags **Matroska**, et n'a donc nulle part où les poser tant que le film reste dans ce conteneur. Rien n'est réencodé non plus — les chapitres suivent, la jaquette et les tags iTunes sont laissés derrière, puisque `Metadata.py` les réécrit ensuite depuis TMDB.
+Même passe pour les `.mp4`, avec [Mp4_To_Mkv.py](scripts/Video/Mp4_To_Mkv.py). Un `.mp4` sait porter une jaquette et quelques tags, mais à la mode iTunes : `Metadata.py` écrit des tags **Matroska**, et n'a donc nulle part où les poser tant que le film reste dans ce conteneur. Rien n'est réencodé non plus — les chapitres suivent, la jaquette et les tags iTunes sont laissés derrière, puisque `Metadata.py` les réécrit ensuite depuis TMDB.
 
 ```powershell
-python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films"                          # simulation
-python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply                  # convertit
-python scripts\Converters\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface le .mp4 vérifié
+python scripts\Video\Mp4_To_Mkv.py --dir "D:\Films"                          # simulation
+python scripts\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply                  # convertit
+python scripts\Video\Mp4_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface le .mp4 vérifié
 ```
 
 Une différence de fond avec les `.avi` : un `.mp4` **déclare souvent la langue de ses pistes**, là où un `.avi` n'en dit jamais rien. Elle est donc gardée telle quelle, et `--lang` ne sert qu'aux pistes qui n'en ont pas (`und`) — sans quoi un rip anglais correctement étiqueté ressortirait en français. `--force-lang` réétiquette tout, pour un fichier qui se trompe, et le bilan de chaque conversion dit quelles langues ont été conservées.
@@ -279,13 +278,13 @@ Les tags du `.wav` (titre, artiste, album, année, numéro de piste…) suivent 
 Un `.mkv` peut se lire du début à la fin et avoir le conteneur abîmé — une fin de fichier écrite à moitié après une coupure, par exemple. `mkvpropedit` s'en plaint alors à chaque passage (« erreur dans la structure du fichier Matroska à la position … ») et **rien d'autre ne le dit** : mesuré sur des fichiers volontairement cassés, `mkvmerge` (même en démultiplexant tout vers `NUL`) et `mkvinfo` se resynchronisent en silence et sortent en code 0.
 
 ```powershell
-python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films"                # contrôle rapide
-python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films\Ghibli" --full  # toute la chaîne, clusters compris
-python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films" --repair       # contrôle puis remultiplexe
-python scripts\Maintenance\Video\Verify_Mkv.py --dir "D:\Films" --no-recursive # cet étage seul
+python scripts\Video\Verify_Mkv.py --dir "D:\Films"                # contrôle rapide
+python scripts\Video\Verify_Mkv.py --dir "D:\Films\Ghibli" --full  # toute la chaîne, clusters compris
+python scripts\Video\Verify_Mkv.py --dir "D:\Films" --repair       # contrôle puis remultiplexe
+python scripts\Video\Verify_Mkv.py --dir "D:\Films" --no-recursive # cet étage seul
 ```
 
-[Verify_Mkv.py](scripts/Maintenance/Video/Verify_Mkv.py) suit lui-même la chaîne des éléments EBML, en lecture seule. Par défaut il s'en tient aux points de repère — l'index, la table Cues, la queue du fichier — dont le prix **ne dépend pas de la taille du film** : mesuré sur un partage réseau, 489 films et 4,49 To en 15 minutes (dont les deux tiers passés dans la lecture d'en-tête par `mkvmerge`). `--full` descend dans les clusters, mais lit chaque fichier en entier (compter ~10 s par Go sur un partage réseau) ; il voit alors tout ce que voit `mkvpropedit`, plus la troncature.
+[Verify_Mkv.py](scripts/Video/Verify_Mkv.py) suit lui-même la chaîne des éléments EBML, en lecture seule. Par défaut il s'en tient aux points de repère — l'index, la table Cues, la queue du fichier — dont le prix **ne dépend pas de la taille du film** : mesuré sur un partage réseau, 489 films et 4,49 To en 15 minutes (dont les deux tiers passés dans la lecture d'en-tête par `mkvmerge`). `--full` descend dans les clusters, mais lit chaque fichier en entier (compter ~10 s par Go sur un partage réseau) ; il voit alors tout ce que voit `mkvpropedit`, plus la troncature.
 
 `--dir` est parcouru **récursivement**, comme partout ailleurs. `--no-recursive` s'en tient aux `.mkv` posés directement dedans : de quoi contrôler l'étage d'une médiathèque — les films rangés à plat — sans relire les dossiers de films qu'elle contient, ni les repasser après coup un par un.
 

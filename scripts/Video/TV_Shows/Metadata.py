@@ -64,7 +64,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, casing, lookup, mkv, naming  # noqa: E402

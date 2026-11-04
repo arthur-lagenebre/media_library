@@ -20,6 +20,10 @@ FORBIDDEN = {
 }
 
 
+# Les dossiers de scripts/ : un par domaine, et le domaine de libraries/ qui est le leur.
+SCRIPT_DOMAINS = {"Music": "music", "Video": "video", "Books": "books"}
+
+
 def imported_domains(path):
     """Domaines de libraries/ qu'un fichier importe : {'common', 'video', ...}, imports relatifs hors-paquet compris."""
     found = set()
@@ -46,17 +50,28 @@ class TestDependances(unittest.TestCase):
                 with self.subTest(path.relative_to(ROOT).as_posix()):
                     self.assertEqual(imported_domains(path) & forbidden, set())
 
-    def test_les_scripts_de_musique_n_importent_pas_la_video(self):
-        dossiers = [ROOT / "scripts" / "Music"]
-        for path in sorted(p for dossier in dossiers for p in dossier.glob("*.py")):
-            with self.subTest(path.relative_to(ROOT).as_posix()):
-                self.assertNotIn("video", imported_domains(path))
+    def test_scripts_ne_contient_que_des_dossiers_de_domaine(self):
+        # Un dossier par domaine, jamais par type d'action : pas de Converters/ ni de Maintenance/.
+        dossiers = {p.name for p in (ROOT / "scripts").iterdir() if p.is_dir() and p.name != "__pycache__"}
+        self.assertEqual(dossiers - SCRIPT_DOMAINS.keys(), set())
 
-    def test_les_scripts_de_livres_n_importent_ni_la_video_ni_la_musique(self):
+    def test_les_scripts_n_importent_que_common_et_leur_domaine(self):
+        # Les scripts de scripts/<Domaine>/ (sous-dossiers compris : Video/Movies, Video/TV_Shows) n'ont le droit qu'à libraries/common/ et à leur propre domaine.
         # Ce dépôt n'a pas (encore) de scripts/Books : les livres portent déjà leur fiche, libraries/books/ sert à media_hub qui les lit. La garde attend le premier script, et passe à vide d'ici là.
-        for path in sorted((ROOT / "scripts" / "Books").glob("*.py")):
-            with self.subTest(path.relative_to(ROOT).as_posix()):
-                self.assertEqual(imported_domains(path) & {"video", "music"}, set())
+        for dossier, domaine in SCRIPT_DOMAINS.items():
+            interdits = {"video", "music", "books"} - {domaine}
+            for path in sorted((ROOT / "scripts" / dossier).rglob("*.py")):
+                with self.subTest(path.relative_to(ROOT).as_posix()):
+                    self.assertEqual(imported_domains(path) & interdits, set())
+
+    def test_la_garde_des_scripts_voit_tous_les_scripts(self):
+        # Une garde qui ne lirait pas les sous-dossiers ne garderait pas la vidéo.
+        vus = {p.relative_to(ROOT / "scripts").as_posix() for p in (ROOT / "scripts").rglob("*.py")}
+        attendus = {"Video/Movies/Metadata.py", "Video/Movies/Rename_Movies.py",
+                    "Video/TV_Shows/Metadata.py", "Video/TV_Shows/Rename_Episodes.py",
+                    "Video/Avi_To_Mkv.py", "Video/Mp4_To_Mkv.py", "Video/Verify_Mkv.py"}
+        attendus |= {"Music/" + nom + ".py" for nom in ("Cover", "Discography", "Metadata", "Rename_Tracks", "Verify_Flac", "Verify_Mp3", "Wav_To_Flac")}
+        self.assertTrue(attendus <= vus, attendus - vus)
 
     def test_le_detecteur_voit_un_import_interdit(self):
         # Un test de garde qui ne détecterait rien ne garderait rien.

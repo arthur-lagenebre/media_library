@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.TV_Shows import Rename_Episodes as rename
+from scripts.Video.TV_Shows import Rename_Episodes as rename
 
 SAISON = {"season_number": 1, "episodes": [{"episode_number": 1, "name": "Le debut"}, {"episode_number": 2, "name": "Suite"},]}
 

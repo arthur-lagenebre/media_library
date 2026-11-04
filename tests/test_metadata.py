@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import cast, doubts, episodetags, lookup, mkv, movietags, naming, passfiles, resolve
 from libraries.video.tmdb import TmdbError
 from libraries.common.report import Report
-from scripts.Movies import Metadata as films
-from scripts.TV_Shows import Metadata as series
+from scripts.Video.Movies import Metadata as films
+from scripts.Video.TV_Shows import Metadata as series
 
 OPTS = mkv.Options(cover=False, date=True, audio_names=True, sub_names=True, flags=True, stats=True, image_size="w780")
 SAISON = {"season_number": 1, "name": "Saison 1", "poster_path": "/p.jpg", "episodes": [ {"episode_number": 1, "name": "Pilote", "overview": "Debut", "air_date": "2024-01-02", "crew": [{"name": "R. Real", "job": "Director", "department": "Directing"}], "guest_stars": [{"name": "A. Acteur", "character": "Lui-meme"}], "vote_average": 7.84, "vote_count": 12, "still_path": "/s1.jpg"}, {"episode_number": 2, "name": "Suite", "air_date": "2024-01-09"} ]}

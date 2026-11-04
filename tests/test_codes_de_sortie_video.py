@@ -14,10 +14,10 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video.tmdb import TmdbError
-from scripts.Movies import Metadata as films
-from scripts.Movies import Rename_Movies as renommeur
-from scripts.TV_Shows import Metadata as series
-from scripts.TV_Shows import Rename_Episodes as episodes
+from scripts.Video.Movies import Metadata as films
+from scripts.Video.Movies import Rename_Movies as renommeur
+from scripts.Video.TV_Shows import Metadata as series
+from scripts.Video.TV_Shows import Rename_Episodes as episodes
 from tests.test_flux import FauxTmdb, FauxTmdbSerie
 
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import remux
-from scripts.Converters.Video import Avi_To_Mkv as conversion
+from scripts.Video import Avi_To_Mkv as conversion
 
 
 def options(**overrides):

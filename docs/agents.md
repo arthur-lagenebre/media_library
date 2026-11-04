@@ -8,7 +8,7 @@ Un sous-agent est un assistant spécialisé : Claude Code lui confie une tâche,
 
 | Agent | À appeler pour… | Peut modifier des fichiers ? |
 | --- | --- | --- |
-| `video-expert` | `scripts/Movies`, `scripts/TV_Shows`, `scripts/Converters/Video`, `scripts/Maintenance/Video`, `libraries/video` : association aux fiches TMDB, noms de fichiers, tags et pistes Matroska, sagas, conversions AVI / MP4, vérification des `.mkv` | oui |
+| `video-expert` | `scripts/Video`, `libraries/video` : association aux fiches TMDB, noms de fichiers, tags et pistes Matroska, sagas, conversions AVI / MP4, vérification des `.mkv` | oui |
 | `music-expert` | `scripts/Music`, `libraries/music` : association à MusicBrainz, tags FLAC et MP3 lus et écrits sans outil externe, pochettes, albums manquants, discographie, WAV vers FLAC, vérification des pistes | oui |
 | `library-tester` | ajouter un test, reproduire un bug par un test qui échoue, comprendre un test qui échoue | oui (tests seulement, sauf demande explicite) |
 | `library-reviewer` | relire un changement avant commit / PR | **non** (lecture seule) |

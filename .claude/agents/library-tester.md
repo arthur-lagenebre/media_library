@@ -10,7 +10,7 @@ Tu t'occupes des tests de **media_library**. Tu écris du code de test ; tu ne t
 ## Comment les tests sont faits
 
 - **`unittest`** de la bibliothèque standard, pas de pytest, aucune dépendance. Un fichier `tests/test_<sujet>.py` par sujet, des classes `TestXxx(unittest.TestCase)` regroupées par comportement.
-- Chaque fichier commence par `sys.path.insert(0, str(Path(__file__).resolve().parent.parent))` puis importe `libraries.…` ; les scripts (`scripts/Movies/Metadata.py`…) sont chargés comme les tests voisins le font (ouvre-en un avant d'écrire).
+- Chaque fichier commence par `sys.path.insert(0, str(Path(__file__).resolve().parent.parent))` puis importe `libraries.…` ; les scripts (`scripts/Video/Movies/Metadata.py`…) sont chargés comme les tests voisins le font (ouvre-en un avant d'écrire).
 - **Aucun réseau, aucun outil externe.** TMDB et MusicBrainz sont simulés (faux client, réponses en dur), `mkvmerge`, `mkvpropedit`, `mkvextract`, `ffprobe` aussi : la CI ne les installe pas. Les fichiers `.mkv`, `.flac`, `.mp3` dont un test a besoin sont fabriqués octet par octet dans un dossier temporaire (voir `test_ebml.py`, `test_flac.py`, `test_cover_file.py` pour les fabriques existantes) : réutilise-les, n'invente un helper que s'il manque.
 - Chaque test travaille dans `tempfile.TemporaryDirectory()` : jamais de chemin en dur, jamais d'écriture hors de ce dossier, jamais dans le cache réel de l'utilisateur ni dans son `.env`.
 - Les noms de tests et les docstrings sont en **français**, courts, et disent le comportement attendu (`test_dossier_illisible_rend_une_liste_vide`).

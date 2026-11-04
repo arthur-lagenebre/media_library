@@ -9,7 +9,7 @@ description: >
 
 # new-script
 
-Argument : ce que le script doit faire et le domaine (`Movies`, `TV_Shows`, `Music`, `Maintenance/Video`, `Converters/Video`).
+Argument : ce que le script doit faire et le domaine (`Video/Movies`, `Video/TV_Shows`, `Video` à plat pour les conversions et les contrôles, `Music`). **Un dossier par domaine, pas de dossier par type d'action** : jamais de `Converters/` ni de `Maintenance/` ; un sous-dossier n'existe que lorsque deux scripts de même nom y cohabitent (`Video/Movies/Metadata.py` et `Video/TV_Shows/Metadata.py`). `tests/test_architecture.py` le vérifie.
 
 ## Avant d'écrire
 
