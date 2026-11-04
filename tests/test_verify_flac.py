@@ -15,7 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common.tools import run_tool
 from libraries.music import decode, integrity
-from scripts.Maintenance.Music import Verify_Flac as verificateur
+from scripts.Music import Verify_Flac as verificateur
 from tests.test_conversion_programmes import ProgrammeTestCase, outils
 from tests.test_music_decode import FfmpegSimule, resultat
 from tests.test_music_integrity import flac, flac_sain

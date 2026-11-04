@@ -9,7 +9,7 @@ description: >
 
 # new-script
 
-Argument : ce que le script doit faire et le domaine (`Movies`, `TV_Shows`, `Music`, `Maintenance/Video`, `Maintenance/Music`, `Converters/Video`, `Converters/Music`).
+Argument : ce que le script doit faire et le domaine (`Movies`, `TV_Shows`, `Music`, `Maintenance/Video`, `Converters/Video`).
 
 ## Avant d'écrire
 

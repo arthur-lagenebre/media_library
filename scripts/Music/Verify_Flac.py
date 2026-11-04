@@ -28,7 +28,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, verify  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.music import decode, integrity  # noqa: E402
