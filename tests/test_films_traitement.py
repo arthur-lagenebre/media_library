@@ -4,6 +4,8 @@ TMDB et les outils MKVToolNix sont simulés : on regarde ce que le script décid
 """
 
 import io
+import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -11,6 +13,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
+from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import lookup, mkv, movietags, naming, passfiles, resolve
@@ -111,6 +114,197 @@ class TestTraitementDUnFichier(unittest.TestCase):
     def test_verification_conforme(self):
         self.assertEqual(self.traiter(arguments(verify=True), verify_rend=[("titre", True, "ok")]), (0, 0))
         self.assertIn("[OK] déjà conforme", self.sortie)
+
+
+class TestTitreSeul(unittest.TestCase):
+    """--title-only : le titre du conteneur et les tags TITLE, rien d'autre ; un fichier jamais étiqueté est signalé, pas à moitié étiqueté."""
+
+    FILM = dict(DUNE, title="28 ans plus tard")
+    INFO = {"container": {"properties": {"title": "28 Ans plus tard"}}, "tracks": INFO["tracks"]}
+    TAGS = {(50, "TITLE", "28 Ans plus tard"), (50, "SYNOPSIS", "Un désert."), (70, "TITLE", "28 jours")}
+    XML = ('<?xml version="1.0"?><Tags>'
+           '<Tag><Targets><TargetTypeValue>70</TargetTypeValue></Targets><Simple><Name>TITLE</Name><String>28 jours</String></Simple></Tag>'
+           '<Tag><Targets/><Simple><Name>TITLE</Name><String>28 Ans plus tard</String></Simple>'
+           '<Simple><Name>SYNOPSIS</Name><String>Un désert.</String></Simple></Tag></Tags>')
+
+    def traiter(self, movie=None, tags=None, info=None, ecriture=(0, ""), xml=None, **options):
+        self.appels = []
+        args = arguments(title_only=True, **options)
+
+        def write_titles(path, title, tags_xml):
+            self.appels.append((Path(path).name, title, tags_xml))
+            return ecriture
+
+        lecture = mkv.Reading(info=info or self.INFO, tags=self.TAGS if tags is None else tags)
+        sortie = io.StringIO()
+        with mock.patch.object(films.mkv, "read_tags_xml", lambda path: self.XML if xml is None else xml), \
+                mock.patch.object(films.mkv, "write_titles", write_titles), \
+                mock.patch.object(films.mkv, "write", side_effect=AssertionError("--title-only ne doit rien écrire d'autre")), redirect_stdout(sortie):
+            resultat = films.process_file(Path("28.mkv"), lecture, movie or self.FILM, args, OPTS, None)
+        self.sortie = sortie.getvalue()
+        return resultat
+
+    def test_simulation_montre_ce_qui_changerait_sans_ecrire(self):
+        self.assertEqual(self.traiter(), (0, 0))
+        self.assertEqual(self.appels, [])
+        self.assertIn("titre du conteneur : '28 Ans plus tard' -> '28 ans plus tard'", self.sortie)
+        self.assertIn("tag TITLE du film : '28 Ans plus tard' -> '28 ans plus tard'", self.sortie)
+        self.assertNotIn("audio", self.sortie)
+        self.assertNotIn("date ->", self.sortie)
+
+    def test_application_ne_change_que_les_titres(self):
+        self.assertEqual(self.traiter(apply=True), (0, 0))
+        nom, titre, xml = self.appels[0]
+        self.assertEqual((nom, titre), ("28.mkv", "28 ans plus tard"))
+        self.assertIn("<String>28 ans plus tard</String>", xml)
+        self.assertIn("<String>Un désert.</String>", xml)
+        self.assertNotIn("28 Ans plus tard", xml)
+        self.assertIn("[OK]", self.sortie)
+
+    def test_titre_du_conteneur_seul_ne_reecrit_pas_les_tags(self):
+        tags = {(50, "TITLE", "28 ans plus tard"), (50, "SYNOPSIS", "Un désert.")}
+        xml = self.XML.replace("28 Ans plus tard", "28 ans plus tard")
+        self.assertEqual(self.traiter(tags=tags, xml=xml, apply=True), (0, 0))
+        self.assertEqual(self.appels, [("28.mkv", "28 ans plus tard", "")])
+
+    def test_tags_seuls_en_ecart(self):
+        info = {"container": {"properties": {"title": "28 ans plus tard"}}, "tracks": INFO["tracks"]}
+        self.traiter(info=info, apply=True)
+        self.assertEqual(self.appels[0][1], "28 ans plus tard")
+        self.assertIn("<String>28 ans plus tard</String>", self.appels[0][2])
+        self.assertNotIn("titre du conteneur", self.sortie)
+
+    def test_deja_conforme_ne_touche_a_rien(self):
+        info = {"container": {"properties": {"title": "28 ans plus tard"}}, "tracks": INFO["tracks"]}
+        tags = {(50, "TITLE", "28 ans plus tard")}
+        self.assertEqual(self.traiter(info=info, tags=tags, apply=True), (0, 0))
+        self.assertEqual(self.appels, [])
+        self.assertIn("[OK] titres déjà conformes", self.sortie)
+
+    def test_la_collection_suit_quand_son_tag_existe(self):
+        film = dict(self.FILM, _collection_title="28 jours plus tard")
+        self.traiter(movie=film, apply=True)
+        xml = self.appels[0][2]
+        self.assertIn("<String>28 jours plus tard</String>", xml)
+        self.assertNotIn("<String>28 jours</String>", xml)
+        self.assertIn("tag TITLE de la collection : '28 jours' -> '28 jours plus tard'", self.sortie)
+
+    def test_pas_de_tag_de_collection_dans_le_fichier_n_en_cree_pas(self):
+        film = dict(self.FILM, _collection_title="28 jours plus tard")
+        tags = {(50, "TITLE", "28 Ans plus tard")}
+        self.traiter(movie=film, tags=tags)
+        self.assertNotIn("collection", self.sortie)
+
+    def test_verify_liste_les_ecarts_sans_ecrire(self):
+        self.assertEqual(self.traiter(verify=True, apply=True), (1, 0))
+        self.assertEqual(self.appels, [])
+        self.assertIn("[DIFF] titre du conteneur : actuel = '28 Ans plus tard'", self.sortie)
+
+    def test_fichier_jamais_etiquete_est_signale_pas_etiquete(self):
+        self.assertEqual(self.traiter(tags=set(), apply=True), (1, 0))
+        self.assertEqual(self.appels, [])
+        self.assertIn("[SANS TAGS] pas encore étiqueté", self.sortie)
+
+    def test_tags_non_relus_sont_signales_de_la_meme_facon(self):
+        lecture = mkv.Reading(info=self.INFO, tags=None)
+        with redirect_stdout(io.StringIO()) as sortie:
+            resultat = films.process_file(Path("28.mkv"), lecture, self.FILM, arguments(title_only=True, apply=True), OPTS, None)
+        self.assertEqual(resultat, (1, 0))
+        self.assertIn("[SANS TAGS]", sortie.getvalue())
+
+    def test_echec_d_ecriture(self):
+        self.assertEqual(self.traiter(apply=True, ecriture=(2, "Erreur : verrouillé")), (0, 1))
+        self.assertIn("[ÉCHEC] Erreur : verrouillé", self.sortie)
+
+    def test_tags_illisibles_ne_modifient_rien(self):
+        self.assertEqual(self.traiter(apply=True, xml="pas du xml"), (0, 1))
+        self.assertEqual(self.appels, [])
+        self.assertIn("[ÉCHEC] tags illisibles", self.sortie)
+
+
+@unittest.skipUnless(all(shutil.which(tool) for tool in ("ffmpeg", "mkvmerge", "mkvpropedit", "mkvextract")), "MKVToolNix ou ffmpeg absent : les vrais outils ne sont pas testés")
+class TestTitreSeulAvecLesVraisOutils(ProgrammeTestCase):
+    """Un vrai .mkv étiqueté par une passe complète, puis retitré : tout le reste doit rester octet pour octet."""
+
+    def setUp(self):
+        super().setUp()
+        self.film = self.racine / "28 ans plus tard.mkv"
+        source = self.racine / "source.mkv"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=5", "-f", "lavfi", "-i", "sine=duration=1",
+                        "-c:v", "mpeg4", "-c:a", "aac", "-shortest", str(source)], check=True)
+        shutil.move(str(source), str(self.film))
+        self.movie = {"id": 1100988, "title": "28 Ans plus tard", "overview": "Un virus & des îles.", "release_date": "2025-06-18",
+                      "credits": {"cast": [{"name": "Ralph Fiennes", "character": "Dr. Kelson"}], "crew": []}, "genres": [{"name": "Horreur"}],
+                      "belongs_to_collection": {"name": "28 - Saga"}, "_collection_title": "28… plus tard"}
+        self.opts = mkv.Options(cover=False, date=True, audio_names=True, sub_names=True, flags=True, stats=True)
+        info, _ = mkv.identify(self.film)
+        code, message = mkv.write(self.film, info, movietags.movie_target(self.movie, self.opts), self.opts, None)
+        self.assertEqual(code, 0, message)
+
+    def etat(self):
+        lecture = mkv.inspect(self.film, with_probe=False, with_tags=True)
+        brut = mkv.read_tags_xml(self.film)
+        # Le contenu des blocs de piste (statistiques) : la langue "und" que mkvpropedit y ajoute à la réécriture est la valeur par défaut de Matroska, pas une différence.
+        blocs_de_piste = sorted((b.findtext("Targets/TrackUID"), tuple((x.findtext("Name"), x.findtext("String")) for x in b.findall("Simple")))
+                                for b in ElementTree.fromstring(brut.lstrip(chr(0xFEFF))).findall("Tag") if b.find("Targets/TrackUID") is not None)
+        proprietes = lecture.info["container"]["properties"]
+        pistes = [(t["id"], t["type"], t["properties"].get("track_name"), t["properties"].get("default_track")) for t in lecture.info["tracks"]]
+        return lecture, blocs_de_piste, proprietes, pistes
+
+    def retitrer(self, **options):
+        lecture, *_ = self.etat()
+        film = dict(self.movie, title="28 ans plus tard", _collection_title="28 jours plus tard")
+        with redirect_stdout(io.StringIO()) as sortie:
+            return films.process_file(self.film, lecture, film, arguments(title_only=True, **options), self.opts, None), sortie.getvalue()
+
+    def test_seuls_les_titres_changent(self):
+        avant, pistes_avant, proprietes_avant, pistes_avant_liste = self.etat()
+        self.assertIn((50, "TITLE", "28 Ans plus tard"), avant.tags)
+        resultat, sortie = self.retitrer(apply=True)
+        self.assertEqual(resultat, (0, 0), sortie)
+        apres, pistes_apres, proprietes_apres, pistes_apres_liste = self.etat()
+        self.assertEqual(proprietes_apres["title"], "28 ans plus tard")
+        self.assertEqual(avant.tags - apres.tags, {(50, "TITLE", "28 Ans plus tard"), (70, "TITLE", "28… plus tard")})
+        self.assertEqual(apres.tags - avant.tags, {(50, "TITLE", "28 ans plus tard"), (70, "TITLE", "28 jours plus tard")})
+        self.assertEqual(pistes_apres, pistes_avant)                           # les statistiques de pistes sont intactes
+        self.assertTrue(pistes_apres)
+        self.assertEqual(pistes_apres_liste, pistes_avant_liste)               # noms de pistes et drapeaux aussi
+        self.assertEqual({k: v for k, v in proprietes_apres.items() if k != "title"}, {k: v for k, v in proprietes_avant.items() if k != "title"})   # date comprise
+
+    def test_un_second_passage_ne_change_plus_rien(self):
+        self.retitrer(apply=True)
+        avant = self.film.read_bytes()
+        resultat, sortie = self.retitrer(apply=True)
+        self.assertEqual(resultat, (0, 0))
+        self.assertIn("[OK] titres déjà conformes", sortie)
+        self.assertEqual(self.film.read_bytes(), avant)
+
+    def test_simulation_et_verify_n_ecrivent_rien(self):
+        avant = self.film.read_bytes()
+        _, sortie = self.retitrer()
+        self.assertIn("-> '28 ans plus tard'", sortie)
+        resultat, sortie = self.retitrer(verify=True)
+        self.assertEqual(resultat, (1, 0))
+        self.assertIn("[DIFF] titre du conteneur", sortie)
+        self.assertEqual(self.film.read_bytes(), avant)
+
+
+class TestOptionTitleOnly(unittest.TestCase):
+    def analyser(self, *argv):
+        with mock.patch.object(sys, "argv", ["Metadata.py", "--dir", "x", *argv]):
+            return films.parse_args()
+
+    def test_absente_par_defaut(self):
+        self.assertFalse(self.analyser().title_only)
+
+    def test_activee(self):
+        self.assertTrue(self.analyser("--title-only").title_only)
+
+    def test_incompatible_avec_no_tag(self):
+        with mock.patch.object(sys, "stderr", io.StringIO()) as erreur, self.assertRaises(SystemExit) as sortie:
+            self.analyser("--title-only", "--no-tag")
+        self.assertEqual(sortie.exception.code, 2)
+        self.assertIn("se contredisent", erreur.getvalue())
 
 
 class TestFilmEnPlusieursFichiers(unittest.TestCase):
