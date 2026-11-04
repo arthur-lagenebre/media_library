@@ -47,6 +47,7 @@ La relecture ne coûte un sous-processus de plus que sur les fichiers qui décla
 Une association suspecte (durée incohérente, fiche presque inconnue) est signalée à chaque passage. Pour la faire taire SANS épingler l'identifiant dans le nom du fichier, ajoute-le à "metadata.ok", à côté du journal : une ligne par film, l'identifiant seul ou son lien TMDB tel que le journal le donne, '#' pour un commentaire. Les doutes de ces films ne sont plus signalés ; rien d'autre ne change.
 Le titre de COLLECTION inscrit dans le film ne garde pas le suffixe " - Saga" que TMDB ajoute en français : il est retiré d'office. Le reste se CHOISIT : le nom TMDB, ce nom sans son " Collection" final ("Iron Man Collection" ; il peut faire partie du nom : "The Criterion Collection"), le nom de ton dossier de saga quand il en diffère, ou un titre que tu tapes ("autre"). La question est posée une fois par collection, dans le terminal - Entrée prend la proposition marquée "(défaut)", t prend le défaut pour toutes les suivantes (casse des titres comprise) - et la réponse est mémorisée dans "metadata.collections", à côté du journal ("nom TMDB => titre inscrit", une ligne par collection, modifiable à la main ; supprime la ligne pour que la question soit reposée). Une seule proposition, et il n'y a rien à choisir. Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le nom TMDB est gardé tel quel.
 La CASSE du titre se décide avec toi quand TMDB et ton fichier ne diffèrent que par elle : TMDB écrit ses titres français à l'anglaise ("28 Ans plus tard : Le Temple des morts"), ton fichier à la française ("28 ans plus tard - Le temple des morts"). Rien ne dit lequel est juste ("American History X" doit garder ses majuscules), donc la question est posée une fois par titre, dans le terminal - Entrée prend la casse du fichier pour un titre français, celle de TMDB pour un titre anglais -, et la réponse est mémorisée dans "metadata.titles", à côté du journal ("titre TMDB => titre inscrit", modifiable à la main). Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le titre TMDB est gardé tel quel.
+--title-only ne change QUE les titres d'un film déjà étiqueté : le titre du conteneur et les tags TITLE (film, et collection si le fichier en porte un). Les tags sont relus tels quels et réécrits à l'identique, le TITLE excepté : synopsis, casting, genres, identifiant TMDB, statistiques de pistes, noms de pistes, drapeaux, date et jaquette ne bougent pas. Utile après avoir arrêté une casse ou un titre de collection (metadata.titles, metadata.collections) sans réécrire toute la médiathèque. Un fichier sans tag TITLE n'a pas été étiqueté : il est signalé [SANS TAGS] et laissé tel quel (code de sortie 1). Avec --verify, seuls les titres sont comparés ; incompatible avec --no-tag.
 Ordre de priorité : --tmdb-id, puis l'identifiant épinglé dans le NOM, puis celui lu dans le FICHIER, puis la recherche.
 Si un passage à inscrit le mauvais identifiant, corrige-le en épinglant le bon dans le nom - "Dune (2021) [tmdbid-438631]" ou "Dune {tmdb-438631}" - le passage suivant le réécrira dans le fichier.
 
@@ -56,7 +57,7 @@ Usage :
   python Metadata.py --dir "D:\Films\Inception (2010)" --tmdb-id 27205 --apply   # force l'id (1 film)
   python Metadata.py --dir "D:\Films" --verify                # vérifie seulement
 
-Options : --apply --verify --skip-done --artwork --no-tag --no-cache --no-ask
+Options : --apply --verify --skip-done --title-only --artwork --no-tag --no-cache --no-ask
           --no-saga --log-dir
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
@@ -87,11 +88,53 @@ from libraries.video.tmdb import Tmdb, TmdbAuthError  # noqa: E402
 # ----------------------------------------------------------------------------
 # 1. Traitement d'un film
 # ----------------------------------------------------------------------------
+def title_diffs(info, tags, target):
+    """[(libellé, actuel, visé)] : ce qui sépare les titres du fichier de ceux de la fiche. Un tag TITLE absent du fichier n'est pas un écart : --title-only ne crée rien."""
+    wanted, current = mkv.title_tags(mkv.parse_tags(target.tags_xml)), mkv.title_tags(tags)
+    container = ((info or {}).get("container") or {}).get("properties", {}).get("title")
+    diffs = [("titre du conteneur", container or "(absent)", target.title)] if container != target.title else []
+    for level, label in ((50, "tag TITLE du film"), (70, "tag TITLE de la collection")):
+        if level in wanted and level in current and current[level] != wanted[level]:
+            diffs.append((label, current[level], wanted[level]))
+    return diffs
+
+
+def process_title_only(path, lecture, movie, args, opts):
+    """--title-only : ne change que le titre du conteneur et les tags TITLE d'un film déjà étiqueté. Retourne (non_conforme, echec_ecriture).
+
+    Les tags sont relus tels que mkvextract les rend et réécrits à l'identique, le TITLE excepté : synopsis, casting, identifiant TMDB, statistiques de pistes, tout reste. Un fichier sans aucun TITLE n'a pas été étiqueté : le laisser à moitié étiqueté serait pire que de ne rien faire, il est signalé.
+    """
+    target = movie_target(movie, opts)
+    if not mkv.title_tags(lecture.tags):
+        print("      [SANS TAGS] pas encore étiqueté : relance sans --title-only")
+        return 1, 0
+    diffs = title_diffs(lecture.info, lecture.tags, target)
+    if not diffs:
+        print("      [OK] titres déjà conformes")
+        return 0, 0
+    for label, current, wanted in diffs:
+        print(f"      [DIFF] {label} : actuel = {current!r}" if args.verify else f"      {label} : {current!r} -> {wanted!r}")
+    if args.verify:
+        return 1, 0
+    if not args.apply:
+        return 0, 0
+    wanted = mkv.title_tags(mkv.parse_tags(target.tags_xml))
+    tags_xml, changes = mkv.retitle(mkv.read_tags_xml(path), wanted)
+    if len(changes) != sum(label != "titre du conteneur" for label, _, _ in diffs):
+        print("      [ÉCHEC] tags illisibles : rien n'a été modifié")
+        return 0, 1
+    code, msg = mkv.write_titles(path, target.title, tags_xml if changes else "")
+    print(f"      [{'OK' if code == 0 else 'ÉCHEC'}]" + (f" {msg}" if code else ""))
+    return 0, (1 if code else 0)
+
+
 def process_file(path, lecture, movie, args, opts, tmdb):
     """Traite UN fichier du film. Retourne (non_conforme, echec_ecriture), 0 ou 1 chacun."""
     info, tags = lecture.info, lecture.tags
     if lecture.note:
         print(f"      {lecture.note}")
+    if getattr(args, "title_only", False):
+        return process_title_only(path, lecture, movie, args, opts)
     target = movie_target(movie, opts)
 
     if args.verify:
@@ -374,9 +417,13 @@ def parse_args():
     ap.add_argument("--no-flags", action="store_true", help="Ne touche pas aux drapeaux 'par défaut'")
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques")
     ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; avec --artwork, écrit seulement folder.jpg")
+    ap.add_argument("--title-only", action="store_true", help="Ne change que le titre : celui du conteneur et les tags TITLE (film, collection) d'un film déjà étiqueté ; synopsis, casting, pistes, date et jaquette ne bougent pas")
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (affiche EN) par film")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
-    return ap.parse_args()
+    args = ap.parse_args()
+    if args.title_only and args.no_tag:
+        ap.error("--title-only et --no-tag se contredisent : l'un ne change que les titres, l'autre rien")
+    return args
 
 
 def print_notes(movies, args):
@@ -394,7 +441,7 @@ def read_files(movies, args):
     """{chemin: Reading} de tous les fichiers, lus d'un coup, en parallèle : chaque fichier coûte deux à trois sous-processus qu'on ne fait qu'attendre, et rien là-dedans ne dépend de TMDB. L'affichage, lui, garde son ordre."""
     fichiers = [f for entry in movies for f in entry.files]
     if not args.no_tag:
-        return mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done)
+        return mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done or args.title_only)
     # Sans étiquetage, on ne lit des fichiers que leurs tags et leur durée - pour l'identifiant TMDB qu'un passage précédent y a inscrit, et le contrôle de l'association. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Lu en Python pur : ni MKVToolNix ni ffprobe, de quoi tourner sur un NAS.
     return mkv.read_light_all(fichiers)
 
@@ -456,6 +503,8 @@ def main():
     tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="movies_mkv/1.0", cache=cache.Cache(read=not args.no_cache))
 
     print(f"=== {cli.mode_label(args)} ===   source : TMDB {args.language}\n")
+    if args.title_only:
+        print("Titres seulement : le titre du conteneur et les tags TITLE sont seuls modifiés ; le reste du fichier ne bouge pas.\n")
 
     movies = naming.find_movies(args.dir)
     if not movies:
