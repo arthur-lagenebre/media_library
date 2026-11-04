@@ -180,6 +180,65 @@ def read_tags(path):
     return parse_tags(out) if out else set()
 
 
+def read_tags_xml(path):
+    """Les tags du fichier tels que mkvextract les rend (le XML entier), ou "" s'ils ne se lisent pas : de quoi les réécrire en ne changeant qu'un titre."""
+    try:
+        return run_tool(["mkvextract", str(path), "tags", "-"], check=True, timeout=read_timeout(path)).stdout or ""
+    except TOOL_FAILURES:
+        return ""
+
+
+def title_tags(tags):
+    """{niveau: titre} des tags TITLE de niveau film (50) et collection (70), dans la forme rendue par parse_tags."""
+    return {level: value for level, name, value in tags or () if name == "TITLE" and level in (50, 70)}
+
+
+def retitle(xml, wanted):
+    """(XML réécrit, [(niveau, ancien titre, nouveau)]) : les tags TITLE de niveau `niveau` prennent la valeur de `wanted` ({niveau: titre}), rien d'autre ne bouge.
+
+    Un bloc de piste (les statistiques), un tag d'un autre niveau, les langues, l'identifiant TMDB, le synopsis : tout est recopié tel que mkvextract l'a rendu. Un niveau absent de `wanted` n'est pas touché. Sans rien à changer, rend le XML d'origine.
+    """
+    try:
+        root = ElementTree.fromstring(xml.lstrip("﻿"))
+    except (ElementTree.ParseError, AttributeError):
+        return xml, []
+    changes = []
+    for bloc in root.findall("Tag"):
+        targets = bloc.find("Targets")
+        if targets is not None and targets.find("TrackUID") is not None:
+            continue
+        niveau = targets.find("TargetTypeValue") if targets is not None else None
+        niveau = int(niveau.text) if (niveau is not None and niveau.text) else 50
+        if niveau not in wanted:
+            continue
+        for simple in bloc.findall("Simple"):
+            valeur = simple.find("String")
+            if simple.findtext("Name") == "TITLE" and valeur is not None and valeur.text != wanted[niveau]:
+                changes.append((niveau, valeur.text or "", wanted[niveau]))
+                valeur.text = wanted[niveau]
+    if not changes:
+        return xml, []
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ElementTree.tostring(root, encoding="unicode"), changes
+
+
+def write_titles(path, title, tags_xml):
+    """Écrit le titre du conteneur et, si `tags_xml` n'est pas vide, les tags : un seul appel à mkvpropedit, qui ne touche ni aux pistes, ni à la date, ni à la jaquette. Retourne (code, message).
+
+    Un dossier temporaire sert de cwd pour référencer tags.xml en relatif (évite les soucis de ':' dans les chemins Windows).
+    """
+    path = Path(path).resolve()
+    with tempfile.TemporaryDirectory() as tmp:
+        cmd = ["mkvpropedit", str(path), "--edit", "info", "--set", f"title={title}"]
+        if tags_xml:
+            (Path(tmp) / "tags.xml").write_text(tags_xml, encoding="utf-8")
+            cmd += ["--tags", "all:tags.xml"]
+        try:
+            res = run_tool(cmd, cwd=tmp)
+        except TOOL_FAILURES as e:
+            return 1, f"mkvpropedit inutilisable ({_reason(e)})"
+        return res.returncode, ((res.stdout or "") + (res.stderr or "")).strip()
+
+
 # Identifiant TMDB, tel que Matroska le normalise dans ses "External Identifiers" : la valeur s'écrit "movie/1234". Inscrit dans le fichier, il survit au renommage et dispense les passages suivants de toute recherche - donc de toute erreur.
 TMDB_TAG = "TMDB"
 TMDB_VALUE_RE = re.compile(r"^\s*(?:movie/)?(\d+)\s*$", re.IGNORECASE)

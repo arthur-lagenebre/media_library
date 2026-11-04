@@ -302,6 +302,114 @@ class TestTagsXML(unittest.TestCase):
         self.assertIn("Acteur0 (Role0)", lines[2])
 
 
+# Les tags tels que mkvextract les rend : un bloc de saga (70), un bloc de film (cible vide = 50), des blocs de piste (statistiques).
+TAGS_RENDUS = chr(0xFEFF) + """<?xml version="1.0"?>
+<!-- <!DOCTYPE Tags SYSTEM "matroskatags.dtd"> -->
+<Tags>
+  <Tag>
+    <Targets><TargetTypeValue>70</TargetTypeValue></Targets>
+    <Simple><Name>TITLE</Name><String>28… plus tard</String><TagLanguageIETF>und</TagLanguageIETF></Simple>
+    <Simple><Name>PART_NUMBER</Name><String>3</String></Simple>
+  </Tag>
+  <Tag>
+    <Targets />
+    <Simple><Name>TITLE</Name><String>28 Ans plus tard</String><TagLanguageIETF>und</TagLanguageIETF></Simple>
+    <Simple><Name>TMDB</Name><String>movie/1100988</String></Simple>
+    <Simple><Name>SYNOPSIS</Name><String>Cela fait près de trente ans &amp; plus.</String></Simple>
+    <Simple><Name>ACTOR</Name><String>Ralph Fiennes (Dr. Kelson)</String></Simple>
+  </Tag>
+  <Tag>
+    <Targets><TrackUID>1876720192309631643</TrackUID></Targets>
+    <Simple><Name>TITLE</Name><String>Statistique de piste</String></Simple>
+    <Simple><Name>BPS</Name><String>576000</String></Simple>
+  </Tag>
+</Tags>
+"""
+
+
+class TestRetitle(unittest.TestCase):
+    def test_seuls_les_titres_voulus_changent(self):
+        xml, changes = mkv.retitle(TAGS_RENDUS, {50: "28 ans plus tard", 70: "28 jours"})
+        self.assertEqual(changes, [(70, "28… plus tard", "28 jours"), (50, "28 Ans plus tard", "28 ans plus tard")])
+        avant, apres = mkv.parse_tags(TAGS_RENDUS), mkv.parse_tags(xml)
+        self.assertEqual(avant - apres, {(70, "TITLE", "28… plus tard"), (50, "TITLE", "28 Ans plus tard")})
+        self.assertEqual(apres - avant, {(70, "TITLE", "28 jours"), (50, "TITLE", "28 ans plus tard")})
+
+    def test_les_blocs_de_piste_sont_recopies_meme_avec_un_tag_title(self):
+        xml, _ = mkv.retitle(TAGS_RENDUS, {50: "x", 70: "y"})
+        racine = ElementTree.fromstring(xml)
+        piste = [t for t in racine.findall("Tag") if t.find("Targets/TrackUID") is not None]
+        self.assertEqual([(t.findtext("Simple/String")) for t in piste], ["Statistique de piste"])
+        self.assertEqual(piste[0].findtext("Simple[Name='BPS']/String"), "576000")
+
+    def test_tout_le_reste_est_recopie(self):
+        xml, _ = mkv.retitle(TAGS_RENDUS, {50: "28 ans plus tard"})
+        racine = ElementTree.fromstring(xml)
+        self.assertEqual(racine.findtext(".//Simple[Name='TMDB']/String"), "movie/1100988")
+        self.assertEqual(racine.findtext(".//Simple[Name='SYNOPSIS']/String"), "Cela fait près de trente ans & plus.")
+        self.assertEqual(racine.findtext(".//Simple[Name='ACTOR']/String"), "Ralph Fiennes (Dr. Kelson)")
+        self.assertEqual(racine.findtext(".//Simple[Name='PART_NUMBER']/String"), "3")
+        self.assertEqual(len(racine.findall(".//TagLanguageIETF")), 2)
+
+    def test_un_niveau_absent_de_wanted_n_est_pas_touche(self):
+        xml, changes = mkv.retitle(TAGS_RENDUS, {50: "28 ans plus tard"})
+        self.assertEqual([c[0] for c in changes], [50])
+        self.assertIn((70, "TITLE", "28… plus tard"), mkv.parse_tags(xml))
+
+    def test_rien_a_changer_rend_le_xml_d_origine(self):
+        self.assertEqual(mkv.retitle(TAGS_RENDUS, {50: "28 Ans plus tard"}), (TAGS_RENDUS, []))
+        self.assertEqual(mkv.retitle(TAGS_RENDUS, {}), (TAGS_RENDUS, []))
+
+    def test_xml_illisible(self):
+        self.assertEqual(mkv.retitle("pas du xml", {50: "x"}), ("pas du xml", []))
+        self.assertEqual(mkv.retitle("", {50: "x"}), ("", []))
+
+    def test_le_xml_rendu_se_relit_et_commence_par_sa_declaration(self):
+        xml, _ = mkv.retitle(TAGS_RENDUS, {50: "28 ans plus tard"})
+        self.assertTrue(xml.startswith('<?xml version="1.0" encoding="UTF-8"?>'))
+        ElementTree.fromstring(xml.encode("utf-8"))
+
+    def test_title_tags(self):
+        self.assertEqual(mkv.title_tags(mkv.parse_tags(TAGS_RENDUS)), {70: "28… plus tard", 50: "28 Ans plus tard"})
+        self.assertEqual(mkv.title_tags(None), {})
+        self.assertEqual(mkv.title_tags({(60, "TITLE", "Saison 1"), (50, "SYNOPSIS", "x")}), {})
+
+
+class TestEcritureDesTitres(unittest.TestCase):
+    def ecrire(self, tags_xml, code=0):
+        vu = {}
+
+        def run(cmd, **kwargs):
+            vu["cmd"], vu["cwd"] = cmd, kwargs.get("cwd")
+            if tags_xml:
+                vu["xml"] = (Path(kwargs["cwd"]) / "tags.xml").read_text(encoding="utf-8")
+            return mock.Mock(returncode=code, stdout="", stderr="Erreur" if code else "")
+
+        with mock.patch.object(mkv, "run_tool", run):
+            return mkv.write_titles("film.mkv", "28 ans plus tard", tags_xml), vu
+
+    def test_titre_seul_ne_touche_pas_aux_tags(self):
+        (code, _), vu = self.ecrire("")
+        self.assertEqual(code, 0)
+        self.assertEqual(vu["cmd"][2:], ["--edit", "info", "--set", "title=28 ans plus tard"])
+        self.assertNotIn("--tags", vu["cmd"])
+
+    def test_titre_et_tags_en_un_seul_appel_sans_rien_d_autre(self):
+        (code, _), vu = self.ecrire("<Tags/>")
+        self.assertEqual(vu["cmd"][2:], ["--edit", "info", "--set", "title=28 ans plus tard", "--tags", "all:tags.xml"])
+        self.assertEqual(vu["xml"], "<Tags/>")
+        for option in ("--add-track-statistics-tags", "--add-attachment", "--edit track:a1", "date="):
+            self.assertFalse(any(option in mot for mot in vu["cmd"]), option)
+
+    def test_echec_et_outil_inutilisable(self):
+        (code, message), _ = self.ecrire("", code=2)
+        self.assertEqual((code, message), (2, "Erreur"))
+        with mock.patch.object(mkv, "run_tool", side_effect=FileNotFoundError("mkvpropedit")):
+            code, message = mkv.write_titles("film.mkv", "x", "")
+        self.assertEqual(code, 1)
+        self.assertIn("mkvpropedit inutilisable", message)
+
+
 class TestVerification(unittest.TestCase):
     def setUp(self):
         self.opts = mkv.Options(cover=True, date=True, audio_names=True, sub_names=True, flags=True, stats=True, image_size="w780")
