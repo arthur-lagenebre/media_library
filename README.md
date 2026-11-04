@@ -346,7 +346,7 @@ Ils couvrent la partie qui casse en silence — analyse des noms, tags produits,
 
 ## Agents Claude Code
 
-Quatre agents spécialisés (films et séries, musique, tests, relecture) et quatre skills (`/check`, `/new-script`, `/ship`, `/ub-mode`) sont dans `.claude/` : voir [docs/agents.md](docs/agents.md). Ce qu'il reste à faire ou à décider : [docs/TODO.md](docs/TODO.md).
+Quatre agents spécialisés (films et séries, musique, tests, relecture) et cinq skills (`/check`, `/new-script`, `/ship`, `/merged`, `/ub-mode`) sont dans `.claude/` : voir [docs/agents.md](docs/agents.md). Ce qu'il reste à faire ou à décider : [docs/TODO.md](docs/TODO.md).
 
 ## Licence et données
 
