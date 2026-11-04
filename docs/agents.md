@@ -1,6 +1,6 @@
 # Utiliser les agents et les skills Claude Code
 
-Le dépôt contient quatre **sous-agents** dans [.claude/agents/](../.claude/agents/) et cinq **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
+Le dépôt contient cinq **sous-agents** dans [.claude/agents/](../.claude/agents/) et cinq **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
 
 Un sous-agent est un assistant spécialisé : Claude Code lui confie une tâche, il travaille dans son propre contexte avec ses propres outils, puis ne renvoie que son compte rendu. Un skill est une marche à suivre que Claude charge dans la conversation en cours, sans changer d'interlocuteur.
 
@@ -12,6 +12,7 @@ Un sous-agent est un assistant spécialisé : Claude Code lui confie une tâche,
 | `music-expert` | `scripts/Music`, `scripts/Converters/Music`, `scripts/Maintenance/Music`, `libraries/music` : association à MusicBrainz, tags FLAC et MP3 lus et écrits sans outil externe, pochettes, albums manquants, discographie, WAV vers FLAC, vérification des pistes | oui |
 | `library-tester` | ajouter un test, reproduire un bug par un test qui échoue, comprendre un test qui échoue | oui (tests seulement, sauf demande explicite) |
 | `library-reviewer` | relire un changement avant commit / PR | **non** (lecture seule) |
+| `library-architect` | décider **avant** d'écrire : où va une fonctionnalité (`scripts/` ou `libraries/`, `common` ou un domaine), comment découper un module qui grossit, l'effet d'un changement de tag sur `media_hub`, le plan d'un refactor en PR | **non** (lecture seule) |
 
 Règle de partage : `video` et `music` ne s'importent pas (un test le vérifie), et les deux experts non plus ne se marchent pas dessus. Une tâche qui touche `libraries/common/` ou les deux domaines se découpe : chaque expert décrit ce qu'il attend de l'autre.
 
@@ -41,22 +42,26 @@ Utilise library-tester : écris un test qui reproduit « un renommage de casse s
 laisse X.tmp1.ext derrière lui », sans corriger le code.
 
 Utilise library-reviewer : relis le diff de la branche courante contre main.
+
+Utilise library-architect : je veux un script qui range les pochettes en double. Où
+vit la logique, qu'est-ce qui peut descendre dans common, et en combien de PR ?
 ```
 
 ## Enchaînements utiles
 
 **Nouveau script**
-1. `/new-script` pour poser la structure et les conventions du dépôt.
-2. L'expert du domaine écrit la logique dans `libraries/`.
-3. `library-tester` complète les cas limites.
-4. `library-reviewer` relit, puis `/check` et `/ship`.
+1. `library-architect` si le placement n'est pas évident (partage entre domaines, tag lu par `media_hub`) ; inutile pour un script qui ressemble à un voisin.
+2. `/new-script` pour poser la structure et les conventions du dépôt.
+3. L'expert du domaine écrit la logique dans `libraries/`.
+4. `library-tester` complète les cas limites.
+5. `library-reviewer` relit, puis `/check` et `/ship`.
 
 **Bug**
 1. `library-tester` écrit un test qui échoue pour la bonne raison.
 2. `video-expert` ou `music-expert` corrige jusqu'à ce que le test passe.
 3. `library-reviewer` vérifie qu'il n'y a pas de régression.
 
-**Refactor** : prouver que rien ne change avant de proposer la PR (suite de tests intacte, et une comparaison ancien / nouveau code sur des scénarios identiques, comme pour les PR #47 et #49).
+**Refactor** : `library-architect` propose le découpage et l'ordre des PR ; puis, pour chacune, prouver que rien ne change avant de la proposer (suite de tests intacte, et une comparaison ancien / nouveau code sur des scénarios identiques, comme pour les PR #47 et #49).
 
 Plusieurs agents peuvent travailler en parallèle s'ils touchent des fichiers différents : demande-le explicitement.
 
