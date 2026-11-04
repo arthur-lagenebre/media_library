@@ -16,6 +16,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from libraries.common import filenames
+from libraries.common.text import straight_quotes
 
 AUDIO_EXTS = {".flac", ".mp3"}            # les formats qu'on sait écrire
 OTHER_AUDIO_EXTS = {".m4a", ".aac", ".ogg", ".opus", ".wma", ".ape", ".wv", ".wav", ".aif", ".aiff", ".dsf"}
@@ -519,6 +520,8 @@ def target_tags(release, group, medium, track, with_genres=True, artist=""):
     """[(clé, valeur)] visés pour une piste.
 
     Les noms de clés sont ceux de Picard : un fichier étiqueté ici doit se relire à l'identique dans Picard ou dans un lecteur, et un fichier déjà passé par Picard ne doit pas paraître différent. `artist` remplace l'écriture que MusicBrainz donne de l'artiste (voir artist_override).
+
+    Apostrophes et guillemets sont écrits droits dans chaque valeur (voir text.straight_quotes) : une seule écriture dans la médiathèque.
     """
     rg = group or release.get("release-group") or {}
     album_credit, track_credit = _credits(release, track, artist)
@@ -526,7 +529,7 @@ def target_tags(release, group, medium, track, with_genres=True, artist=""):
     tags += [("GENRE", g) for g in (genres(rg, release) if with_genres else [])]
     tags += _edition_tags(release, rg, medium)
     tags += _musicbrainz_ids(release, rg, track, album_credit, track_credit)
-    return [(key, str(value)) for key, value in tags if value]
+    return [(key, straight_quotes(str(value))) for key, value in tags if value]
 
 
 def managed_keys(target):
