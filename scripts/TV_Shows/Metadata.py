@@ -67,8 +67,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, casing, lookup, mkv, naming  # noqa: E402
 from libraries.video.episodetags import episode_target  # noqa: E402
+from libraries.video.passfiles import TITLES_NAME, read_titles, remember_title, titles_path  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
 
 # ----------------------------------------------------------------------------
@@ -238,6 +239,32 @@ def parse_args():
     return ap.parse_args()
 
 
+def settle_series_name(title, args):
+    """Le nom de série à inscrire : `title` (TMDB), ou sa casse arrêtée avec l'utilisateur.
+
+    TMDB écrit ses titres français à l'anglaise ("Les Mondes Parallèles"), le dossier de la série à la française. Quand les deux ne diffèrent que par la casse, la question est posée une fois et la réponse mémorisée dans metadata.titles (voir casing.py). Sans terminal, en vérification ou sans étiquetage, rien n'est demandé et le titre TMDB est gardé.
+    """
+    memory = titles_path(args.dir, args)
+    decided = read_titles(memory)
+    if title in decided:
+        return decided[title]
+    candidate = casing.recased(title, naming.parse_title_year(naming.series_folder(args.dir).name)[0])
+    if not candidate:
+        return title
+    if args.verify or args.no_tag:
+        return title
+    if not cli.can_ask():
+        print(f"    [CASSE] '{title}' gardé tel quel (TMDB) ; ton dossier dit '{candidate}' : à décider dans {TITLES_NAME}, ou relance dans un terminal")
+        return title
+    answer = casing.ask(title, candidate, "série")
+    if answer == cli.ASK_ALL:                       # une seule question dans ce script : "tout" vaut "le défaut"
+        answer = casing.default_choice(title, candidate)
+    if answer in (cli.ASK_SKIP, cli.ASK_STOP):
+        return title
+    remember_title(memory, title, answer)
+    return answer
+
+
 def main():
     args = parse_args()
     cli.setup_console()
@@ -257,7 +284,7 @@ def main():
         show = tmdb.series(args.tmdb_id)
     except TmdbError as e:
         sys.exit(f"Échec de l'appel TMDB (série) : {e}")
-    args.series_name = args.series_name or show.get("name", "")
+    args.series_name = args.series_name or settle_series_name(show.get("name", ""), args)
 
     print(f"    série : {args.series_name}   |   source : TMDB {args.language} (id {args.tmdb_id})\n")
 

@@ -71,7 +71,7 @@ def check_dir(path):
     return dossier
 
 
-ASK_SKIP, ASK_STOP = "ignorer", "arreter"
+ASK_SKIP, ASK_STOP, ASK_ALL = "ignorer", "arreter", "tout"
 
 
 def can_ask():
@@ -85,10 +85,10 @@ def can_ask():
         return False
 
 
-def ask_choice(nombre, defaut=0):
+def ask_choice(nombre, defaut=0, tout=False):
     """Indice choisi parmi `nombre` propositions, ou ASK_SKIP / ASK_STOP.
 
-    Entrée vide = le défaut. Une réponse incomprise repose la question plutôt que de décider à la place de quelqu'un - c'est tout l'intérêt de demander.
+    Entrée vide = le défaut. Une réponse incomprise repose la question plutôt que de décider à la place de quelqu'un - c'est tout l'intérêt de demander. Avec `tout`, "t" rend ASK_ALL : le défaut pour cette question et pour toutes celles qui suivent, quand elles sont nombreuses et que le défaut est presque toujours le bon.
     """
     while True:
         try:
@@ -102,10 +102,25 @@ def ask_choice(nombre, defaut=0):
             return ASK_SKIP
         if reponse in ("q", "quitter", "arreter"):
             return ASK_STOP
+        if tout and reponse in ("t", "tout"):
+            return ASK_ALL
         if reponse.isdigit() and 1 <= int(reponse) <= nombre:
             return int(reponse) - 1
         print(f"      réponse non comprise : un numéro de 1 à {nombre}, "
-              "i pour laisser de côté, q pour arrêter les questions.")
+              + ("t pour le défaut à toutes les suivantes, " if tout else "")
+              + "i pour laisser de côté, q pour arrêter les questions.")
+
+
+def ask_text(invite="      titre : "):
+    """Le texte tapé, sans ses espaces de bord ; "" si rien n'est tapé, None si l'entrée se ferme ou si Ctrl-C interrompt.
+
+    Pour la réponse que aucune proposition ne couvre : une réponse vide ne décide rien, c'est à l'appelant de laisser la question sans réponse.
+    """
+    try:
+        return input(invite).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
 
 
 def ask_yes_no(defaut=True):

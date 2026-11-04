@@ -103,10 +103,22 @@ class TestDossier(unittest.TestCase):
 class TestQuestions(unittest.TestCase):
     """Les questions de fin de passage : une réponse incomprise repose la question, jamais ne décide."""
 
-    def demander(self, reponses, nombre=3, defaut=0):
+    def demander(self, reponses, nombre=3, defaut=0, tout=False):
         with mock.patch("builtins.input", side_effect=reponses) as saisie, redirect_stdout(io.StringIO()) as sortie:
-            choix = cli.ask_choice(nombre, defaut)
+            choix = cli.ask_choice(nombre, defaut, tout)
         return choix, saisie.call_count, sortie.getvalue()
+
+    def test_t_prend_le_defaut_pour_toutes_les_suivantes_quand_c_est_permis(self):
+        for reponse in ("t", "TOUT"):
+            self.assertEqual(self.demander([reponse], tout=True)[0], cli.ASK_ALL)
+
+    def test_t_n_est_pas_compris_quand_ce_n_est_pas_permis(self):
+        choix, appels, sortie = self.demander(["t", "2"])
+        self.assertEqual((choix, appels), (1, 2))
+        self.assertNotIn("t pour le défaut", sortie)
+
+    def test_l_aide_dit_t_quand_il_est_permis(self):
+        self.assertIn("t pour le défaut à toutes les suivantes", self.demander(["x", "1"], tout=True)[2])
 
     def test_entree_garde_le_defaut(self):
         self.assertEqual(self.demander([""])[0], 0)
@@ -157,6 +169,26 @@ class TestOuiNon(unittest.TestCase):
     def test_entree_fermee_ou_ctrl_c_ne_decide_pas(self):
         self.assertIsNone(self.demander([EOFError()]))
         self.assertIsNone(self.demander([KeyboardInterrupt()]))
+
+
+class TestTexte(unittest.TestCase):
+    def demander(self, reponses):
+        with mock.patch("builtins.input", side_effect=reponses) as saisie, redirect_stdout(io.StringIO()):
+            return cli.ask_text(), saisie.call_args[0]
+
+    def test_le_texte_tape_sans_ses_espaces_de_bord(self):
+        self.assertEqual(self.demander(["  Les Tortues Ninja  "])[0], "Les Tortues Ninja")
+
+    def test_rien_de_tape_rend_une_chaine_vide(self):
+        self.assertEqual(self.demander([""])[0], "")
+        self.assertEqual(self.demander(["   "])[0], "")
+
+    def test_entree_fermee_ou_ctrl_c_ne_decide_pas(self):
+        self.assertIsNone(self.demander([EOFError()])[0])
+        self.assertIsNone(self.demander([KeyboardInterrupt()])[0])
+
+    def test_l_invite_est_affichee(self):
+        self.assertEqual(self.demander(["x"])[1], ("      titre : ",))
 
 
 class TestPeutOnDemander(unittest.TestCase):

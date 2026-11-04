@@ -1,8 +1,9 @@
-"""Les fichiers qui accompagnent un passage de Movies/Metadata.py : le journal et les deux fichiers de décisions.
+"""Les fichiers qui accompagnent un passage de Movies/Metadata.py : le journal et les fichiers de décisions.
 
 - metadata.log : le lien TMDB de chaque film trouvé, et en fin de fichier ceux qui n'en ont pas ;
 - metadata.ok : les films dont l'utilisateur a vérifié l'association, dont les doutes ne sont plus signalés ;
-- metadata.collections : les titres de collection arrêtés avec lui.
+- metadata.collections : les titres de collection arrêtés avec lui ;
+- metadata.titles : la casse des titres de film arrêtée avec lui (voir casing.py).
 
 Tous trois se rangent à la racine de --dir, ou dans --log-dir (utile quand la médiathèque est en lecture seule).
 """
@@ -19,7 +20,7 @@ from .tmdb import movie_url
 def log_path(root_dir, args):
     """Où écrire le journal : à la racine de --dir, où on le cherche, ou dans --log-dir.
 
-    metadata.ok et metadata.collections sont rangés avec lui : ils suivent donc --log-dir.
+    metadata.ok, metadata.collections et metadata.titles sont rangés avec lui : ils suivent donc --log-dir.
     """
     log_dir = getattr(args, "log_dir", None)
     return (Path(log_dir) if log_dir else Path(root_dir)) / "metadata.log"
@@ -82,15 +83,39 @@ def read_collections(path):
     return titles
 
 
-def remember_collection(path, name, title):
+def _remember(path, name, title, header, label):
     """Consigne une réponse tout de suite : une interruption plus loin ne doit pas la perdre."""
     try:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         new = not Path(path).exists()
         with open(path, "a", encoding="utf-8", newline="") as f:
-            f.write((COLLECTIONS_HEADER if new else "") + f"{name} => {title}\n")
+            f.write((header if new else "") + f"{name} => {title}\n")
     except OSError as e:
-        print(f"      [{COLLECTIONS_NAME}] non écrit : {e}")
+        print(f"      [{label}] non écrit : {e}")
+
+
+def remember_collection(path, name, title):
+    _remember(path, name, title, COLLECTIONS_HEADER, COLLECTIONS_NAME)
+
+
+TITLES_NAME = "metadata.titles"
+TITLES_HEADER = ("# Casse des titres arrêtée avec toi : 'titre TMDB => titre inscrit dans le film'.\n"
+                 "# Une ligne par titre ; '#' en début de ligne = commentaire. Modifie le titre à ta guise,\n"
+                 "# ou supprime la ligne pour que la question soit reposée.\n")
+
+
+def titles_path(root_dir, args):
+    """Le fichier de la casse des titres, rangé avec le journal."""
+    return log_path(root_dir, args).with_name(TITLES_NAME)
+
+
+def read_titles(path):
+    """{titre TMDB: titre à inscrire} lu dans metadata.titles : le même format que metadata.collections."""
+    return read_collections(path)
+
+
+def remember_title(path, name, title):
+    _remember(path, name, title, TITLES_HEADER, TITLES_NAME)
 
 
 def write_log(root_dir, journal, args, report):

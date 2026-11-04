@@ -28,6 +28,26 @@ def collection_proposal(name):
     return proposal if proposal and proposal != name else None
 
 
+def collection_choices(name, folder=""):
+    """([(titre, origine), ...], indice proposé par défaut) : les titres entre lesquels choisir pour cette collection.
+
+    Le nom TMDB sans son " - Saga" ; le même sans son " Collection" final, qui est la proposition par défaut quand il y en a une ; le nom du dossier de saga sur le disque, quand il en diffère. Une seule entrée = rien à choisir.
+    """
+    choices = [(collection_title(name), "TMDB")]
+    proposal = collection_proposal(name)
+    if proposal:
+        choices.append((proposal, "sans \" Collection\""))
+    if folder.strip():
+        choices.append((folder.strip(), "nom de ton dossier de saga"))
+    seen, unique = set(), []
+    for title, origin in choices:
+        if title not in seen:
+            seen.add(title)
+            unique.append((title, origin))
+    default = next((i for i, (title, _) in enumerate(unique) if title == proposal), 0)
+    return unique, default
+
+
 def build_movie_tags_xml(movie, max_actors=20):
     credits = movie.get("credits", {})
     blocks = []

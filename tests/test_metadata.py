@@ -82,6 +82,17 @@ class TestTagsEpisode(unittest.TestCase):
         self.assertEqual((target.title, target.date), ("Pilote", "2024-01-02"))
         self.assertIsNone(target.poster)                  # opts.cover est False
 
+    def test_apostrophes_et_guillemets_courbes_ecrits_droits(self):
+        courbe, ouvrant, fermant = chr(0x2019), chr(0x201C), chr(0x201D)
+        episode = dict(SAISON["episodes"][0], name=f"L{courbe}arrivée", overview=f"{ouvrant}Debut{fermant} d{courbe}une série")
+        saison = dict(SAISON, name=f"L{courbe}an un", episodes=[episode])
+        root = ElementTree.fromstring(episodetags.build_tags_xml(saison, episode, f"Les {ouvrant}Experts{fermant} d{courbe}ici"))
+        valeurs = [s.text for s in root.findall(".//Simple/String")]
+        for attendu in ("Les \"Experts\" d'ici", "L'an un", "L'arrivée", "\"Debut\" d'une série"):
+            self.assertIn(attendu, valeurs)
+        self.assertFalse([v for v in valeurs if any(c in v for c in (courbe, ouvrant, fermant))])
+        self.assertEqual(episodetags.episode_target(saison, episode, "S", OPTS).title, "L'arrivée")
+
     def test_jaquette_repliee_sur_l_affiche_de_saison(self):
         opts = mkv.Options(cover=True, date=True, audio_names=True, sub_names=True, flags=True, stats=True, image_size="w780")
         sans_vignette = episodetags.episode_target(SAISON, SAISON["episodes"][1], "Ma Serie", opts)
@@ -137,37 +148,57 @@ class TestFilms(unittest.TestCase):
         self.assertEqual([n.text for n in root.findall("./Tag/Targets/TargetTypeValue")], ["50"])
 
 
+class TestChoixDeCollection(unittest.TestCase):
+    def test_nom_tmdb_sans_saga_sans_collection_et_dossier(self):
+        self.assertEqual(movietags.collection_choices("Iron Man Collection", "Marvel"),
+                         ([("Iron Man Collection", "TMDB"), ("Iron Man", "sans \" Collection\""), ("Marvel", "nom de ton dossier de saga")], 1))
+
+    def test_rien_a_choisir(self):
+        self.assertEqual(movietags.collection_choices("Iron Man - Saga"), ([("Iron Man", "TMDB")], 0))
+        self.assertEqual(movietags.collection_choices("Iron Man - Saga", "Iron Man"), ([("Iron Man", "TMDB")], 0))
+        self.assertEqual(movietags.collection_choices("Iron Man - Saga", "   "), ([("Iron Man", "TMDB")], 0))
+
+    def test_le_dossier_est_propose_quand_il_differe_meme_d_une_casse(self):
+        choix, defaut = movietags.collection_choices("28 jours plus tard - Saga", "28 Jours plus tard")
+        self.assertEqual(([t for t, _ in choix], defaut), (["28 jours plus tard", "28 Jours plus tard"], 0))
+
+    def test_le_defaut_est_la_proposition_sans_collection(self):
+        self.assertEqual(movietags.collection_choices("The Criterion Collection")[1], 1)
+
+
 class TestValidationDuTitreDeCollection(unittest.TestCase):
-    """" - Saga" part d'office ; " Collection" ne part qu'avec l'accord de l'utilisateur, et une fois par collection."""
+    """" - Saga" part d'office ; le reste se choisit - le nom TMDB, sans " Collection", le dossier de saga, un titre tapé -, une fois par collection."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.fichier = Path(self._tmp.name) / "metadata.collections"
 
-    def regler(self, nom="Iron Man Collection", reponses=(), peut_demander=True, library=None, **changes):
+    def regler(self, nom="Iron Man Collection", reponses=(), peut_demander=True, library=None, dossier="", texte=(), **changes):
+        """(titre inscrit, nombre de questions, library, affichage). `reponses` : les indices choisis ; `texte` : ce qui est tapé pour "autre"."""
         args = types.SimpleNamespace(verify=False, no_tag=False, no_ask=False)
         for cle, valeur in changes.items():
             setattr(args, cle, valeur)
         library = library or films.Library([], {}, {}, titles_file=self.fichier)
         movie = {"title": "Iron Man", "belongs_to_collection": {"name": nom}}
-        with mock.patch.object(films.cli, "can_ask", lambda: peut_demander), mock.patch.object(films.cli, "ask_yes_no", side_effect=list(reponses)) as question, redirect_stdout(io.StringIO()) as sortie:
-            films.settle_collection(movie, library, args)
+        entree = naming.MovieFolder(folder=Path("saga"), files=[Path("saga/1 - Iron Man.mkv")], rawname="1 - Iron Man", contexts=[dossier] if dossier else [])
+        with mock.patch.object(films.cli, "can_ask", lambda: peut_demander), mock.patch.object(films.cli, "ask_choice", side_effect=list(reponses)) as question,                 mock.patch.object(films.cli, "ask_text", side_effect=list(texte)), redirect_stdout(io.StringIO()) as sortie:
+            films.settle_collection(movie, library, args, entree)
         return movie.get("_collection_title"), question.call_count, library, sortie.getvalue()
 
     def test_oui_retire_collection_et_le_memorise(self):
-        titre, questions, library, _ = self.regler(reponses=[True])
+        titre, questions, library, _ = self.regler(reponses=[1])
         self.assertEqual((titre, questions), ("Iron Man", 1))
         self.assertIn("Iron Man Collection => Iron Man", self.fichier.read_text(encoding="utf-8"))
         self.assertEqual(library.titles, {"Iron Man Collection": "Iron Man"})
 
     def test_non_garde_le_nom_et_le_memorise(self):
-        titre, _, _, _ = self.regler(reponses=[False])
+        titre, _, _, _ = self.regler(reponses=[0])
         self.assertEqual(titre, "Iron Man Collection")
         self.assertIn("Iron Man Collection => Iron Man Collection", self.fichier.read_text(encoding="utf-8"))
 
     def test_la_reponse_vaut_pour_toute_la_collection(self):
-        _, _, library, _ = self.regler(reponses=[True])
+        _, _, library, _ = self.regler(reponses=[1])
         titre, questions, _, _ = self.regler(library=library)
         self.assertEqual((titre, questions), ("Iron Man", 0))
 
@@ -194,12 +225,74 @@ class TestValidationDuTitreDeCollection(unittest.TestCase):
             self.assertEqual((titre, questions), (None, 0), option)
 
     def test_entree_fermee_cesse_de_demander(self):
-        titre, _, library, _ = self.regler(reponses=[None])
+        titre, _, library, _ = self.regler(reponses=[films.cli.ASK_STOP])
         self.assertIsNone(titre)
         self.assertFalse(library.asking)
         _, questions, _, _ = self.regler(library=library)
         self.assertEqual(questions, 0)
         self.assertFalse(self.fichier.exists())
+
+    def test_le_dossier_de_saga_est_propose(self):
+        # "Iron Man Collection" (TMDB), "Iron Man" (sans Collection), "Marvel" (ton dossier) : trois propositions, la 3e choisie.
+        titre, questions, library, sortie = self.regler(reponses=[2], dossier="Marvel")
+        self.assertEqual((titre, questions), ("Marvel", 1))
+        self.assertEqual(library.titles, {"Iron Man Collection": "Marvel"})
+        self.assertIn("2) Iron Man   (sans \" Collection\")   (défaut)", sortie)
+        self.assertIn("3) Marvel   (nom de ton dossier de saga)", sortie)
+        self.assertIn("4) autre : je tape le titre", sortie)
+
+    def test_un_dossier_de_saga_different_ouvre_le_choix_meme_sans_collection(self):
+        # "28 - Saga" -> "28" ; le dossier dit "28 jours plus tard" : deux propositions, donc une question, que "28 - Saga" seul n'aurait pas posée.
+        titre, questions, _, sortie = self.regler(nom="28 - Saga", reponses=[1], dossier="28 jours plus tard")
+        self.assertEqual((titre, questions), ("28 jours plus tard", 1))
+        self.assertIn("1) 28   (TMDB)   (défaut)", sortie)
+
+    def test_un_dossier_de_saga_identique_ne_demande_rien(self):
+        titre, questions, _, _ = self.regler(nom="Iron Man - Saga", dossier="Iron Man")
+        self.assertEqual((titre, questions), (None, 0))
+        self.assertFalse(self.fichier.exists())
+
+    def test_t_prend_le_defaut_pour_cette_collection_et_les_suivantes(self):
+        titre, questions, library, _ = self.regler(reponses=[films.cli.ASK_ALL])
+        self.assertEqual((titre, questions), ("Iron Man", 1))                         # le défaut : sans " Collection"
+        self.assertTrue(library.take_defaults)
+        titre, questions, library, sortie = self.regler(nom="Thor Collection", library=library)
+        self.assertEqual((titre, questions), ("Thor", 0))
+        self.assertIn("'Thor Collection' -> 'Thor' (défaut)", sortie)
+        self.assertEqual(library.titles, {"Iron Man Collection": "Iron Man", "Thor Collection": "Thor"})
+
+    def test_un_titre_tape(self):
+        titre, questions, library, _ = self.regler(reponses=[3], texte=["Marvel Studios"])
+        self.assertEqual((titre, questions), ("Marvel Studios", 1))
+        self.assertIn("Iron Man Collection => Marvel Studios", self.fichier.read_text(encoding="utf-8"))
+        self.assertEqual(library.titles, {"Iron Man Collection": "Marvel Studios"})
+
+    def test_rien_de_tape_laisse_la_question_sans_reponse(self):
+        titre, _, library, _ = self.regler(reponses=[3], texte=[""])
+        self.assertIsNone(titre)
+        self.assertTrue(library.asking)
+        self.assertFalse(self.fichier.exists())
+
+    def test_entree_fermee_pendant_la_saisie_arrete_les_questions(self):
+        titre, _, library, _ = self.regler(reponses=[3], texte=[None])
+        self.assertIsNone(titre)
+        self.assertFalse(library.asking)
+
+    def test_ignorer_ne_memorise_rien(self):
+        titre, questions, library, _ = self.regler(reponses=[films.cli.ASK_SKIP])
+        self.assertEqual((titre, questions, library.titles), (None, 1, {}))
+        self.assertFalse(self.fichier.exists())
+
+    def test_une_collection_sans_suffixe_se_lit_aussi_dans_metadata_collections(self):
+        # Avant, seuls les noms en " Collection" consultaient le fichier : une ligne écrite à la main pour "Alien - Saga" est maintenant suivie.
+        library = films.Library([], {}, {}, titles={"Iron Man - Saga": "Les Avengers"}, titles_file=self.fichier)
+        titre, questions, _, _ = self.regler(nom="Iron Man - Saga", library=library)
+        self.assertEqual((titre, questions), ("Les Avengers", 0))
+
+    def test_sans_terminal_le_choix_n_est_pas_demande_mais_dit(self):
+        titre, questions, _, sortie = self.regler(peut_demander=False, dossier="Marvel", nom="Iron Man - Saga")
+        self.assertEqual((titre, questions), (None, 0))
+        self.assertIn("[COLLECTION] 'Iron Man' gardé tel quel", sortie)
 
     def test_fichier_absent_ou_illisible(self):
         self.assertEqual(passfiles.read_collections(self.fichier), {})
@@ -489,6 +582,180 @@ class TestFilmsValides(unittest.TestCase):
 
 
 
+
+
+class TestCasseDuTitre(unittest.TestCase):
+    """TMDB écrit "28 Ans plus tard", le fichier "28 ans plus tard" : la question est posée une fois, la réponse mémorisée."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.fichier = Path(self._tmp.name) / "metadata.titles"
+        self.entree = naming.MovieFolder(folder=Path("saga"), files=[Path("saga/3 - 28 ans plus tard.mkv")], rawname="3 - 28 ans plus tard")
+
+    def regler(self, titre="28 Ans plus tard", nom=None, reponses=(), peut_demander=True, library=None, **changes):
+        args = types.SimpleNamespace(verify=False, no_tag=False, no_ask=False)
+        for cle, valeur in changes.items():
+            setattr(args, cle, valeur)
+        library = library or films.Library([], {}, {}, casings_file=self.fichier)
+        movie = {"title": titre}
+        entree = self.entree if nom is None else naming.MovieFolder(folder=Path("x"), files=[Path("x/film.mkv")], rawname=nom)
+        with mock.patch.object(films.cli, "can_ask", lambda: peut_demander), mock.patch.object(films.cli, "ask_choice", side_effect=list(reponses)) as question, redirect_stdout(io.StringIO()) as sortie:
+            films.settle_title(entree, movie, library, args)
+        return movie["title"], question.call_count, library, sortie.getvalue()
+
+    def test_la_casse_du_fichier_est_proposee_et_memorisee(self):
+        titre, questions, library, sortie = self.regler(reponses=[0])
+        self.assertEqual((titre, questions), ("28 ans plus tard", 1))
+        self.assertIn("28 Ans plus tard => 28 ans plus tard", self.fichier.read_text(encoding="utf-8"))
+        self.assertEqual(library.casings, {"28 Ans plus tard": "28 ans plus tard"})
+        self.assertIn("(défaut)", sortie)
+
+    def test_garder_celle_de_tmdb_est_memorise_aussi(self):
+        titre, _, library, _ = self.regler(reponses=[1])
+        self.assertEqual(titre, "28 Ans plus tard")
+        self.assertEqual(library.casings, {"28 Ans plus tard": "28 Ans plus tard"})
+
+    def test_la_reponse_vaut_pour_tous_les_films_de_ce_titre(self):
+        _, _, library, _ = self.regler(reponses=[0])
+        titre, questions, _, _ = self.regler(library=library)
+        self.assertEqual((titre, questions), ("28 ans plus tard", 0))
+
+    def test_une_reponse_deja_consignee_n_est_pas_redemandee(self):
+        self.fichier.write_text("# commentaire\n28 Ans plus tard => 28 ans plus tard !\n", encoding="utf-8")
+        library = films.Library([], {}, {}, casings=passfiles.read_titles(self.fichier), casings_file=self.fichier)
+        titre, questions, _, _ = self.regler(library=library)
+        self.assertEqual((titre, questions), ("28 ans plus tard !", 0))
+
+    def test_un_titre_anglais_propose_par_defaut_la_casse_de_tmdb(self):
+        # Entrée ne doit pas transformer "American History X" en "American history X".
+        with mock.patch.object(films.cli, "can_ask", lambda: True), mock.patch.object(films.cli, "ask_choice", return_value=1) as question, redirect_stdout(io.StringIO()):
+            films.settle_title(naming.MovieFolder(folder=Path("x"), files=[Path("x/a.mkv")], rawname="American history X"), {"title": "American History X"}, films.Library([], {}, {}), types.SimpleNamespace(verify=False, no_tag=False, no_ask=False))
+        self.assertEqual(question.call_args[0], (2, 1, True))
+
+    def test_un_titre_francais_propose_par_defaut_la_casse_du_fichier(self):
+        with mock.patch.object(films.cli, "can_ask", lambda: True), mock.patch.object(films.cli, "ask_choice", return_value=0) as question, redirect_stdout(io.StringIO()):
+            films.settle_title(self.entree, {"title": "28 Ans plus tard"}, films.Library([], {}, {}), types.SimpleNamespace(verify=False, no_tag=False, no_ask=False))
+        self.assertEqual(question.call_args[0], (2, 0, True))
+
+    def test_un_morceau_du_titre_suffit(self):
+        # "La naissance d'un empire" (saga "300") : le fichier ne porte pas le "300 :" du titre TMDB.
+        titre, questions, _, _ = self.regler(titre="300 : La Naissance d’un Empire", nom="2 - La naissance d'un empire", reponses=[0])
+        self.assertEqual((titre, questions), ("300 : La naissance d’un empire", 1))
+
+    def test_rien_a_demander_quand_la_casse_est_la_meme(self):
+        for titre, nom in (("Alien vs. Predator", "1 - Alien vs Predator"), ("Dune", "Dune (2021)"), ("Heat", "heat")):
+            _, questions, _, _ = self.regler(titre=titre, nom=nom)
+            self.assertEqual(questions, 0, titre)
+        self.assertFalse(self.fichier.exists())
+
+    def test_un_autre_film_ne_declenche_rien(self):
+        _, questions, _, _ = self.regler(titre="Blade", nom="3 - 28 ans plus tard")
+        self.assertEqual(questions, 0)
+
+    def test_sans_terminal_le_titre_tmdb_est_garde_sans_rien_ecrire(self):
+        titre, questions, _, sortie = self.regler(peut_demander=False)
+        self.assertEqual((titre, questions), ("28 Ans plus tard", 0))
+        self.assertIn("[CASSE]", sortie)
+        self.assertFalse(self.fichier.exists())
+
+    def test_no_ask_verify_et_no_tag_ne_demandent_rien(self):
+        for option in ("no_ask", "verify", "no_tag"):
+            titre, questions, _, _ = self.regler(**{option: True})
+            self.assertEqual((titre, questions), ("28 Ans plus tard", 0), option)
+
+    def test_entree_fermee_cesse_de_demander(self):
+        titre, _, library, _ = self.regler(reponses=[cli_stop()])
+        self.assertEqual(titre, "28 Ans plus tard")
+        self.assertFalse(library.asking)
+        _, questions, _, _ = self.regler(library=library)
+        self.assertEqual(questions, 0)
+        self.assertFalse(self.fichier.exists())
+
+    def test_t_prend_le_defaut_pour_celle_ci_et_les_suivantes_sans_reposer_la_question(self):
+        titre, questions, library, _ = self.regler(reponses=[films.cli.ASK_ALL])
+        self.assertEqual((titre, questions), ("28 ans plus tard", 1))                # français : la casse du fichier
+        self.assertTrue(library.take_defaults)
+        titre, questions, library, sortie = self.regler(titre="American History X", nom="American history X", library=library)
+        self.assertEqual((titre, questions), ("American History X", 0))               # anglais : la casse de TMDB
+        self.assertIn("'American History X' -> 'American History X' (défaut)", sortie)
+        self.assertEqual(library.casings, {"28 Ans plus tard": "28 ans plus tard", "American History X": "American History X"})
+        self.assertIn("American History X => American History X", self.fichier.read_text(encoding="utf-8"))
+
+    def test_ignorer_garde_le_titre_sans_memoriser(self):
+        titre, questions, library, _ = self.regler(reponses=[cli_skip()])
+        self.assertEqual((titre, questions), ("28 Ans plus tard", 1))
+        self.assertEqual(library.casings, {})
+        self.assertTrue(library.asking)
+        self.assertFalse(self.fichier.exists())
+
+    def test_le_titre_arrete_est_ecrit_partout_dans_le_mkv(self):
+        # Le titre du conteneur et le tag TITLE du film viennent de la même fiche : ils prennent la même casse, et plus rien ne porte l'ancienne.
+        movie = {"id": 1100988, "title": "28 Ans plus tard", "overview": "", "credits": {}}
+        with mock.patch.object(films.cli, "can_ask", lambda: True), mock.patch.object(films.cli, "ask_choice", return_value=0), redirect_stdout(io.StringIO()):
+            films.settle_title(self.entree, movie, films.Library([], {}, {}), types.SimpleNamespace(verify=False, no_tag=False, no_ask=False))
+        cible = movietags.movie_target(movie, OPTS)
+        titres = [n.text for n in ElementTree.fromstring(cible.tags_xml).findall(".//Simple[Name='TITLE']/String")]
+        self.assertEqual((cible.title, titres), ("28 ans plus tard", ["28 ans plus tard"]))
+        self.assertNotIn("28 Ans plus tard", cible.tags_xml)
+
+    def test_l_identifiant_epingle_dans_le_nom_ne_gene_pas(self):
+        titre, _, _, _ = self.regler(nom="3 - 28 ans plus tard [tmdbid-1100988]", reponses=[0])
+        self.assertEqual(titre, "28 ans plus tard")
+
+
+def cli_stop():
+    return films.cli.ASK_STOP
+
+
+def cli_skip():
+    return films.cli.ASK_SKIP
+
+
+class TestCasseDuNomDeSerie(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.racine = Path(self._tmp.name) / "Les mondes parallèles"
+        (self.racine / "Saison 1").mkdir(parents=True)
+
+    def regler(self, repertoire=None, reponses=(), peut_demander=True, **changes):
+        args = types.SimpleNamespace(dir=str(repertoire or self.racine), verify=False, no_tag=False)
+        for cle, valeur in changes.items():
+            setattr(args, cle, valeur)
+        with mock.patch.object(series.cli, "can_ask", lambda: peut_demander), mock.patch.object(series.cli, "ask_choice", side_effect=list(reponses)) as question, redirect_stdout(io.StringIO()) as sortie:
+            titre = series.settle_series_name("Les Mondes Parallèles", args)
+        return titre, question.call_count, sortie.getvalue()
+
+    def memoire(self):
+        return (self.racine / "metadata.titles")
+
+    def test_le_dossier_de_la_serie_fait_la_proposition_et_la_reponse_est_memorisee(self):
+        titre, questions, _ = self.regler(reponses=[0])
+        self.assertEqual((titre, questions), ("Les mondes parallèles", 1))
+        self.assertIn("Les Mondes Parallèles => Les mondes parallèles", self.memoire().read_text(encoding="utf-8"))
+        self.assertEqual(self.regler()[:2], ("Les mondes parallèles", 0))
+
+    def test_dir_sur_un_dossier_de_saison_regarde_le_dossier_de_la_serie(self):
+        titre, questions, _ = self.regler(repertoire=self.racine / "Saison 1", reponses=[0])
+        self.assertEqual((titre, questions), ("Les mondes parallèles", 1))
+
+    def test_sans_terminal_verify_et_no_tag_gardent_le_titre_tmdb(self):
+        self.assertEqual(self.regler(peut_demander=False)[:2], ("Les Mondes Parallèles", 0))
+        self.assertIn("[CASSE]", self.regler(peut_demander=False)[2])
+        self.assertEqual(self.regler(verify=True)[:2], ("Les Mondes Parallèles", 0))
+        self.assertEqual(self.regler(no_tag=True)[:2], ("Les Mondes Parallèles", 0))
+        self.assertFalse(self.memoire().exists())
+
+    def test_t_vaut_le_defaut(self):
+        titre, questions, _ = self.regler(reponses=[series.cli.ASK_ALL])
+        self.assertEqual((titre, questions), ("Les mondes parallèles", 1))
+        self.assertIn("Les Mondes Parallèles => Les mondes parallèles", self.memoire().read_text(encoding="utf-8"))
+
+    def test_ignorer_et_quitter_ne_memorisent_rien(self):
+        for reponse in (cli_skip(), cli_stop()):
+            self.assertEqual(self.regler(reponses=[reponse])[:2], ("Les Mondes Parallèles", 1))
+        self.assertFalse(self.memoire().exists())
 
 
 if __name__ == "__main__":
