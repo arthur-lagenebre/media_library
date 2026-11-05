@@ -30,7 +30,7 @@ def plain_text(html):
     return "\n".join(line for line in lines if line)
 
 
-def _opf_root(archive):
+def opf_root(archive):
     """(arbre de l'.opf, son chemin dans l'archive)."""
     try:
         container = ElementTree.fromstring(read_member(archive, "META-INF/container.xml", "container.xml"))
@@ -113,7 +113,7 @@ def parse_opf(root):
 def read_info(path):
     """Fiche d'un .epub, ou BookError s'il est illisible."""
     with open_zip(path) as archive:
-        return parse_opf(_opf_root(archive)[0])
+        return parse_opf(opf_root(archive)[0])
 
 
 def cover_href(root):
@@ -140,7 +140,7 @@ def cover_href(root):
 def cover(path):
     """Octets de la couverture d'un .epub, ou None s'il n'en déclare pas."""
     with open_zip(path) as archive:
-        root, opf_path = _opf_root(archive)
+        root, opf_path = opf_root(archive)
         href = cover_href(root)
         if href is None:
             return None

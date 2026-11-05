@@ -35,6 +35,16 @@ def read_member(archive, member, what):
         raise BookError(f"{what} illisible : {e}") from e
 
 
+# Ce qu'un système ou un gestionnaire de bibliothèque glisse dans une archive sans qu'elle en ait besoin : le dossier de métadonnées de macOS, les caches de l'Explorateur, la position de lecture de Calibre, les fichiers d'Apple Books.
+PARASITE_NAMES = frozenset((".ds_store", "thumbs.db", "desktop.ini", "itunesmetadata.plist", "itunesartwork", "calibre_bookmarks.txt"))
+
+
+def is_parasite(name):
+    """Vrai pour une entrée d'archive qui n'est qu'un résidu : __MACOSX/, les "._" d'AppleDouble, .DS_Store, Thumbs.db... Un livre qui la déclarerait lui-même la garde : c'est à l'appelant de le vérifier."""
+    base = name.rstrip("/").rsplit("/", 1)[-1].casefold()
+    return name.startswith("__MACOSX/") or base.startswith("._") or base in PARASITE_NAMES
+
+
 def natural_key(text):
     """Clé de tri "naturel" : 'Tome 2' avant 'Tome 10', sans tenir compte de la casse."""
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", (text or "").casefold())]

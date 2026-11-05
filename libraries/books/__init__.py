@@ -2,5 +2,7 @@
 
 Un livre est un fichier - .cbz pour les bandes dessinées, .epub et .pdf pour le reste - qui porte souvent sa propre fiche : ComicInfo.xml dans un .cbz, le .opf d'un .epub (Calibre, le plus souvent). Les scripts de Books/ ne gardent que leur déroulé ; la lecture de ces fiches, et le parcours de l'étagère vivent ici. Ce qui n'est propre à aucun domaine - ligne de commande, bilan d'un passage, écriture de fichiers texte - vient de libraries/common/ ; ce dossier ne dépend jamais de libraries/video/ ni de libraries/music/.
 
+epubhealth.py contrôle un .epub (archive, mimetype, conteneur, .opf, XHTML) sans rien écrire ; epubclean.py en retire les résidus, répare son archive et assainit son .opf, après avoir prouvé que rien d'autre ne change.
+
 Aucune dépendance : uniquement la bibliothèque standard.
 """
