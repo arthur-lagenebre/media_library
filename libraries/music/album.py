@@ -457,19 +457,23 @@ def without_guests(credits, artist, hidden):
     return kept[:-1] + [dict(kept[-1], joinphrase="")]
 
 
+def _credited(credit, sort, artist):
+    known = credit.get("artist") or {}
+    name = (known.get("sort-name") if sort else None) or credit.get("name") or known.get("name") or ""
+    return artist if artist and not sort and names_artist(credit, artist) else name
+
+
 def credit_name(credits, sort=False, artist=""):
     """'Daft Punk', 'Kavinsky feat. Havoc' : les noms crédités, liaisons comprises.
 
     `artist` impose son écriture au crédit qui le désigne, les autres crédits gardent la leur : "Thiéfaine / Mairet" devient "Hubert-Félix Thiéfaine / Mairet". Le nom de tri ne bouge pas, c'est celui de la même fiche.
     """
-    parts = []
-    for credit in credits:
-        known = credit.get("artist") or {}
-        name = (known.get("sort-name") if sort else None) or credit.get("name") or known.get("name") or ""
-        if artist and not sort and names_artist(credit, artist):
-            name = artist
-        parts.append(name + (credit.get("joinphrase") or ""))
-    return "".join(parts)
+    return "".join(_credited(credit, sort, artist) + (credit.get("joinphrase") or "") for credit in credits)
+
+
+def credit_names(credits, artist=""):
+    """['Kavinsky', 'Havoc'] : les mêmes noms crédités, un par artiste et sans les liaisons - la clé ARTISTS de Picard."""
+    return unique(_credited(credit, False, artist) for credit in credits)
 
 
 def genres(group, release, limit=MAX_GENRES):
@@ -509,7 +513,7 @@ def _track_tags(release, rg, medium, track, album_credit, track_credit, artist):
     media = release.get("media") or []
     first = rg.get("first-release-date") or ""
     count = str(medium.get("track-count") or len(medium.get("tracks") or []))
-    return [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True)), ("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
+    return [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True))] + [("ARTISTS", name) for name in credit_names(track_credit, artist)] + [("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
 
 
 def _edition_tags(release, rg, medium):
