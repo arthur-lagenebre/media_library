@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import naming
-from scripts.Movies import Rename_Movies as renommeur
+from scripts.Video.Movies import Rename_Movies as renommeur
 
 DUNE = {"id": 438631, "title": "Dune", "release_date": "2021-09-15"}
 

@@ -13,8 +13,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import mkv, remux
-from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
-from scripts.Maintenance.Video import Verify_Mkv
+from scripts.Video import Avi_To_Mkv, Mp4_To_Mkv
+from scripts.Video import Verify_Mkv
 
 INFO = {"tracks": [{"id": 0, "type": "video", "properties": {}}, {"id": 1, "type": "audio", "properties": {}}]}
 

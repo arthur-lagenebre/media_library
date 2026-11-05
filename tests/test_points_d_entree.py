@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cli
 from libraries.video import lookup, mkv
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError
-from scripts.Movies import Rename_Movies as renommeur
+from scripts.Video.Movies import Rename_Movies as renommeur
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
 from tests.test_flux import FauxTmdb
 
@@ -28,16 +28,16 @@ class TestCleTmdbRefusee(unittest.TestCase):
     """Une clé invalide arrête tout avec un message clair : ni pile d'appels, ni cascade de « saison ignorée »."""
 
     SCRIPTS = {
-        "Movies/Metadata.py": ["--no-tag"],
-        "Movies/Rename_Movies.py": [],
-        "TV_Shows/Metadata.py": ["--tmdb-id", "42", "--no-tag"],
-        "TV_Shows/Rename_Episodes.py": ["--tmdb-id", "42"],
+        "Video/Movies/Metadata.py": ["--no-tag"],
+        "Video/Movies/Rename_Movies.py": [],
+        "Video/TV_Shows/Metadata.py": ["--tmdb-id", "42", "--no-tag"],
+        "Video/TV_Shows/Rename_Episodes.py": ["--tmdb-id", "42"],
     }
 
     def lancer(self, script, options):
         with tempfile.TemporaryDirectory() as dossier:
             racine = Path(dossier)
-            if script.startswith("Movies"):
+            if script.startswith("Video/Movies"):
                 (racine / "Dune (2021)").mkdir()
                 (racine / "Dune (2021)" / "film.mkv").write_text("x", encoding="utf-8")
             else:

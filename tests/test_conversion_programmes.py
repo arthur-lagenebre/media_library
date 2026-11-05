@@ -15,8 +15,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common import cli
 from libraries.video import remux
-from scripts.Converters.Video import Avi_To_Mkv, Mp4_To_Mkv
-from scripts.Maintenance.Video import Verify_Mkv
+from scripts.Video import Avi_To_Mkv, Mp4_To_Mkv
+from scripts.Video import Verify_Mkv
 from tests.test_conversion_atomique import INFO, MkvmergeSimule
 
 

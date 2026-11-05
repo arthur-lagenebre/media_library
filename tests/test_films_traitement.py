@@ -1,4 +1,4 @@
-"""Movies/Metadata.py : le traitement d'un fichier, les sagas qui replacent un film, la fiche et le déroulé complet.
+"""Video/Movies/Metadata.py : le traitement d'un fichier, les sagas qui replacent un film, la fiche et le déroulé complet.
 
 TMDB et les outils MKVToolNix sont simulés : on regarde ce que le script décide d'écrire et ce qu'il en dit.
 """
@@ -18,7 +18,7 @@ from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.video import lookup, mkv, movietags, naming, passfiles, resolve
 from libraries.video.tmdb import TmdbError
-from scripts.Movies import Metadata as films
+from scripts.Video.Movies import Metadata as films
 from tests.test_codes_de_sortie_video import ProgrammeTestCase
 from tests.test_flux import FauxTmdb
 

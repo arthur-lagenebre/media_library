@@ -13,9 +13,9 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.Movies import Metadata as films
-from scripts.TV_Shows import Metadata as series
-from scripts.TV_Shows import Rename_Episodes as rename
+from scripts.Video.Movies import Metadata as films
+from scripts.Video.TV_Shows import Metadata as series
+from scripts.Video.TV_Shows import Rename_Episodes as rename
 
 class FauxTmdb:
     """Répond comme TMDB, sans réseau, et note ce qu'on lui à demande."""

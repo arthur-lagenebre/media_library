@@ -24,7 +24,7 @@ Tu relis les changements de **media_library**, l'atelier qui nettoie, renomme, c
 
 **Python 3.8 minimum** (le Python du NAS ; la CI teste 3.8 et 3.13). Signaler : `match`, opérateur `X | Y` sur des types ou des dict à l'exécution, `list[str]` / `dict[str, int]` évalués à l'exécution (sans `from __future__ import annotations`), `str.removeprefix` / `removesuffix`, `zip(strict=)`, `math.lcm`, parenthèses dans un `with`, `functools.cache`, `Path.is_relative_to`, `Path.readlink`, walrus mal placé, `dataclass(slots=)`.
 
-**Découpage de `libraries/`** (vérifié par `tests/test_architecture.py`) : `common` ne connaît personne, `video`, `music` et `books` ne se connaissent pas. Les scripts de musique n'importent pas `video`. Ce qui sert à deux domaines descend dans `common`.
+**Découpage de `libraries/`** (vérifié par `tests/test_architecture.py`) : `common` ne connaît personne, `video`, `music` et `books` ne se connaissent pas. Les scripts de `scripts/<Domaine>/` (`Video`, `Music`, `Books`, sous-dossiers compris) n'importent que `common` et leur propre domaine. `scripts/` ne contient que des dossiers de domaine : pas de dossier par type d'action (`Converters/`, `Maintenance/`). Ce qui sert à deux domaines descend dans `common`.
 
 **Réseau et secrets.** La clé TMDB vient du `.env` seulement (`cli.resolve_tmdb_key`), jamais d'un argument ni d'une variable d'environnement, jamais affichée ni écrite dans un journal. Le `.env` n'est pas suivi par git. Les caches vivent hors de la médiathèque (`%LOCALAPPDATA%\media_library\…`, `~/.cache/media_library/…`). MusicBrainz impose un intervalle entre requêtes et un User-Agent : ne pas les contourner.
 

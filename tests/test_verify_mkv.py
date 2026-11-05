@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.Maintenance.Video import Verify_Mkv as verificateur
+from scripts.Video import Verify_Mkv as verificateur
 
 
 class TestSelectionDesFichiers(unittest.TestCase):

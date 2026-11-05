@@ -27,7 +27,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli  # noqa: E402
 from libraries.video import remux  # noqa: E402
 

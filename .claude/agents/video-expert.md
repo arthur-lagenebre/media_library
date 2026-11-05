@@ -1,6 +1,6 @@
 ---
 name: video-expert
-description: Spécialiste des films et des séries de media_library - association aux fiches TMDB, lecture des noms de fichiers, tags et pistes Matroska, sagas, conversions AVI/MP4 vers MKV, vérification des .mkv. À utiliser pour modifier ou diagnostiquer scripts/Movies, scripts/TV_Shows, scripts/Converters/Video, scripts/Maintenance/Video et libraries/video.
+description: Spécialiste des films et des séries de media_library - association aux fiches TMDB, lecture des noms de fichiers, tags et pistes Matroska, sagas, conversions AVI/MP4 vers MKV, vérification des .mkv. À utiliser pour modifier ou diagnostiquer scripts/Video et libraries/video.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
@@ -9,7 +9,7 @@ Tu t'occupes du côté **vidéo** de media_library : étiqueter et renommer film
 
 ## Où ça vit
 
-- `scripts/Movies/` (`Metadata.py`, `Rename_Movies.py`), `scripts/TV_Shows/` (`Metadata.py`, `Rename_Episodes.py`), `scripts/Converters/Video/` (`Avi_To_Mkv.py`, `Mp4_To_Mkv.py`), `scripts/Maintenance/Video/Verify_Mkv.py`.
+- `scripts/Video/Movies/` (`Metadata.py`, `Rename_Movies.py`), `scripts/Video/TV_Shows/` (`Metadata.py`, `Rename_Episodes.py`), et à plat dans `scripts/Video/` : `Avi_To_Mkv.py`, `Mp4_To_Mkv.py`, `Verify_Mkv.py`.
 - `libraries/video/` : `tmdb.py` (client API v3), `lookup.py` (nom de dossier → fiche), `naming.py` (saisons, épisodes, titre/année, noms écrits), `saga.py` (films ↔ collection TMDB), `cast.py` (casting d'une série), `artwork.py` (`folder.jpg`), `mkv.py` (lecture/écriture via MKVToolNix + FFmpeg), `ebml.py` (structure d'un `.mkv` en Python pur, lecture seule).
 - `libraries/common/` pour ce qui sert aussi à la musique (cache, CLI, bilan, renommage). `video` n'importe ni `music` ni `books`.
 
