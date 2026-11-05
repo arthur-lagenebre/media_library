@@ -569,7 +569,7 @@ class TestCandidates(CoverTestCase):
         self.assertIn("_covers/01_FR-2013-CD.jpg", texte)
         self.assertIn("TOTAL : 3 pochette(s) déposée(s) pour 1/1 album(s).", texte)
         self.assertIn("--clean-candidates", texte)
-        self.assertEqual([taille for _, taille in mb.telechargements], ["1200"] * 3)
+        self.assertEqual([taille for _, taille in mb.telechargements], ["original"] * 3)
 
     def test_la_taille_demandee_est_transmise(self):
         self.poser()
@@ -597,11 +597,11 @@ class TestCandidates(CoverTestCase):
         self.lancer_mb(mb, "--candidates", "--apply")
         self.assertEqual(mb.index, ["rel-1"])
 
-    def test_plafond_de_pochettes_par_album(self):
+    def test_toutes_les_pochettes_disponibles_sont_deposees(self):
         self.poser()
         beaucoup = [(n, b"\xff\xd8" + bytes([n])) for n in range(1, 21)]
         self.lancer_mb(CandidatsMusicBrainz({"rel-1": beaucoup}), "--candidates", "--apply")
-        self.assertEqual(len(self.candidates()), cover.MAX_CANDIDATES)
+        self.assertEqual(len(self.candidates()), 20)
 
     def test_un_deuxieme_passage_n_ecrase_rien(self):
         self.poser()
