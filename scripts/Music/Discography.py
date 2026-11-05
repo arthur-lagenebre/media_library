@@ -11,7 +11,7 @@ Chaque sous-dossier de --dir est un artiste ou un groupe. Sa discographie vient 
 
 L'artiste est reconnu par l'identifiant MusicBrainz que portent les fichiers de ses albums (Metadata.py l'y a inscrit), sinon par recherche sur le nom de son dossier - ou la première ligne d'un fichier artist.txt, comme pour Metadata.py. Plusieurs artistes de ce nom, c'est une QUESTION, posée à la fin du passage ; --no-ask garde le premier.
 
-La pochette est celle que Cover Art Archive garde pour l'album (l'édition que MusicBrainz juge représentative), en JPEG ou PNG, à la taille --image-size (1200 par défaut : assez pour la fiche, sans les scans d'origine de plusieurs Mo). Sans pochette, ou si le service ne répond pas, l'album est un fichier vide sans extension "1997 - OK Computer" ; au passage suivant, ce fichier vide est remplacé par la pochette si elle existe alors. Une image ou un fichier non vide déjà là n'est jamais remplacé. --no-covers ne télécharge rien et ne pose que des fichiers vides.
+La pochette est celle que Cover Art Archive garde pour l'album (l'édition que MusicBrainz juge représentative), en JPEG ou PNG, à sa taille d'origine, sauf si --image-size en demande une autre (250, 500 ou 1200). Au-delà de 20 Mio, ce n'est pas une pochette : l'album reste alors un fichier vide. Sans pochette, ou si le service ne répond pas, l'album est un fichier vide sans extension "1997 - OK Computer" ; au passage suivant, ce fichier vide est remplacé par la pochette si elle existe alors. Une image ou un fichier non vide déjà là n'est jamais remplacé. --no-covers ne télécharge rien et ne pose que des fichiers vides.
 
 Un album compte pour possédé qu'il soit un dossier ("1994 - Born Dead", "Daft Punk - Discovery (2001) FLAC"), un fichier (vide, avec ou sans .txt) ou une image "AAAA - Titre" : seul le titre compte, ni l'année ni le format. Les sorties sans année sur MusicBrainz ne peuvent pas se nommer "AAAA - Titre" : elles sont comptées et laissées de côté. Les fichiers se posent là où l'artiste range ses albums (son dossier, ou "Albums/" s'il y range les siens).
 
@@ -25,7 +25,7 @@ Usage :
   python Discography.py --dir "D:\Musique" --only "Radiohead" --apply   # un seul artiste, créé s'il n'a pas de dossier
   python Discography.py --dir "D:\Musique" --cats album,ep --apply      # albums et EP
 
-Options : --apply --only --cats (défaut album) --no-covers --image-size (défaut 1200) --no-ask --no-cache
+Options : --apply --only --cats (défaut album) --no-covers --image-size (défaut original) --no-ask --no-cache
 
 Ne touche ni aux albums possédés, ni aux tags, ni aux pochettes de leurs pistes. Aucune dépendance, aucune clé : Internet pour MusicBrainz et Cover Art Archive.
 """
@@ -248,7 +248,7 @@ def parse_args():
     ap.add_argument("--cats", default=",".join(discography.DEFAULT_CATEGORIES), help=f"Catégories à compléter, séparées par des virgules ({', '.join(discography.CATEGORIES)}, ou all ; défaut : {','.join(discography.DEFAULT_CATEGORIES)})")
     ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er artiste qui porte le nom")
     ap.add_argument("--no-covers", action="store_true", help="Ne cherche aucune pochette : chaque album manquant est un fichier vide (plus rapide, rien à télécharger)")
-    ap.add_argument("--image-size", default="1200", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : 1200 ; original = le scan d'origine, souvent plusieurs Mo)")
+    ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : original, le scan d'origine, souvent plusieurs Mo ; 250, 500 ou 1200 pour des miniatures)")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--apply", action="store_true", help="Pose réellement les fichiers (défaut : simulation)")
     args = ap.parse_args()

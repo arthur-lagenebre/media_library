@@ -10,7 +10,7 @@ Un album sans fichier cover est listé à la fin, pour savoir où en poser un. L
 
 --extract fait le chemin inverse, pour les albums déjà étiquetés dont les pistes portent une pochette mais dont le dossier n'a pas de fichier : il écrit cette pochette en cover.jpg (ou cover.png, selon l'image) dans le dossier de l'album. Un fichier cover existant n'est jamais remplacé, et les pistes ne sont pas touchées. C'est le point de départ pour corriger : extraire, ouvrir les cover.jpg, remplacer à la main les mauvaises (recto-verso, mal cadrées), puis embarquer avec --apply.
 
---candidates sert à CHOISIR la pochette : pour chaque album, il retrouve l'édition sur MusicBrainz (comme Metadata.py : l'identifiant déjà dans les pistes ou le nom du dossier, sinon la recherche) et télécharge dans un sous-dossier _covers/ de l'album toutes les pochettes de face que Cover Art Archive garde pour cette édition et pour les autres éditions du même album (12 au plus). Chaque fichier dit d'où il vient : "01_FR-2013-CD_1200x1200.jpg" - le 01 est l'édition retenue. Les images identiques entre elles, ou au fichier cover déjà là, ne sont déposées qu'une fois. Rien n'est touché ailleurs : ni cover.jpg, ni les pistes.
+--candidates sert à CHOISIR la pochette : pour chaque album, il retrouve l'édition sur MusicBrainz (comme Metadata.py : l'identifiant déjà dans les pistes ou le nom du dossier, sinon la recherche) et télécharge dans un sous-dossier _covers/ de l'album toutes les pochettes de face que Cover Art Archive garde pour cette édition et pour les autres éditions du même album, sans limite de nombre, en taille d'origine sauf si --image-size en demande une autre. Chaque fichier dit d'où il vient : "01_FR-2013-CD_3000x3000.jpg" - le 01 est l'édition retenue. Les images identiques entre elles, ou au fichier cover déjà là, ne sont déposées qu'une fois. Rien n'est touché ailleurs : ni cover.jpg, ni les pistes.
 Pour choisir : ouvrir _covers/ dans l'Explorateur, copier la bonne image en cover.jpg dans le dossier de l'album (un cover.jpg l'emporte sur un cover.png : supprimer l'ancien si le format change), puis embarquer avec --apply. --clean-candidates supprime ensuite les dossiers _covers/ (il n'est jamais fait en embarquant : un passage sur toute la médiathèque ne doit pas effacer des candidates que l'on n'a pas encore regardées).
 
 Usage :
@@ -22,7 +22,7 @@ Usage :
   python Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --candidates --apply   # dépose les pochettes entre lesquelles choisir
   python Cover.py --dir "D:\Musique" --clean-candidates --apply                    # supprime les dossiers _covers
 
-Options : --apply --verify --extract --candidates --clean-candidates --no-cache --country (défaut FR) --image-size (défaut 1200)
+Options : --apply --verify --extract --candidates --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original)
 
 Aucune dépendance, aucun outil externe, aucune clé. --candidates nécessite Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
 """
@@ -37,8 +37,6 @@ from libraries.common.report import Report  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
 from libraries.music import audio, coverfile, flac, lookup  # noqa: E402
 from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError  # noqa: E402
-
-MAX_CANDIDATES = 12      # pochettes déposées par album : au-delà on ne choisit plus, on feuillette
 
 
 def process_album(album, args):
@@ -143,7 +141,7 @@ def extract_albums(found, args):
 
 
 def candidate_sources(release, mb):
-    """[(sortie, image)] : les pochettes de face de l'édition retenue, puis celles des autres éditions de son release group (les plus anciennes d'abord), MAX_CANDIDATES au plus. Ne demande à Cover Art Archive que les éditions qui déclarent une pochette de face."""
+    """[(sortie, image)] : les pochettes de face de l'édition retenue, puis celles des autres éditions de son release group (les plus anciennes d'abord), toutes sans exception. Ne demande à Cover Art Archive que les éditions qui déclarent une pochette de face."""
     group = albums.group_id(release)
     others = [r for r in (mb.group_releases(group) if group else []) if r.get("id") != release.get("id")]
     sources = []
@@ -151,9 +149,7 @@ def candidate_sources(release, mb):
         if not (edition.get("cover-art-archive") or {}).get("front"):
             continue
         sources += [(edition, image) for image in mb.cover_images(edition["id"])]
-        if len(sources) >= MAX_CANDIDATES:
-            break
-    return sources[:MAX_CANDIDATES]
+    return sources
 
 
 def candidate_album(album, args, mb):
@@ -325,7 +321,7 @@ def parse_args():
     ap.add_argument("--clean-candidates", action="store_true", help="Supprime les dossiers _covers/ déposés par --candidates")
     ap.add_argument("--no-cache", action="store_true", help="--candidates : ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--country", default="FR", help="--candidates : pays préféré parmi les éditions d'un album, code à deux lettres (défaut : FR)")
-    ap.add_argument("--image-size", default="1200", choices=COVER_SIZES, help="--candidates : taille des pochettes Cover Art Archive (défaut : 1200)")
+    ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="--candidates : taille des pochettes Cover Art Archive (défaut : original, le scan d'origine ; 250, 500 ou 1200 pour des miniatures)")
     args = ap.parse_args()
     args.country = args.country.upper()
     if args.extract + args.candidates + args.clean_candidates > 1:
