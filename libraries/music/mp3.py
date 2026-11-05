@@ -30,7 +30,7 @@ MB_OWNER = b"http://musicbrainz.org"   # propriétaire de la trame UFID qui port
 SCAN_BYTES = 65536            # où chercher la première trame audio derrière l'étiquette
 
 # Clé Vorbis <-> trame de texte.
-TEXT_FRAMES = {"TITLE": "TIT2", "ARTIST": "TPE1", "ARTISTSORT": "TSOP", "ALBUM": "TALB", "ALBUMARTIST": "TPE2", "ALBUMARTISTSORT": "TSO2", "GENRE": "TCON", "LABEL": "TPUB", "MEDIA": "TMED", "DATE": "TDRC", "ORIGINALDATE": "TDOR"}
+TEXT_FRAMES = {"TITLE": "TIT2", "ARTIST": "TPE1", "ARTISTSORT": "TSOP", "ALBUM": "TALB", "ALBUMARTIST": "TPE2", "ALBUMARTISTSORT": "TSO2", "GENRE": "TCON", "LABEL": "TPUB", "MEDIA": "TMED", "LANGUAGE": "TLAN", "DISCSUBTITLE": "TSST", "COMPILATION": "TCMP", "DATE": "TDRC", "ORIGINALDATE": "TDOR"}
 KEYS_BY_FRAME = {frame: key for key, frame in TEXT_FRAMES.items()}
 # Clé Vorbis <-> description de la trame TXXX, telle que Picard l'écrit. Toute autre TXXX garde sa description pour clé (REPLAYGAIN_TRACK_GAIN...).
 TXXX_DESCRIPTIONS = {"MUSICBRAINZ_ALBUMID": "MusicBrainz Album Id", "MUSICBRAINZ_RELEASEGROUPID": "MusicBrainz Release Group Id", "MUSICBRAINZ_ALBUMARTISTID": "MusicBrainz Album Artist Id", "MUSICBRAINZ_ARTISTID": "MusicBrainz Artist Id", "MUSICBRAINZ_RELEASETRACKID": "MusicBrainz Release Track Id", "RELEASETYPE": "MusicBrainz Album Type", "RELEASESTATUS": "MusicBrainz Album Status", "RELEASECOUNTRY": "MusicBrainz Album Release Country", "BARCODE": "BARCODE", "CATALOGNUMBER": "CATALOGNUMBER", "ORIGINALYEAR": "originalyear"}
