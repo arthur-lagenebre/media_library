@@ -57,7 +57,6 @@ class TestDependances(unittest.TestCase):
 
     def test_les_scripts_n_importent_que_common_et_leur_domaine(self):
         # Les scripts de scripts/<Domaine>/ (sous-dossiers compris : Video/Movies, Video/TV_Shows) n'ont le droit qu'à libraries/common/ et à leur propre domaine.
-        # Ce dépôt n'a pas (encore) de scripts/Books : les livres portent déjà leur fiche, libraries/books/ sert à media_hub qui les lit. La garde attend le premier script, et passe à vide d'ici là.
         for dossier, domaine in SCRIPT_DOMAINS.items():
             interdits = {"video", "music", "books"} - {domaine}
             for path in sorted((ROOT / "scripts" / dossier).rglob("*.py")):
@@ -71,6 +70,7 @@ class TestDependances(unittest.TestCase):
                     "Video/TV_Shows/Metadata.py", "Video/TV_Shows/Rename_Episodes.py",
                     "Video/Avi_To_Mkv.py", "Video/Mp4_To_Mkv.py", "Video/Verify_Mkv.py"}
         attendus |= {"Music/" + nom + ".py" for nom in ("Cover", "Discography", "Metadata", "Rename_Tracks", "Verify_Flac", "Verify_Mp3", "Wav_To_Flac")}
+        attendus |= {"Books/" + nom + ".py" for nom in ("Clean_Epub", "Verify_Epub")}
         self.assertTrue(attendus <= vus, attendus - vus)
 
     def test_le_detecteur_voit_un_import_interdit(self):
