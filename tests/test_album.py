@@ -304,6 +304,32 @@ class TestTagsVises(unittest.TestCase):
         self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky"])
         self.assertEqual(self.valeurs(tags, "MUSICBRAINZ_ARTISTID"), ["art-1", "art-2"])
 
+    def test_credit_de_l_enregistrement_quand_il_nomme_plus_d_artistes(self):
+        def credit(ident, nom, liaison=""):
+            return {"name": nom, "joinphrase": liaison, "artist": {"id": ident, "name": nom, "sort-name": nom}}
+        def etiquettes(credit_piste, credit_enregistrement):
+            enregistrement = {"id": "r1", "title": "Titre", "artist-credit": credit_enregistrement}
+            extra = {"artist-credit": credit_piste} if credit_piste else {}
+            sortie = dict(OUTRUN, **{"media": [{"position": 1, "format": "CD", "track-count": 1, "tracks": [piste(1, "Titre", recording=enregistrement, **extra)]}]})
+            return album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0])
+        seul = [credit("a", "A")]
+        duo = [credit("a", "A", " & "), credit("b", "B")]
+        # la piste ne nomme que A, l'enregistrement nomme A et B : le crédit de l'enregistrement l'emporte
+        tags = etiquettes(seul, duo)
+        self.assertEqual(self.valeurs(tags, "ARTIST"), ["A & B"])
+        self.assertEqual(self.valeurs(tags, "ARTISTSORT"), ["A & B"])
+        self.assertEqual(self.valeurs(tags, "MUSICBRAINZ_ARTISTID"), ["a", "b"])
+        # un artiste de la piste absent de l'enregistrement : la piste garde son crédit
+        autre = [credit("a", "A", " & "), credit("c", "C")]
+        self.assertEqual(self.valeurs(etiquettes(duo, autre), "ARTIST"), ["A & B"])
+        # mêmes artistes, écrits autrement : rien ne change
+        ecrit = [credit("a", "A.", " & "), credit("b", "B.")]
+        self.assertEqual(self.valeurs(etiquettes(duo, ecrit), "ARTIST"), ["A & B"])
+        # la piste n'a pas de crédit : l'enregistrement, comme avant
+        self.assertEqual(self.valeurs(etiquettes(None, duo), "ARTIST"), ["A & B"])
+        # l'artiste d'album ne bouge pas
+        self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky"])
+
     def test_artiste_impose_remplace_le_credit_qui_le_designe(self):
         tags = self.tags(3, artist="Kavinsky (officiel)")
         self.assertEqual(self.valeurs(tags, "ARTIST"), ["Kavinsky (officiel) feat. Havoc"])

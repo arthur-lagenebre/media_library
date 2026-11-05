@@ -479,11 +479,26 @@ def genres(group, release, limit=MAX_GENRES):
     return [g["name"][:1].upper() + g["name"][1:] for g in ranked[:limit]]
 
 
+def credit_ids(credits):
+    return {(c.get("artist") or {}).get("id") for c in credits} - {None}
+
+
+def track_credit_of(track, album_credit):
+    """Le crédit d'une piste : celui de la piste sur l'édition, sinon celui de l'enregistrement, sinon celui de l'album.
+
+    Une exception : quand le crédit de l'enregistrement nomme TOUS les artistes de celui de la piste et d'autres encore, c'est lui qui est retenu. L'édition abrège parfois ("A") ce que l'enregistrement dit en entier ("A & B") ; des artistes écrits autrement, ou absents de l'enregistrement, ne suffisent pas à le préférer.
+    """
+    recording_credit = (track.get("recording") or {}).get("artist-credit") or []
+    credit = track.get("artist-credit") or []
+    if credit and credit_ids(credit) < credit_ids(recording_credit):
+        return recording_credit
+    return credit or recording_credit or album_credit
+
+
 def _credits(release, track, artist):
     """(crédit de l'album, crédit de la piste), sans les invités quand `artist` impose un nom."""
-    recording = track.get("recording") or {}
     album_credit = release.get("artist-credit") or []
-    track_credit = track.get("artist-credit") or recording.get("artist-credit") or album_credit
+    track_credit = track_credit_of(track, album_credit)
     hidden = guest_ids(album_credit, artist)
     return without_guests(album_credit, artist, hidden), without_guests(track_credit, artist, hidden)
 
