@@ -14,7 +14,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Video/TV_Shows/Metadata.py](scripts/Video/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
 | [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
-| [scripts/Music/Discography.py](scripts/Music/Discography.py) | Pose dans le dossier de chaque artiste la pochette `1997 - OK Computer.jpg` (ou un fichier vide `1997 - OK Computer` sans pochette) de chaque album qu'il a sorti d'après MusicBrainz et que la médiathèque n'a pas ; les albums possédés ne sont jamais touchés |
+| [scripts/Music/Discography.py](scripts/Music/Discography.py) | Pose dans le dossier de chaque artiste la pochette `1997 - OK Computer.jpg` (ou un fichier vide `1997 - OK Computer` sans pochette) de chaque album qu'il a sorti d'après MusicBrainz et que la médiathèque n'a pas ; les albums possédés ne sont jamais touchés ; `--candidates` dépose dans `_covers/<album>/` toutes les pochettes de toutes les éditions pour choisir la meilleure |
 | [scripts/Video/TV_Shows/Rename_Episodes.py](scripts/Video/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Video/Movies/Rename_Movies.py](scripts/Video/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
 | [scripts/Music/Rename_Tracks.py](scripts/Music/Rename_Tracks.py) | Renomme les pistes des albums `.flac` et `.mp3` en `{numéro} - {titre MusicBrainz}.flac` (ou `.mp3`), paroles `.lrc` comprises |
@@ -211,12 +211,16 @@ L'artiste est reconnu par l'identifiant MusicBrainz que portent les fichiers de 
 
 Seuls les **albums** sont complétés par défaut ; `--cats` ajoute les `ep`, `single`, `live`, `compilation`, `soundtrack`, `remix`, `demo`, `other` (ou `all`), dont les fichiers vont dans un sous-dossier à leur nom (`EP/`, `Singles/`…) — celui où l'artiste range déjà les siens s'il existe. `--only "Radiohead"` ne complète que cet artiste, et crée son dossier s'il n'existe pas encore, sous le nom que lui donne MusicBrainz.
 
+**Choisir la meilleure pochette.** `--candidates` ne pose aucun fichier d'album : pour chaque album que l'artiste n'a pas — même déjà déclaré par un fichier ou une image posés plus tôt —, il télécharge dans `_covers/<album>/`, dans le dossier de l'artiste, **toutes** les pochettes de face que Cover Art Archive garde pour **toutes** les éditions de cet album, sans limite de nombre, en taille d'origine sauf `--image-size`. Chaque nom dit d'où vient l'image : `01_FR-1997-CD_1400x1400.jpg` — le `01` est l'édition la plus ancienne. Les images identiques ne sont déposées qu'une fois, un fichier déjà déposé n'est jamais écrasé, et la simulation interroge MusicBrainz sans rien télécharger. Pour choisir : ouvrir `_covers\1997 - OK Computer\` dans l'Explorateur et copier la bonne image à côté des albums sous le nom de l'album (`1997 - OK Computer.jpg`), en remplaçant la pochette posée (si le format change, `.jpg` contre `.png`, supprimer l'ancienne). `--clean-candidates` supprime ensuite les dossiers `_covers/` (simulation sans `--apply`). Ni l'un ni l'autre ne va avec `--no-covers`.
+
 ```powershell
 python scripts\Music\Discography.py --dir "D:\Musique"                             # simulation
 python scripts\Music\Discography.py --dir "D:\Musique" --apply                     # pose pochettes et fichiers vides
 python scripts\Music\Discography.py --dir "D:\Musique" --only "Radiohead" --apply  # un artiste, créé au besoin
 python scripts\Music\Discography.py --dir "D:\Musique" --cats album,ep --apply     # albums et EP
 python scripts\Music\Discography.py --dir "D:\Musique" --no-covers --apply         # fichiers vides seulement
+python scripts\Music\Discography.py --dir "D:\Musique" --only "Radiohead" --candidates --apply   # dépose les pochettes entre lesquelles choisir
+python scripts\Music\Discography.py --dir "D:\Musique" --clean-candidates --apply  # supprime les dossiers _covers
 ```
 
 Un titre qui finit comme une extension (`Vol.2`) garde un `.txt` quand il n'a pas de pochette (`1999 - Vol.2.txt`) : sans lui, le nom serait lu comme `Vol` + `.2`. Les anciens `.txt` restent lus comme avant. Repasser le script ne pose que ce qui a manqué depuis, et il sort en **code 1** s'il reste un artiste sans fiche (introuvable, à confirmer, MusicBrainz injoignable) ou une écriture en échec.

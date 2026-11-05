@@ -17,6 +17,8 @@ Un album compte pour possédé qu'il soit un dossier ("1994 - Born Dead", "Daft 
 
 Par défaut seuls les ALBUMS sont complétés. --cats ajoute les EP, singles, lives... (album, ep, single, live, compilation, soundtrack, remix, demo, other, ou all) : leurs fichiers vont dans un sous-dossier à leur nom - "EP/", "Singles/"... -, celui où l'artiste range déjà les siens s'il existe.
 
+--candidates sert à CHOISIR la meilleure pochette : pour chaque album que l'artiste n'a pas (même déclaré par un fichier ou une image déjà posés), il télécharge dans un dossier _covers/<album>/ de l'artiste toutes les pochettes de face que Cover Art Archive garde pour TOUTES les éditions de cet album, sans limite de nombre, en taille d'origine sauf si --image-size en demande une autre. Chaque fichier dit d'où il vient : "01_FR-2013-CD_3000x3000.jpg" - le 01 est l'édition la plus ancienne. Les images identiques ne sont déposées qu'une fois. Rien d'autre n'est posé ni touché : ni les fichiers des albums, ni leurs pochettes. Pour choisir : ouvrir _covers/ dans l'Explorateur, copier la bonne image à côté des albums sous le nom de l'album ("1997 - OK Computer.jpg"), en remplaçant la pochette posée (si le format change, .jpg contre .png, supprimer l'ancienne). --clean-candidates supprime ensuite les dossiers _covers/. Ni l'un ni l'autre ne va avec --no-covers.
+
 --only crée le dossier d'un artiste qui n'existe pas encore sous --dir (il prend le nom que lui donne MusicBrainz), ou complète seulement celui-là.
 
 Usage :
@@ -24,8 +26,10 @@ Usage :
   python Discography.py --dir "D:\Musique" --apply                      # pose les fichiers
   python Discography.py --dir "D:\Musique" --only "Radiohead" --apply   # un seul artiste, créé s'il n'a pas de dossier
   python Discography.py --dir "D:\Musique" --cats album,ep --apply      # albums et EP
+  python Discography.py --dir "D:\Musique" --only "Radiohead" --candidates --apply   # dépose les pochettes entre lesquelles choisir
+  python Discography.py --dir "D:\Musique" --clean-candidates --apply   # supprime les dossiers _covers
 
-Options : --apply --only --cats (défaut album) --no-covers --image-size (défaut original) --no-ask --no-cache
+Options : --apply --only --cats (défaut album) --no-covers --candidates --clean-candidates --image-size (défaut original) --no-ask --no-cache
 
 Ne touche ni aux albums possédés, ni aux tags, ni aux pochettes de leurs pistes. Aucune dépendance, aucune clé : Internet pour MusicBrainz et Cover Art Archive.
 """
@@ -157,6 +161,102 @@ def lay_item(item, root, args, mb, report, count):
     return False
 
 
+def candidate_sources(release, mb):
+    """[(édition, image)] : les pochettes de face de toutes les éditions du release group de l'album, les plus anciennes d'abord. [] quand MusicBrainz n'a pas d'identifiant de release group pour lui."""
+    editions = coverfile.by_date(mb.group_releases(release.group)) if release.group else []
+    return coverfile.candidate_sources(editions, mb)
+
+
+def deposit_candidates(item, artist_dir, args, mb, report):
+    """Dépose dans _covers/<album>/ les pochettes entre lesquelles choisir. Retourne (nombre de pochettes déposées - ou à déposer en simulation, vrai si MusicBrainz ne répond pas)."""
+    try:
+        sources = candidate_sources(item.release, mb)
+    except MusicBrainzError as e:
+        print(f"  [ÉCHEC] {item.name} : {e}")
+        report.failures += 1
+        return 0, True
+    if not sources:
+        print(f"  {item.name} : aucune pochette de face sur Cover Art Archive")
+        return 0, False
+    print(f"  {item.name} : {len(sources)} pochette(s) de face chez {len({edition['id'] for edition, _ in sources})} édition(s)" + ("" if args.apply else " (simulation)"))
+    if not args.apply:
+        return len(sources), False
+
+    written, seen, down = 0, set(), False
+    for edition, image in sources:
+        label = albums.describe(edition)
+        try:
+            data = mb.cover_image(image, args.image_size)
+        except MusicBrainzError as e:
+            print(f"      [ÉCHEC] {label} : {e}")
+            report.failures += 1
+            down = True
+            continue
+        down = False
+        if not data or data in seen:
+            continue
+        seen.add(data)
+        if not coverfile.extension(data):
+            print(f"      {label} : ni JPEG ni PNG, ignorée")
+            continue
+        name = coverfile.candidate_name(written + 1, edition, data)
+        written += 1
+        try:
+            coverfile.write_candidate(artist_dir, name, data, album=item.name)
+        except FileExistsError:
+            print(f"      {coverfile.CANDIDATES_DIR}/{item.name}/{name} : déjà là")
+        except OSError as e:
+            print(f"      [ÉCHEC] {name} : {e.strerror or e}")
+            report.failures += 1
+            written -= 1
+            break
+        else:
+            print(f"      {coverfile.CANDIDATES_DIR}/{item.name}/{name} ({len(data) / 1024:.0f} Ko)  <- {label}")
+    return written, down
+
+
+def candidate_artist(target, todo, args, mb):
+    """--candidates : les pochettes de chaque album que le dossier de l'artiste n'a pas, dans son _covers/. Retourne (Report, Counter des pochettes - "files" - et des albums qui en ont - "albums")."""
+    report, count, errors = Report(total=1, matched=1), Counter(), 0
+    for item in todo:
+        written, down = deposit_candidates(item, target.folder, args, mb, report)
+        count["files"] += written
+        count["albums"] += bool(written)
+        errors = errors + 1 if down else 0
+        if errors >= MAX_CONSECUTIVE_ERRORS:
+            print(f"  {MAX_CONSECUTIVE_ERRORS} échecs de suite : arrêt pour cet artiste (réseau ou service indisponible ?)")
+            break
+    if not todo:
+        print("  à jour")
+    return report, count
+
+
+def clean_candidates(targets, args):
+    """--clean-candidates : supprime le dossier _covers/ de chaque artiste qui en a un. Retourne le code de sortie."""
+    report, removed = Report(), 0
+    for target in targets:
+        if not coverfile.candidates_present(target.folder):
+            continue
+        print(f"--- {target.folder.name} ---")
+        if not args.apply:
+            print(f"  {coverfile.CANDIDATES_DIR} serait supprimé (simulation)\n")
+            removed += 1
+            continue
+        try:
+            coverfile.remove_candidates(target.folder)
+        except OSError as e:
+            print(f"  [ÉCHEC] {coverfile.CANDIDATES_DIR} : {e.strerror or e}\n")
+            report.failures += 1
+            continue
+        print(f"  [OK] {coverfile.CANDIDATES_DIR} supprimé\n")
+        removed += 1
+    print(f"TOTAL : {removed} dossier(s) {coverfile.CANDIDATES_DIR} " + ("supprimé(s)." if args.apply else "à supprimer."))
+    rest = report.epilogue()
+    if rest:
+        print(f"\nÀ CORRIGER : {rest}.")
+    return report.exit_code
+
+
 def create_folder(target, report):
     """Crée le dossier d'un artiste nouveau, même quand aucun album ne s'y pose."""
     try:
@@ -189,6 +289,11 @@ def complete(target, mbid, origin, args, mb, root):
     except OSError as e:
         print(f"  [ÉCHEC] inventaire impossible, rien n'est posé pour cet artiste : {e}")
         return Report(total=1, matched=1, failures=1), Counter()
+    if args.candidates:
+        report, count = candidate_artist(target, discography.unowned(planned, owned, target.folder), args, mb)
+        if undated:
+            print(f"  {undated} sortie(s) sans année sur MusicBrainz : laissée(s) de côté")
+        return report, count
     todo = discography.missing(planned, owned, target.folder, upgrade=args.covers)
 
     report, count, bare = Report(total=1, matched=1), Counter(), 0
@@ -249,9 +354,13 @@ def parse_args():
     ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er artiste qui porte le nom")
     ap.add_argument("--no-covers", action="store_true", help="Ne cherche aucune pochette : chaque album manquant est un fichier vide (plus rapide, rien à télécharger)")
     ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : original, le scan d'origine, souvent plusieurs Mo ; 250, 500 ou 1200 pour des miniatures)")
+    ap.add_argument("--candidates", action="store_true", help="Dépose dans _covers/<album>/, dans le dossier de chaque artiste, toutes les pochettes de face de Cover Art Archive (toutes les éditions de chaque album qu'il n'a pas) : on y choisit la meilleure et on la copie sous le nom de l'album. Ne pose aucun autre fichier")
+    ap.add_argument("--clean-candidates", action="store_true", help="Supprime les dossiers _covers/ déposés par --candidates")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--apply", action="store_true", help="Pose réellement les fichiers (défaut : simulation)")
     args = ap.parse_args()
+    if args.candidates + args.clean_candidates + args.no_covers > 1:
+        ap.error("--candidates, --clean-candidates et --no-covers s'excluent : un seul à la fois")
     args.cats = parse_cats(args.cats)
     if args.only is not None and not filenames.safe_name(args.only):
         ap.error(f"--only attend un nom d'artiste dont il reste quelque chose une fois les signes interdits dans un nom de dossier retirés, pas '{args.only}'")
@@ -274,6 +383,8 @@ def main():
     if not targets:
         print(f"Aucun dossier d'artiste dans : {root}")
         return 0
+    if args.clean_candidates:
+        return clean_candidates(targets, args)
 
     report, written, pending, errors = Report(), Counter(), [], 0
     for index, target in enumerate(targets):
@@ -317,9 +428,15 @@ def main():
             report, written = report + done, written + count
         print()
 
-    verb = "posé(s)" if args.apply else "à poser"
-    covers = f", dont {written['covers']} avec pochette" if written["covers"] else ""
-    print(f"TOTAL : {written['files']} fichier(s) {verb}{covers} pour {report.matched}/{len(targets)} artiste(s).")
+    if args.candidates:
+        verb = "déposée(s)" if args.apply else "à déposer"
+        print(f"TOTAL : {written['files']} pochette(s) {verb} pour {written['albums']} album(s), {report.matched}/{len(targets)} artiste(s).")
+        if written["files"] and args.apply:
+            print(f"\nPour choisir : ouvre {coverfile.CANDIDATES_DIR}/<album>/ dans le dossier de l'artiste, copie la meilleure image à côté des albums, sous le nom de l'album (\"1997 - OK Computer.jpg\"), en remplaçant la pochette posée.\nPour supprimer les dossiers {coverfile.CANDIDATES_DIR}/ ensuite : Discography.py --clean-candidates --apply.")
+    else:
+        verb = "posé(s)" if args.apply else "à poser"
+        covers = f", dont {written['covers']} avec pochette" if written["covers"] else ""
+        print(f"TOTAL : {written['files']} fichier(s) {verb}{covers} pour {report.matched}/{len(targets)} artiste(s).")
     rest = report.epilogue()
     if rest:
         print(f"\nÀ CORRIGER : {rest}.")
