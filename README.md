@@ -21,6 +21,8 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Video/Verify_Mkv.py](scripts/Video/Verify_Mkv.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
 | [scripts/Music/Verify_Flac.py](scripts/Music/Verify_Flac.py) | Contrôle les `.flac` d'un dossier, en lecture seule : fichier coupé, CRC de chaque trame, empreinte MD5 du son |
 | [scripts/Music/Verify_Mp3.py](scripts/Music/Verify_Mp3.py) | Contrôle les `.mp3` d'un dossier, en lecture seule : fichier coupé, trou, bruit dans la chaîne de trames, nombre de trames annoncé |
+| [scripts/Books/Verify_Epub.py](scripts/Books/Verify_Epub.py) | Contrôle les `.epub` d'un dossier, en lecture seule et sans Java : archive et CRC, `mimetype`, conteneur, `.opf` (manifeste, spine, navigation), XHTML bien formé, résidus ; code 1 s'il reste un livre en défaut |
+| [scripts/Books/Clean_Epub.py](scripts/Books/Clean_Epub.py) | Nettoie les `.epub` : retire leurs résidus (`__MACOSX`, `.DS_Store`…), répare l'archive (`mimetype`, doublons), assainit la fiche de l'`.opf` ; contrôlé avant de remplacer, original gardé en `.bak` |
 | [scripts/Video/Avi_To_Mkv.py](scripts/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
 | [scripts/Video/Mp4_To_Mkv.py](scripts/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
 | [scripts/Music/Wav_To_Flac.py](scripts/Music/Wav_To_Flac.py) | Encode les `.wav` en `.flac`, sans perte et vérifié : le son décodé des deux fichiers doit avoir la même empreinte |
@@ -32,10 +34,11 @@ scripts/Video/Movies/   étiquetage et renommage des films
 scripts/Video/TV_Shows/ la même chose pour les séries
 scripts/Video/          à plat : conversions en .mkv qui précèdent l'étiquetage (Avi_To_Mkv.py, Mp4_To_Mkv.py) et contrôle de la structure des .mkv, avec réparation (Verify_Mkv.py)
 scripts/Music/          tout ce qui se lance pour la musique : étiquetage et renommage des albums depuis MusicBrainz, pochettes, albums manquants, conversion des .wav en .flac, contrôle des .flac et des .mp3
+scripts/Books/          tout ce qui se lance pour les livres : contrôle et nettoyage des `.epub`
 libraries/common/       ce qui ne dépend d'aucun domaine : cache, ligne de commande, bilan d'un passage, noms de fichiers, renommage, GET HTTP avec réessais, disque local ou partage réseau
 libraries/video/        tout ce qui touche aux films et aux séries
 libraries/music/        tout ce qui touche à la musique
-libraries/books/        tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère
+libraries/books/        tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère, contrôle et nettoyage des `.epub`
 tests/                  les tests
 docs/                   le suivi (TODO) et l'usage des agents et des skills Claude Code
 .claude/                les agents et les skills du dépôt (ce dossier doit rester à la racine)
@@ -229,7 +232,28 @@ Un titre qui finit comme une extension (`Vol.2`) garde un `.txt` quand il n'a pa
 
 La bibliothèque est rangée **par section** — un dossier `Manga`, `BD`, `Comics`, `Artbook`, `Romans`… — et chaque section par **série** : un dossier par série (par auteur pour les romans) qui contient ses volumes, `.cbz` pour les bandes dessinées, `.epub` pour le reste. Un fichier posé seul dans une section (`Manuels/Un guide.epub`) est sa propre série, ceux de la racine forment la section « Autres », et les sous-dossiers d'une série (cycles, intégrales) en groupent les volumes à l'affichage.
 
-Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, numéro, résumé, auteurs, éditeur, date, genres…), le `.opf` d'un `.epub` quand Calibre est passé par là. Il n'y a donc **rien à étiqueter** ici : media_library ne les modifie pas, et [media_hub](../media_hub) les lit (`libraries/books/`).
+Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, numéro, résumé, auteurs, éditeur, date, genres…), le `.opf` d'un `.epub` quand Calibre est passé par là. Il n'y a donc **rien à étiqueter** ici : media_library n'y écrit aucun tag, et [media_hub](../media_hub) les lit (`libraries/books/`). Les seuls scripts de livres contrôlent et nettoient les `.epub`.
+
+**Contrôler les `.epub`.** [Verify_Epub.py](scripts/Books/Verify_Epub.py) ouvre chaque livre en lecture seule, sans Java ni EpubCheck, et nomme ce qui cloche : archive illisible ou entrée corrompue (CRC), `mimetype` absent, mal placé, compressé ou au mauvais contenu, entrées en double, conteneur ou `.opf` illisible, titre, langue ou identifiant manquant, fichier du manifeste absent, spine qui cite un inconnu, navigation absente (`nav` en EPUB 3, `toc` en EPUB 2), XHTML mal formé, résidus. Ce n'est **pas** EpubCheck : ni schéma EPUB 3, ni CSS, ni accessibilité — seulement ce qui fait qu'un livre s'ouvre ou non sur une liseuse. Il sort en **code 1** s'il reste un livre en défaut et écrit `verification_epub.log` à la racine de `--dir`.
+
+**Nettoyer les `.epub`.** [Clean_Epub.py](scripts/Books/Clean_Epub.py) fait trois corrections, chacune sans toucher au texte, aux images ni aux styles (`--fix` en choisit, les trois par défaut) :
+
+| Correction | Ce qui change |
+| --- | --- |
+| `residues` | retire `__MACOSX/`, les `._*` d'AppleDouble, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `iTunesMetadata.plist`, `iTunesArtwork` et `calibre_bookmarks.txt` — sauf si le manifeste du livre les déclare |
+| `archive` | remet `mimetype` en première entrée, stocké, sans champ « extra », au contenu exact ; les doublons ne gardent que la dernière entrée, celle que lit un lecteur de zip |
+| `metadata` | dans l'`.opf`, retire la date « zéro » de Calibre (`0101-01-01`) et les éléments Dublin Core vides ; le titre, la langue, l'identifiant et les champs `calibre:` (série, numéro) restent, et le reste du fichier reste identique à l'octet |
+
+Rien n'est perdu en route : le livre est réécrit sous un nom provisoire (`.epub.part`), puis **contrôlé** — mêmes entrées à ce qui est retiré près, mêmes octets partout ailleurs, même fiche, aucun défaut de plus qu'avant. Au moindre écart, rien n'est remplacé. Sinon l'original passe en `Livre.epub.bak` (`.bak2`, `.bak3`… jamais par-dessus une sauvegarde ; `--no-backup` le supprime) et le livre propre prend sa place. Un livre déjà propre n'est pas réécrit, une archive illisible n'est pas touchée (code 1), et la simulation est le défaut.
+
+```powershell
+python scripts\Books\Verify_Epub.py --dir "D:\Livres"                        # contrôle, lecture seule
+python scripts\Books\Clean_Epub.py --dir "D:\Livres"                         # simulation : dit ce qui serait nettoyé
+python scripts\Books\Clean_Epub.py --dir "D:\Livres" --apply                 # nettoie, originaux gardés en .bak
+python scripts\Books\Clean_Epub.py --dir "D:\Livres" --fix residues --apply  # seulement les résidus
+```
+
+Ce que `Clean_Epub.py` ne répare pas — fichiers du manifeste absents, XML cassé, archive abîmée — se remplace (nouveau téléchargement, sauvegarde) : `Verify_Epub.py` le nomme.
 
 ### Convertir les AVI
 
