@@ -144,12 +144,7 @@ def candidate_sources(release, mb):
     """[(sortie, image)] : les pochettes de face de l'édition retenue, puis celles des autres éditions de son release group (les plus anciennes d'abord), toutes sans exception. Ne demande à Cover Art Archive que les éditions qui déclarent une pochette de face."""
     group = albums.group_id(release)
     others = [r for r in (mb.group_releases(group) if group else []) if r.get("id") != release.get("id")]
-    sources = []
-    for edition in [release] + sorted(others, key=lambda r: r.get("date") or "9999"):
-        if not (edition.get("cover-art-archive") or {}).get("front"):
-            continue
-        sources += [(edition, image) for image in mb.cover_images(edition["id"])]
-    return sources
+    return coverfile.candidate_sources([release] + coverfile.by_date(others), mb)
 
 
 def candidate_album(album, args, mb):

@@ -97,10 +97,25 @@ def candidate_name(rank, release, data):
     return "_".join(p for p in parts if p) + extension(data)
 
 
-def write_candidate(folder, name, data):
-    """Dépose une pochette candidate dans _covers/ (créé au besoin), sans jamais écraser un fichier. Retourne le chemin écrit. OSError si l'écriture échoue, FileExistsError si le fichier est déjà là."""
-    place = Path(folder) / CANDIDATES_DIR
-    place.mkdir(exist_ok=True)
+def by_date(editions):
+    """Les éditions d'un album, les plus anciennes d'abord (celles sans date à la fin)."""
+    return sorted(editions, key=lambda r: r.get("date") or "9999")
+
+
+def candidate_sources(editions, mb):
+    """[(édition, image)] : les pochettes de face de ces éditions, dans l'ordre donné. Ne demande à Cover Art Archive que les éditions qui déclarent une pochette de face. Les erreurs de `mb` (MusicBrainzError) se propagent."""
+    sources = []
+    for edition in editions:
+        if not (edition.get("cover-art-archive") or {}).get("front"):
+            continue
+        sources += [(edition, image) for image in mb.cover_images(edition["id"])]
+    return sources
+
+
+def write_candidate(folder, name, data, album=""):
+    """Dépose une pochette candidate dans _covers/ (créé au besoin), ou dans _covers/<album>/ quand `album` est donné, sans jamais écraser un fichier. Retourne le chemin écrit. OSError si l'écriture échoue, FileExistsError si le fichier est déjà là."""
+    place = Path(folder) / CANDIDATES_DIR / album
+    place.mkdir(parents=True, exist_ok=True)
     with open(place / name, "xb") as f:
         f.write(data)
     return place / name
