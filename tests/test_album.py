@@ -330,6 +330,16 @@ class TestTagsVises(unittest.TestCase):
         # l'artiste d'album ne bouge pas
         self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky"])
 
+    def test_liste_individuelle_des_artistes(self):
+        self.assertEqual(self.valeurs(self.tags(1), "ARTISTS"), ["Kavinsky"])
+        self.assertEqual(self.valeurs(self.tags(3), "ARTISTS"), ["Kavinsky", "Havoc"])
+        # l'écriture imposée vaut aussi pour la liste, pas pour la liaison "feat."
+        self.assertEqual(self.valeurs(self.tags(3, artist="Kavinsky (officiel)"), "ARTISTS"), ["Kavinsky (officiel)", "Havoc"])
+        # ARTISTS est une clé gérée : celle d'un autre crédit ne reste pas
+        cible = self.tags(3)
+        ecarts = [d for d in album.differences([("ARTISTS", "Kavinsky")], cible) if d[0] == "ARTISTS"]
+        self.assertEqual(ecarts, [("ARTISTS", ["Kavinsky"], ["Kavinsky", "Havoc"])])
+
     def test_artiste_impose_remplace_le_credit_qui_le_designe(self):
         tags = self.tags(3, artist="Kavinsky (officiel)")
         self.assertEqual(self.valeurs(tags, "ARTIST"), ["Kavinsky (officiel) feat. Havoc"])
