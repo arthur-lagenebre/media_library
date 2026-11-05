@@ -411,10 +411,10 @@ class TestPochettes(ProgrammeTestCase):
         self.assertEqual(mb.demandes[0], (None, "rg-pablohoney", "500"))
         self.assertEqual({d[2] for d in mb.demandes}, {"500"})
 
-    def test_par_defaut_1200(self):
+    def test_par_defaut_taille_d_origine(self):
         mb = FauxArtistes(covers=self.covers)
         self.lancer(mb, "--apply")
-        self.assertEqual({d[2] for d in mb.demandes}, {"1200"})
+        self.assertEqual({d[2] for d in mb.demandes}, {"original"})
 
     def test_sans_pochettes_aucune_demande(self):
         mb = FauxArtistes(covers=self.covers)
