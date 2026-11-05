@@ -236,6 +236,29 @@ class TestInventaire(DisqueTestCase):
         self.assertEqual(discography.inventory(self.racine / "Radiohead").have, set())
 
 
+class TestAlbumsSansAudio(DisqueTestCase):
+    """discography.unowned : les albums à qui il manque l'audio, qu'un fichier les déclare déjà ou non."""
+
+    def planifier(self):
+        groupes = [groupe("The Bends", "1995-03-13"), groupe("OK Computer", "1997-05-21"), groupe("Kid A", "2000-10-02")]
+        return discography.plan(groupes, {"album"})[0]
+
+    def test_un_album_range_est_possede_les_fichiers_ne_le_sont_pas(self):
+        self.album("Radiohead", "1995 - The Bends")
+        self.vide("Radiohead", "1997 - OK Computer.jpg")
+        self.vide("Radiohead", "2000 - Kid A")
+        inventaire = discography.inventory(self.racine / "Radiohead")
+        self.assertEqual(inventaire.owned, {"thebends"})
+        self.assertEqual({"thebends", "okcomputer", "kida"}, inventaire.have)
+
+    def test_unowned_garde_ce_qu_un_fichier_declare_et_pas_ce_qui_est_range(self):
+        self.album("Radiohead", "1995 - The Bends")
+        self.vide("Radiohead", "1997 - OK Computer.jpg")
+        todo = discography.unowned(self.planifier(), discography.inventory(self.racine / "Radiohead"), self.racine / "Radiohead")
+        self.assertEqual([t.name for t in todo], ["1997 - OK Computer", "2000 - Kid A"])
+        self.assertEqual({t.folder for t in todo}, {self.racine / "Radiohead"})
+
+
 class TestIdentifiantDesFichiers(DisqueTestCase):
     def trouver(self, artiste):
         from libraries.music import album as albums
@@ -484,6 +507,162 @@ class TestPochettes(ProgrammeTestCase):
         mb = FauxArtistes(covers={"rg-creep": PNG})
         self.lancer(mb, "--cats", "single", "--apply")
         self.assertEqual(self.noms("Radiohead", "Singles"), ["1992 - Creep.png"])
+
+
+def edition(ident, date, pays, avec_pochette=True):
+    """Une édition d'un release group, telle que MusicBrainz la rend en liste."""
+    return {"id": ident, "date": date, "country": pays, "media": [{"format": "CD"}], "cover-art-archive": {"front": avec_pochette}}
+
+
+UN, DEUX, TROIS = b"\xff\xd8UN", b"\xff\xd8DEUX", b"\xff\xd8TROIS"
+
+
+class FauxCandidats(FauxArtistes):
+    """MusicBrainz dont les release groups ont des éditions (`editions`: id de groupe -> [édition]) et Cover Art Archive des images (`images`: id d'édition -> [(id d'image, octets)]) ; `panne` = ids d'image dont le téléchargement échoue."""
+
+    def __init__(self, editions, images, panne_images=(), **kwargs):
+        super().__init__(**kwargs)
+        self.editions, self.images, self.panne_images = editions, images, set(panne_images)
+        self.groupes_vus, self.index, self.telechargements = [], [], []
+
+    def group_releases(self, mbid):
+        self.groupes_vus.append(mbid)
+        return list(self.editions.get(mbid, []))
+
+    def cover_images(self, release_id):
+        self.index.append(release_id)
+        return [{"id": ident, "front": True, "data": data} for ident, data in self.images.get(release_id, [])]
+
+    def cover_image(self, image, size="1200"):
+        self.telechargements.append((image["id"], size))
+        if image["id"] in self.panne_images:
+            raise MusicBrainzError("HTTP 503")
+        return image["data"]
+
+
+class TestCandidates(ProgrammeTestCase):
+    """--candidates : toutes les pochettes de toutes les éditions, déposées dans _covers/<album>/ ; --clean-candidates les supprime."""
+
+    def setUp(self):
+        super().setUp()
+        self.album("Radiohead", "1995 - The Bends", mbid=RADIOHEAD)
+
+    def faux(self, **kwargs):
+        editions = {
+            "rg-okcomputer": [edition("ed-us", "1998-02-01", "US"), edition("ed-fr", "1997-05-21", "FR"), edition("ed-jp", "1999-01-01", "JP", avec_pochette=False)],
+            "rg-pablohoney": [edition("ed-ph", "1993-02-22", "GB")],
+        }
+        images = {"ed-fr": [(1, UN)], "ed-us": [(2, DEUX), (3, TROIS)], "ed-ph": [(4, UN)]}
+        return FauxCandidats(editions, images, **kwargs)
+
+    def deposees(self, *chemin):
+        place = self.racine.joinpath("Radiohead", "_covers", *chemin)
+        return {p.name: p.read_bytes() for p in place.iterdir()} if place.is_dir() else {}
+
+    def test_simulation_n_ecrit_rien_et_ne_telecharge_rien(self):
+        mb = self.faux()
+        code, texte = self.lancer(mb, "--candidates")
+        self.assertEqual(code, 0)
+        self.assertIn("SIMULATION", texte)
+        self.assertIn("1997 - OK Computer : 3 pochette(s) de face chez 2 édition(s)", texte)
+        self.assertIn("TOTAL : 4 pochette(s) à déposer pour 2 album(s), 1/1 artiste(s).", texte)
+        self.assertEqual(mb.telechargements, [])
+        self.assertEqual(self.noms("Radiohead"), ["1995 - The Bends"])
+
+    def test_apply_depose_les_pochettes_de_toutes_les_editions_les_plus_anciennes_d_abord(self):
+        mb = self.faux()
+        code, texte = self.lancer(mb, "--candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.deposees("1997 - OK Computer"), {"01_FR-1997-CD.jpg": UN, "02_US-1998-CD.jpg": DEUX, "03_US-1998-CD.jpg": TROIS})
+        self.assertEqual(self.deposees("1993 - Pablo Honey"), {"01_GB-1993-CD.jpg": UN})
+        self.assertIn("_covers/1997 - OK Computer/01_FR-1997-CD.jpg", texte)
+        self.assertIn("TOTAL : 4 pochette(s) déposée(s) pour 2 album(s), 1/1 artiste(s).", texte)
+        self.assertIn("--clean-candidates", texte)
+
+    def test_aucun_autre_fichier_n_est_pose(self):
+        self.lancer(self.faux(), "--candidates", "--apply")
+        self.assertEqual(self.noms("Radiohead"), ["1995 - The Bends", "_covers"])
+
+    def test_taille_d_origine_par_defaut_et_taille_demandee_sinon(self):
+        mb = self.faux()
+        self.lancer(mb, "--candidates", "--apply")
+        self.assertEqual({taille for _, taille in mb.telechargements}, {"original"})
+        mb = self.faux()
+        self.lancer(mb, "--candidates", "--apply", "--no-cache", "--image-size", "500")
+        self.assertEqual({taille for _, taille in mb.telechargements}, {"500"})
+
+    def test_un_album_possede_n_est_pas_interroge(self):
+        mb = self.faux()
+        self.lancer(mb, "--candidates", "--apply")
+        self.assertNotIn("rg-thebends", mb.groupes_vus)
+        self.assertEqual(sorted(mb.groupes_vus), ["rg-kida", "rg-okcomputer", "rg-pablohoney"])
+
+    def test_un_album_deja_declare_par_une_image_a_quand_meme_ses_candidates(self):
+        (self.racine / "Radiohead" / "1997 - OK Computer.jpg").write_bytes(JPEG)
+        self.lancer(self.faux(), "--candidates", "--apply")
+        self.assertEqual(len(self.deposees("1997 - OK Computer")), 3)
+        self.assertEqual((self.racine / "Radiohead" / "1997 - OK Computer.jpg").read_bytes(), JPEG)
+
+    def test_une_edition_sans_pochette_de_face_n_est_pas_interrogee(self):
+        mb = self.faux()
+        self.lancer(mb, "--candidates", "--apply")
+        self.assertNotIn("ed-jp", mb.index)
+
+    def test_une_image_identique_n_est_deposee_qu_une_fois(self):
+        mb = FauxCandidats({"rg-okcomputer": [edition("ed-fr", "1997-05-21", "FR"), edition("ed-us", "1998-02-01", "US")]}, {"ed-fr": [(1, UN)], "ed-us": [(2, UN), (3, DEUX)]})
+        self.lancer(mb, "--candidates", "--apply")
+        self.assertEqual(self.deposees("1997 - OK Computer"), {"01_FR-1997-CD.jpg": UN, "02_US-1998-CD.jpg": DEUX})
+
+    def test_un_format_qui_n_est_ni_jpeg_ni_png_est_ignore(self):
+        mb = FauxCandidats({"rg-okcomputer": [edition("ed-fr", "1997-05-21", "FR")]}, {"ed-fr": [(1, b"GIF89a"), (2, UN)]})
+        _, texte = self.lancer(mb, "--candidates", "--apply")
+        self.assertIn("ni JPEG ni PNG", texte)
+        self.assertEqual(self.deposees("1997 - OK Computer"), {"01_FR-1997-CD.jpg": UN})
+
+    def test_un_telechargement_en_echec_est_signale_et_les_autres_sont_deposes(self):
+        code, texte = self.lancer(self.faux(panne_images=[2]), "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC]", texte)
+        self.assertIn("1 écriture(s) en échec", texte)
+        self.assertEqual(self.deposees("1997 - OK Computer"), {"01_FR-1997-CD.jpg": UN, "02_US-1998-CD.jpg": TROIS})
+
+    def test_un_deuxieme_passage_n_ecrase_rien(self):
+        self.lancer(self.faux(), "--candidates", "--apply")
+        retouchee = self.racine / "Radiohead" / "_covers" / "1997 - OK Computer" / "01_FR-1997-CD.jpg"
+        retouchee.write_bytes(b"\xff\xd8RETOUCHEE")
+        code, texte = self.lancer(self.faux(), "--candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(texte.count("déjà là"), 4)
+        self.assertEqual(retouchee.read_bytes(), b"\xff\xd8RETOUCHEE")
+
+    def test_la_panne_du_service_arrete_l_artiste(self):
+        mb = self.faux()
+        mb.group_releases = mock.Mock(side_effect=MusicBrainzError("HTTP 503"))
+        code, texte = self.lancer(mb, "--candidates", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("3 échecs de suite : arrêt pour cet artiste", texte)
+        self.assertEqual(mb.group_releases.call_count, 3)
+
+    def test_le_nettoyage_supprime_les_dossiers_covers(self):
+        self.lancer(self.faux(), "--candidates", "--apply")
+        code, texte = self.lancer(FauxArtistes(), "--clean-candidates")
+        self.assertIn("serait supprimé (simulation)", texte)
+        self.assertEqual(self.noms("Radiohead"), ["1995 - The Bends", "_covers"])
+        code, texte = self.lancer(FauxArtistes(), "--clean-candidates", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 1 dossier(s) _covers supprimé(s).", texte)
+        self.assertEqual(self.noms("Radiohead"), ["1995 - The Bends"])
+
+    def test_le_nettoyage_n_interroge_pas_musicbrainz(self):
+        mb = FauxArtistes()
+        self.lancer(mb, "--clean-candidates", "--apply")
+        self.assertEqual((mb.recherches, mb.discographies), ([], []))
+
+    def test_options_incompatibles(self):
+        for argv in (("--candidates", "--no-covers"), ("--candidates", "--clean-candidates"), ("--clean-candidates", "--no-covers")):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit), mock.patch.object(sys, "argv", ["Discography.py", "--dir", str(self.racine), *argv]), \
+                    mock.patch("sys.stderr", io.StringIO()):
+                script.parse_args()
 
 
 class TestRechercheParLeNom(ProgrammeTestCase):
