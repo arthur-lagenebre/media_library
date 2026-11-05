@@ -8,7 +8,7 @@ Même principe que Movies/Metadata.py, pour la musique : la base de référence 
   - titre, artiste(s) crédité(s), album, artiste de l'album, noms de tri
   - numéro de piste et de disque, et leurs totaux
   - date de l'édition, date de première sortie de l'album, genres votés  [--no-genres]
-  - label, numéro de catalogue, code-barres, pays, type et statut de la sortie, support
+  - label, numéro de catalogue, code-barres, ASIN, pays, type et statut de la sortie, support, titre du disque (DISCSUBTITLE), langue et écriture (LANGUAGE, SCRIPT), COMPILATION quand la sortie en est une
   - les IDENTIFIANTS MusicBrainz (album, release group, artistes, enregistrement, piste)
   - la pochette (recto) quand le fichier n'en a pas  [--no-cover, --replace-cover] ; téléchargée, elle est aussi enregistrée en cover.jpg dans le dossier de l'album [--no-cover-file], et un fichier cover.jpg / cover.png déjà là l'emporte sur tout (voir Cover.py)
 

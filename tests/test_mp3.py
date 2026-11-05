@@ -265,9 +265,15 @@ class TestEcriture(Mp3TestCase):
         self.assertEqual(relu.pictures[0].data, b"\xff\xd8JPEG")
 
     def test_tags_relus_a_l_identique(self):
-        comments = [("TITLE", "Nightcall é"), ("ARTIST", "AC/DC & Brian"), ("ARTISTSORT", "AC/DC & Johnson, Brian"), ("ARTISTS", "AC/DC"), ("ARTISTS", "Brian"), ("TRACKNUMBER", "3"), ("TRACKTOTAL", "13"), ("TOTALTRACKS", "13"), ("DISCNUMBER", "1"), ("DISCTOTAL", "1"), ("TOTALDISCS", "1"), ("DATE", "2013-02-25"), ("ORIGINALDATE", "2012"), ("ORIGINALYEAR", "2012"), ("GENRE", "Synthwave"), ("GENRE", "Electronic"), ("LABEL", "Record Makers"), ("MEDIA", "CD"), ("RELEASETYPE", "album"), ("RELEASETYPE", "soundtrack"), ("RELEASESTATUS", "official"), ("RELEASECOUNTRY", "FR"), ("BARCODE", "123"), ("CATALOGNUMBER", "RM1"), ("MUSICBRAINZ_ALBUMID", MBID), ("MUSICBRAINZ_ARTISTID", "a"), ("MUSICBRAINZ_ARTISTID", "b"), ("MUSICBRAINZ_TRACKID", "1111"), ("REPLAYGAIN_TRACK_GAIN", "-9.5 dB")]
+        comments = [("TITLE", "Nightcall é"), ("ARTIST", "AC/DC & Brian"), ("ARTISTSORT", "AC/DC & Johnson, Brian"), ("ARTISTS", "AC/DC"), ("ARTISTS", "Brian"), ("ALBUMARTISTS", "AC/DC"), ("LANGUAGE", "eng"), ("SCRIPT", "Latn"), ("ASIN", "B00ABC"), ("DISCSUBTITLE", "Bonus"), ("COMPILATION", "1"), ("TRACKNUMBER", "3"), ("TRACKTOTAL", "13"), ("TOTALTRACKS", "13"), ("DISCNUMBER", "1"), ("DISCTOTAL", "1"), ("TOTALDISCS", "1"), ("DATE", "2013-02-25"), ("ORIGINALDATE", "2012"), ("ORIGINALYEAR", "2012"), ("GENRE", "Synthwave"), ("GENRE", "Electronic"), ("LABEL", "Record Makers"), ("MEDIA", "CD"), ("RELEASETYPE", "album"), ("RELEASETYPE", "soundtrack"), ("RELEASESTATUS", "official"), ("RELEASECOUNTRY", "FR"), ("BARCODE", "123"), ("CATALOGNUMBER", "RM1"), ("MUSICBRAINZ_ALBUMID", MBID), ("MUSICBRAINZ_ARTISTID", "a"), ("MUSICBRAINZ_ARTISTID", "b"), ("MUSICBRAINZ_TRACKID", "1111"), ("REPLAYGAIN_TRACK_GAIN", "-9.5 dB")]
         _, _, relu = self.ecrire(SON, comments)
         self.assertEqual(sorted(relu.comments), sorted(comments))
+
+    def test_langue_titre_du_disque_et_compilation_dans_leurs_trames(self):
+        _, _, relu = self.ecrire(SON, [("LANGUAGE", "eng"), ("DISCSUBTITLE", "Bonus"), ("COMPILATION", "1"), ("SCRIPT", "Latn"), ("ASIN", "B00ABC")])
+        ids = sorted(f.id for f in relu.frames)
+        self.assertEqual(ids, ["TCMP", "TLAN", "TSST", "TXXX", "TXXX"])
+        self.assertEqual(sorted(relu.comments), [("ASIN", "B00ABC"), ("COMPILATION", "1"), ("DISCSUBTITLE", "Bonus"), ("LANGUAGE", "eng"), ("SCRIPT", "Latn")])
 
     def test_les_tags_vises_par_musicbrainz_ne_different_plus_une_fois_ecrits(self):
         release, medium = OUTRUN, OUTRUN["media"][0]

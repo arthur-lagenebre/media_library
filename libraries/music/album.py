@@ -399,7 +399,7 @@ def entry_notes(entry, track):
 # Tags visés
 # --------------------------------------------------------------------------
 # Les clés propres à une ÉDITION : toujours gérées, même quand MusicBrainz n'en donne pas - une valeur restée d'une autre édition mentirait. Les autres ne le sont que si la sortie leur donne une valeur : un genre écrit à la main ne disparaît pas parce que la base n'en connaît aucun.
-EDITION_KEYS = {"LABEL", "CATALOGNUMBER", "BARCODE", "RELEASECOUNTRY", "RELEASESTATUS", "RELEASETYPE", "MEDIA", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ_ARTISTID", "MUSICBRAINZ_TRACKID", "MUSICBRAINZ_RELEASETRACKID"}
+EDITION_KEYS = {"LABEL", "CATALOGNUMBER", "BARCODE", "RELEASECOUNTRY", "RELEASESTATUS", "RELEASETYPE", "MEDIA", "DISCSUBTITLE", "ASIN", "LANGUAGE", "SCRIPT", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ_ARTISTID", "MUSICBRAINZ_TRACKID", "MUSICBRAINZ_RELEASETRACKID"}
 # Doublons de clés gérées, que certains lecteurs lisent avant elles : laissés en place, ils contrediraient ce qu'on écrit.
 OBSOLETE_KEYS = {"YEAR", "ALBUM ARTIST"}
 MAX_GENRES = 3
@@ -513,14 +513,25 @@ def _track_tags(release, rg, medium, track, album_credit, track_credit, artist):
     media = release.get("media") or []
     first = rg.get("first-release-date") or ""
     count = str(medium.get("track-count") or len(medium.get("tracks") or []))
-    return [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True))] + [("ARTISTS", name) for name in credit_names(track_credit, artist)] + [("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True)), ("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media))), ("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
+    tags = [("TITLE", track.get("title") or recording.get("title")), ("ARTIST", credit_name(track_credit, artist=artist)), ("ARTISTSORT", credit_name(track_credit, sort=True))]
+    tags += [("ARTISTS", name) for name in credit_names(track_credit, artist)]
+    tags += [("ALBUM", release.get("title")), ("ALBUMARTIST", credit_name(album_credit, artist=artist)), ("ALBUMARTISTSORT", credit_name(album_credit, sort=True))]
+    tags += [("ALBUMARTISTS", name) for name in credit_names(album_credit, artist)]
+    tags += [("TRACKNUMBER", str(track.get("position") or "")), ("TRACKTOTAL", count), ("TOTALTRACKS", count), ("DISCNUMBER", str(medium.get("position") or "")), ("DISCTOTAL", str(len(media))), ("TOTALDISCS", str(len(media)))]
+    return tags + [("DATE", release.get("date")), ("ORIGINALDATE", first), ("ORIGINALYEAR", first[:4])]
 
 
 def _edition_tags(release, rg, medium):
-    """Type, statut, pays, support, code-barres, label et numéro de catalogue : ce qui tient à l'édition."""
+    """Type, statut, pays, support, code-barres, label, numéro de catalogue, langue, écriture, ASIN et titre du disque : ce qui tient à l'édition.
+
+    COMPILATION est le drapeau que lisent les lecteurs pour ranger ensemble un album "Various Artists" : posé quand la sortie est typée compilation, jamais retiré (voir EDITION_KEYS).
+    """
     labels = release.get("label-info") or []
-    tags = [("RELEASETYPE", t.lower()) for t in unique([rg.get("primary-type")] + list(rg.get("secondary-types") or []))]
-    tags += [("RELEASESTATUS", (release.get("status") or "").lower()), ("RELEASECOUNTRY", release.get("country")), ("MEDIA", medium.get("format")), ("BARCODE", release.get("barcode"))]
+    types = unique([rg.get("primary-type")] + list(rg.get("secondary-types") or []))
+    language = release.get("text-representation") or {}
+    tags = [("RELEASETYPE", t.lower()) for t in types]
+    tags += [("COMPILATION", "1")] if "compilation" in (t.lower() for t in types) else []
+    tags += [("RELEASESTATUS", (release.get("status") or "").lower()), ("RELEASECOUNTRY", release.get("country")), ("MEDIA", medium.get("format")), ("DISCSUBTITLE", medium.get("title")), ("BARCODE", release.get("barcode")), ("ASIN", release.get("asin")), ("LANGUAGE", language.get("language")), ("SCRIPT", language.get("script"))]
     tags += [("LABEL", name) for name in unique((i.get("label") or {}).get("name") for i in labels)]
     tags += [("CATALOGNUMBER", number) for number in unique(i.get("catalog-number") for i in labels)]
     return tags

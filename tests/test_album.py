@@ -330,6 +330,40 @@ class TestTagsVises(unittest.TestCase):
         # l'artiste d'album ne bouge pas
         self.assertEqual(self.valeurs(tags, "ALBUMARTIST"), ["Kavinsky"])
 
+    def test_langue_ecriture_asin_et_titre_du_disque(self):
+        sortie = dict(OUTRUN, asin="B00ABC", **{"text-representation": {"language": "eng", "script": "Latn"}})
+        sortie["media"] = [dict(OUTRUN["media"][0], title="Bonus")]
+        tags = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0])
+        self.assertEqual([self.valeurs(tags, cle) for cle in ("LANGUAGE", "SCRIPT", "ASIN", "DISCSUBTITLE")], [["eng"], ["Latn"], ["B00ABC"], ["Bonus"]])
+        # rien à dire : rien d'écrit
+        vide = self.tags()
+        for cle in ("LANGUAGE", "SCRIPT", "ASIN", "DISCSUBTITLE", "COMPILATION"):
+            self.assertEqual(self.valeurs(vide, cle), [], cle)
+
+    def test_ces_cles_sont_gerees_quand_la_sortie_n_en_donne_pas(self):
+        # celles d'une autre édition mentiraient : elles disparaissent
+        ecarts = album.differences([("LANGUAGE", "fra"), ("SCRIPT", "Latn"), ("ASIN", "X"), ("DISCSUBTITLE", "Bonus")], self.tags())
+        self.assertEqual({e[0] for e in ecarts} & {"LANGUAGE", "SCRIPT", "ASIN", "DISCSUBTITLE"}, {"LANGUAGE", "SCRIPT", "ASIN", "DISCSUBTITLE"})
+
+    def test_compilation_seulement_quand_la_sortie_en_est_une(self):
+        def etiquettes(secondaires):
+            groupe = dict(OUTRUN["release-group"], **{"secondary-types": secondaires})
+            return album.target_tags(OUTRUN, groupe, OUTRUN["media"][0], OUTRUN["media"][0]["tracks"][0])
+        self.assertEqual(self.valeurs(etiquettes(["Compilation", "Soundtrack"]), "COMPILATION"), ["1"])
+        self.assertEqual(self.valeurs(etiquettes(["Live"]), "COMPILATION"), [])
+        # un drapeau posé à la main ne disparaît pas parce que MusicBrainz n'en parle pas
+        self.assertEqual([e for e in album.differences([("COMPILATION", "1")], etiquettes(["Live"])) if e[0] == "COMPILATION"], [])
+
+    def test_liste_des_artistes_de_l_album(self):
+        def credit(ident, nom, liaison=""):
+            return {"name": nom, "joinphrase": liaison, "artist": {"id": ident, "name": nom, "sort-name": nom}}
+        sortie = dict(OUTRUN, **{"artist-credit": [credit("a", "A", " & "), credit("b", "B")]})
+        tags = album.target_tags(sortie, None, OUTRUN["media"][0], OUTRUN["media"][0]["tracks"][0])
+        self.assertEqual((self.valeurs(tags, "ALBUMARTIST"), self.valeurs(tags, "ALBUMARTISTS")), (["A & B"], ["A", "B"]))
+        # l'écriture imposée vaut aussi pour la liste
+        tags = album.target_tags(sortie, None, OUTRUN["media"][0], OUTRUN["media"][0]["tracks"][0], artist="A (officiel)")
+        self.assertEqual(self.valeurs(tags, "ALBUMARTISTS"), ["A (officiel)", "B"])
+
     def test_liste_individuelle_des_artistes(self):
         self.assertEqual(self.valeurs(self.tags(1), "ARTISTS"), ["Kavinsky"])
         self.assertEqual(self.valeurs(self.tags(3), "ARTISTS"), ["Kavinsky", "Havoc"])
