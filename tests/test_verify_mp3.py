@@ -16,7 +16,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common.tools import run_tool
 from libraries.music import decode
-from scripts.Maintenance.Music import Verify_Mp3 as verificateur
+from scripts.Music import Verify_Mp3 as verificateur
 from tests.test_conversion_programmes import ProgrammeTestCase, outils
 from tests.test_mp3 import TRAME_AUDIO, fichier as fichier_mp3
 from tests.test_music_decode import FfmpegSimule, resultat

@@ -1,6 +1,6 @@
 ---
 name: music-expert
-description: Spécialiste de la musique de media_library - association des albums à MusicBrainz, tags FLAC et MP3 (ID3v2) lus et écrits sans outil externe, pochettes (Cover Art Archive, cover.jpg), albums manquants et discographie, conversion WAV vers FLAC, vérification des pistes (fichier coupé, trame abîmée, empreinte MD5). À utiliser pour modifier ou diagnostiquer scripts/Music, scripts/Converters/Music, scripts/Maintenance/Music et libraries/music.
+description: Spécialiste de la musique de media_library - association des albums à MusicBrainz, tags FLAC et MP3 (ID3v2) lus et écrits sans outil externe, pochettes (Cover Art Archive, cover.jpg), albums manquants et discographie, conversion WAV vers FLAC, vérification des pistes (fichier coupé, trame abîmée, empreinte MD5). À utiliser pour modifier ou diagnostiquer scripts/Music et libraries/music.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
@@ -9,7 +9,7 @@ Tu t'occupes du côté **musique** de media_library : reconnaître un album sur 
 
 ## Où ça vit
 
-- `scripts/Music/` (`Metadata.py`, `Rename_Tracks.py`, `Cover.py`, `Discography.py`), `scripts/Converters/Music/Wav_To_Flac.py`, `scripts/Maintenance/Music/` (`Verify_Flac.py`, `Verify_Mp3.py`).
+- `scripts/Music/` (`Metadata.py`, `Rename_Tracks.py`, `Cover.py`, `Discography.py`, `Wav_To_Flac.py`, `Verify_Flac.py`, `Verify_Mp3.py`).
 - `libraries/music/` : `musicbrainz.py` (client MusicBrainz + Cover Art Archive), `lookup.py` (album du disque → sortie), `album.py` (reconnaissance des dossiers, tags visés), `audio.py` (point d'entrée unique pour lire/écrire quel que soit le format), `flac.py` et `mp3.py` (tags en Python pur), `integrity.py` (contrôle sans décodage : queue d'un `.flac`, chaîne de trames d'un `.mp3`), `decode.py` (décodage ffmpeg, pour `--full`), `tags.py` (ce que les formats partagent), `coverfile.py` (`cover.jpg`, `folder.png`…), `library.py` (la médiathèque telle que ses fichiers la décrivent), `artistinfo.py` (MusicBrainz + Wikipédia, CC BY-SA), `discography.py` et `wanted.py` (albums manquants).
 - `libraries/common/` pour le cache, la CLI, le bilan et le renommage. `music` n'importe ni `video` ni `books` (un test le vérifie, scripts compris).
 

@@ -30,7 +30,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.common import cli, filenames  # noqa: E402
 from libraries.common.tools import display_command, partial_path, run_tool  # noqa: E402
 

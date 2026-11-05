@@ -19,7 +19,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from libraries.common.tools import PARTIAL_SUFFIX
-from scripts.Converters.Music import Wav_To_Flac as conversion
+from scripts.Music import Wav_To_Flac as conversion
 
 
 def options(**overrides):

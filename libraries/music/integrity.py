@@ -2,7 +2,7 @@
 
 Un fichier audio abîmé se lit presque toujours jusqu'au bout : un lecteur saute la trame qu'il ne comprend pas et passe à la suivante. Le défaut ne se voit qu'à la comparaison avec ce que le fichier annonce.
 
-FLAC : STREAMINFO annonce le nombre exact d'échantillons, et chaque trame se termine par un CRC-16 qui couvre toute la trame. La dernière trame doit donc être complète - son CRC-16 est bon - et s'arrêter à l'échantillon annoncé. Cela voit un fichier coupé, où que la coupure tombe (au milieu d'une trame, ou juste entre deux), en ne lisant que la queue du fichier. Une trame abîmée plus tôt, elle, ne se voit qu'en décodant tout (voir scripts/Maintenance/Music/Verify_Flac.py --full).
+FLAC : STREAMINFO annonce le nombre exact d'échantillons, et chaque trame se termine par un CRC-16 qui couvre toute la trame. La dernière trame doit donc être complète - son CRC-16 est bon - et s'arrêter à l'échantillon annoncé. Cela voit un fichier coupé, où que la coupure tombe (au milieu d'une trame, ou juste entre deux), en ne lisant que la queue du fichier. Une trame abîmée plus tôt, elle, ne se voit qu'en décodant tout (voir scripts/Music/Verify_Flac.py --full).
 
 MP3 : aucune somme de contrôle globale, mais une chaîne de trames dont chaque en-tête donne la longueur - la suivante commence juste derrière. Le fichier est suivi d'un bout à l'autre : une trame coupée, un trou, du bruit au milieu ou à la fin se voient. Le nombre de trames que l'en-tête Xing/Info annonce est comparé à celui qu'on a compté. Un octet qui change dans le son, lui, ne laisse aucune trace : aucun format MP3 ne permet de le voir, même en décodant.
 
