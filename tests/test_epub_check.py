@@ -282,6 +282,146 @@ class TestAudit(EpubTestCase):
         self.assertIn("résidus à retirer (10) : __MACOSX/0, __MACOSX/1, __MACOSX/2, …", messages(self.book(entries))[0])
 
 
+PNG = b"\x89PNG\r\n\x1a\nx"
+JPEG = b"\xff\xd8\xff\xe0x"
+
+
+def page(body):
+    return XHTML.format(body).encode()
+
+
+def opf_with_items(*items):
+    """L'.opf EPUB 3 avec ces (id, href, type) de plus au manifeste."""
+    xml = "".join(f'<item id="{i}" href="{h}" media-type="{m}"/>' for i, h, m in items)
+    return OPF3.replace("</manifest>", xml + "</manifest>")
+
+
+class TestReferences(EpubTestCase):
+    """Un livre qui tient ses promesses : liens, ancres, images, ressources des feuilles de style, type des images, accolades, manifeste."""
+
+    def with_page(self, body, extra=(), opf=OPF3):
+        return messages(self.book(replacing(standard(opf), "OEBPS/ch1.xhtml", page(body)) + list(extra)))
+
+    def with_css(self, css, *files):
+        """Une feuille de style `style.css` et ces (href, octets, type) déclarés au manifeste."""
+        items = [("css", "style.css", "text/css")] + [(f"f{n}", href, media) for n, (href, _, media) in enumerate(files)]
+        entries = standard(opf_with_items(*items)) + [("OEBPS/style.css", css.encode(), DEFLATED)] + [(f"OEBPS/{href}", data, DEFLATED) for href, data, _ in files]
+        return messages(self.book(entries))
+
+    # -- liens et ancres
+    def test_lien_vers_une_page_absente(self):
+        defects = epubhealth.audit(self.book(replacing(standard(), "OEBPS/ch1.xhtml", page('<a href="ch9.xhtml">suite</a>'))))
+        self.assertEqual([(d.message, d.fixable) for d in defects], [("liens cassés dans ch1.xhtml (1) : ch9.xhtml", False)])
+
+    def test_lien_vers_une_page_presente(self):
+        self.assertEqual(self.with_page('<a href="nav.xhtml">sommaire</a>'), [])
+
+    def test_ancre_connue_et_inconnue(self):
+        entries = replacing(standard(), "OEBPS/nav.xhtml", page('<p id="debut">Sommaire</p><a name="vieille">x</a>'))
+        entries = replacing(entries, "OEBPS/ch1.xhtml", page('<a href="nav.xhtml#debut">a</a><a href="nav.xhtml#vieille">b</a><a href="nav.xhtml#fin">c</a>'))
+        self.assertEqual(messages(self.book(entries)), ["liens cassés dans ch1.xhtml (1) : nav.xhtml#fin"])
+
+    def test_ancre_dans_la_meme_page(self):
+        self.assertEqual(self.with_page('<p id="x">a</p><a href="#x">ok</a><a href="#y">ko</a>'), ["liens cassés dans ch1.xhtml (1) : #y"])
+
+    def test_ce_qui_n_est_pas_un_fichier_du_livre_est_ignore(self):
+        liens = ("http://exemple.org/a", "https://exemple.org/", "mailto:a@b.fr", "tel:+33123", "//cdn.exemple.org/x.js", "javascript:void(0)",
+                 "#", "#top", "#epubcfi(/6/4)", "", "data:text/plain,x")
+        self.assertEqual(self.with_page("".join(f'<a href="{lien}">x</a>' for lien in liens)), [])
+
+    def test_lien_encode_et_requete(self):
+        self.assertEqual(self.with_page('<a href="nav.xhtml?x=1">a</a>'), [])
+
+    def test_liens_regroupes_et_resumes(self):
+        liens = "".join(f'<a href="p{n}.xhtml">x</a>' for n in range(5))
+        self.assertEqual(self.with_page(liens), ["liens cassés dans ch1.xhtml (5) : p0.xhtml, p1.xhtml, p2.xhtml, …"])
+
+    def test_chemins_relatifs_depuis_un_sous_dossier(self):
+        opf = opf_with_items(("img", "Images/c.png", "image/png")).replace('href="ch1.xhtml"', 'href="Text/ch1.xhtml"')
+        entries = replacing(standard(opf), "OEBPS/ch1.xhtml") + [("OEBPS/Text/ch1.xhtml", page('<img src="../Images/c.png"/><a href="../nav.xhtml">x</a>'), DEFLATED), ("OEBPS/Images/c.png", PNG, DEFLATED)]
+        self.assertEqual(messages(self.book(entries)), [])
+        entries = replacing(entries, "OEBPS/Text/ch1.xhtml", page('<img src="../Images/zzz.png"/>'))
+        self.assertEqual(messages(self.book(entries)), ["images absentes de Text/ch1.xhtml (1) : ../Images/zzz.png"])
+
+    def test_table_des_matieres_ncx(self):
+        entries = replacing(replacing(standard(OPF2), "OEBPS/nav.xhtml"), "OEBPS/ch1.xhtml", CH1.encode())
+        ncx = ('<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>'
+               '<navPoint id="a"><navLabel><text>1</text></navLabel><content src="ch1.xhtml"/></navPoint>'
+               '<navPoint id="b"><navLabel><text>2</text></navLabel><content src="ch9.xhtml#x"/></navPoint></navMap></ncx>')
+        found = messages(self.book(entries + [("OEBPS/toc.ncx", ncx.encode(), DEFLATED)]))
+        self.assertEqual(found, ["liens cassés dans toc.ncx (1) : ch9.xhtml#x"])
+
+    # -- images
+    def test_images_absentes(self):
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="couv.png"/></svg>'
+        self.assertEqual(self.with_page('<img src="img/x.png"/>' + svg), ["images absentes de ch1.xhtml (2) : img/x.png, couv.png"])
+
+    def test_image_externe_ou_en_donnees_est_ignoree(self):
+        self.assertEqual(self.with_page('<img src="https://exemple.org/a.png"/><img src="data:image/png;base64,AAAA"/>'), [])
+
+    # -- feuilles de style
+    def test_css_sain(self):
+        css = ('@import "autre.css"; @import url(autre.css);\n/* url(zzz.png) { */\n'
+               'a { background: url(bg.png) } b { background: url("bg.png") } i { background: url(\'bg.png\') } '
+               'u { background: url(data:image/png;base64,AAAA) } s { background: url(bg.png#frag) }\n'
+               'p::after { content: "}" } q::before { content: \'{\' }')
+        self.assertEqual(self.with_css(css, ("bg.png", PNG, "image/png"), ("autre.css", b"p{}", "text/css")), [])
+
+    def test_css_qui_cite_un_fichier_absent(self):
+        css = 'a { background: url(bg.png) } @font-face { src: url("polices/x.woff") } @import "autre.css";'
+        self.assertEqual(self.with_css(css), ["fichiers cités par style.css et absents (3) : bg.png, polices/x.woff, autre.css"])
+
+    def test_css_aux_accolades_desequilibrees(self):
+        self.assertEqual(self.with_css("a { color: red"), ["CSS : accolades déséquilibrées dans style.css (1 « { », 0 « } »)"])
+        self.assertEqual(self.with_css("a { color: red } }"), ["CSS : accolades déséquilibrées dans style.css (1 « { », 2 « } »)"])
+
+    def test_css_en_utf16_n_est_pas_pris_pour_du_bruit(self):
+        entries = standard(opf_with_items(("css", "style.css", "text/css"))) + [("OEBPS/style.css", b"\xff\xfe" + "a { color: red }".encode("utf-16-le"), DEFLATED)]
+        self.assertEqual(messages(self.book(entries)), [])
+
+    # -- type des images
+    def test_image_du_type_annonce(self):
+        items = (("a", "a.jpg", "image/jpeg"), ("b", "b.png", "image/png"), ("c", "c.gif", "image/gif"), ("d", "d.svg", "image/svg+xml"))
+        files = [("OEBPS/a.jpg", JPEG, DEFLATED), ("OEBPS/b.png", PNG, DEFLATED), ("OEBPS/c.gif", b"GIF89a....", DEFLATED), ("OEBPS/d.svg", b"<svg/>", DEFLATED)]
+        self.assertEqual(messages(self.book(standard(opf_with_items(*items)) + files)), [])
+
+    def test_image_d_un_autre_type_ou_vide(self):
+        items = (("a", "a.jpg", "image/jpeg"), ("b", "b.png", "image/png"), ("c", "c.jpg", "image/jpeg"), ("d", "d.jpg", "image/jpeg"))
+        webp = b"RIFF\x00\x00\x00\x00WEBPVP8 "
+        files = [("OEBPS/a.jpg", PNG, DEFLATED), ("OEBPS/b.png", b"", DEFLATED), ("OEBPS/c.jpg", webp, DEFLATED), ("OEBPS/d.jpg", b"%PDF-1.4", DEFLATED)]
+        self.assertEqual(messages(self.book(standard(opf_with_items(*items)) + files)), [
+            "a.jpg est déclaré image/jpeg mais c'est du image/png",
+            "b.png est déclaré image/png mais n'est pas une image de ce type (fichier vide ou abîmé ?)",
+            "c.jpg est déclaré image/jpeg mais c'est du image/webp",
+            "d.jpg est déclaré image/jpeg mais n'est pas une image de ce type (fichier vide ou abîmé ?)",
+        ])
+
+    # -- fichiers hors manifeste
+    def test_fichier_hors_manifeste(self):
+        found = messages(self.book(standard() + [("OEBPS/extra.txt", b"x", DEFLATED), ("OEBPS/autre/zz.txt", b"x", DEFLATED)]))
+        self.assertEqual(found, ["fichiers absents du manifeste (2) : OEBPS/extra.txt, OEBPS/autre/zz.txt"])
+
+    def test_ce_qui_n_a_pas_a_etre_au_manifeste_ne_compte_pas(self):
+        extra = [("META-INF/encryption.xml", b"<x/>", DEFLATED), ("OEBPS/images/", b"", STORED), ("OEBPS/.DS_Store", b"x", DEFLATED)]
+        found = messages(self.book(standard() + extra))
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].startswith("résidus à retirer (1)"))
+
+    # -- le nettoyage ne masque rien et n'est pas refusé par ces défauts
+    def test_le_nettoyage_laisse_ces_defauts_et_ne_les_aggrave_pas(self):
+        casse = replacing(standard(), "OEBPS/ch1.xhtml", page('<a href="ch9.xhtml">x</a>'))
+        path = self.book(casse + [(".DS_Store", b"x", DEFLATED), ("OEBPS/extra.txt", b"x", DEFLATED)])
+        epubclean.apply(path, epubclean.plan(path))
+        self.assertEqual(messages(path), ["liens cassés dans ch1.xhtml (1) : ch9.xhtml", "fichiers absents du manifeste (1) : OEBPS/extra.txt"])
+
+    def test_verify_nomme_ces_defauts(self):
+        self.book(replacing(standard(), "OEBPS/ch1.xhtml", page('<a href="ch9.xhtml">x</a>')), name="casse.epub")
+        with mock.patch.object(sys, "argv", ["Verify_Epub.py", "--dir", str(self.dir)]), redirect_stdout(io.StringIO()) as texte:
+            code = Verify_Epub.main()
+        self.assertEqual(code, 1)
+        self.assertIn("liens cassés dans ch1.xhtml (1) : ch9.xhtml", texte.getvalue())
+
+
 class TestFixOpf(unittest.TestCase):
     def test_retire_la_date_zero_et_les_elements_vides_et_rien_d_autre(self):
         fixed, notes = epubclean.fix_opf(dirty().encode())
