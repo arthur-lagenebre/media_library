@@ -4,14 +4,19 @@ Verify_Epub.py - Contrôle les .epub d'un dossier, en lecture seule.
 
 Un .epub est un zip qui obéit à quelques règles que beaucoup de lecteurs font semblant d'ignorer et qu'un seul refuse un jour : "mimetype" en première entrée, stocké sans compression ; un conteneur qui désigne un .opf ; un manifeste dont chaque fichier existe ; un ordre de lecture qui ne cite que le manifeste ; du XHTML bien formé. Un livre qui s'ouvre sur l'ordinateur peut ne pas s'ouvrir sur la liseuse : ce contrôle le dit avant.
 
-Sans outil externe : ce n'est pas EpubCheck (ni schéma EPUB 3, ni CSS, ni accessibilité), seulement ce qui fait qu'un livre s'ouvre ou non. Ce qu'il contrôle :
+Sans outil externe, sans Java : ce n'est pas EpubCheck (ni schéma EPUB 3, ni grammaire du CSS, ni accessibilité), seulement ce qui fait qu'un livre s'ouvre ou non et qu'il tient ses promesses. Ce qu'il contrôle :
   - l'archive : zip lisible, somme de contrôle (CRC) de chaque entrée, entrées en double, noms dangereux ("/", "..") ;
   - mimetype : présent, première entrée, stocké, sans champ "extra", contenu exact ;
   - le conteneur et l'.opf : titre, langue, identifiant unique, version, manifeste (fichiers présents, ids uniques), spine, navigation (EPUB 3 : document "nav" et dcterms:modified ; EPUB 2 : toc) ;
   - chaque XHTML et chaque NCX du manifeste : XML bien formé ;
+  - les liens : un lien (ou une entrée de la table des matières) qui mène à une page absente, ou à une ancre que la page visée ne porte pas ;
+  - les images citées par une page (<img>, <image>) et les fichiers cités par un CSS (url(...), @import : images, polices) qui n'existent pas ;
+  - une image dont le contenu n'est pas du type que le manifeste annonce (un PNG déclaré en JPEG, un fichier vide) ;
+  - un CSS dont les accolades ne s'équilibrent pas ;
+  - les fichiers de l'archive que le manifeste ne déclare pas (un lecteur les ignore) ;
   - les résidus (__MACOSX, .DS_Store, Thumbs.db, calibre_bookmarks.txt...), la date « zéro » de Calibre (0101-01-01) et les éléments Dublin Core vides.
 
-Rien n'est réparé : le script nomme chaque livre en défaut, et sort en code 1. Clean_Epub.py répare ce qui se répare sans rien perdre (résidus, mimetype, doublons, fiche de l'.opf) ; un livre dont des fichiers manquent ou dont le XML est cassé se remplace.
+Rien n'est réparé : le script nomme chaque livre en défaut, et sort en code 1. Clean_Epub.py répare ce qui se répare sans rien perdre (résidus, mimetype, doublons, fiche de l'.opf) ; un livre dont des fichiers manquent, dont des liens sont cassés ou dont le XML est cassé se corrige dans Calibre ou se remplace.
 
 Usage :
   python Verify_Epub.py --dir "D:\Livres"                       # contrôle de tous les .epub
@@ -34,8 +39,8 @@ from libraries.common.report import Report  # noqa: E402
 
 EXTENSIONS = (".epub",)
 RAPIDE = "archive, mimetype, conteneur, .opf et XHTML de chaque livre"
-REMEDE = "Clean_Epub.py répare les résidus, le mimetype, les doublons et la fiche de l'.opf ; le reste (fichiers manquants, XML cassé, archive abîmée) se remplace : nouveau téléchargement, sauvegarde."
-NOTE = "Ce contrôle n'est pas EpubCheck : il ne valide ni le schéma EPUB 3, ni le CSS, ni l'accessibilité."
+REMEDE = "Clean_Epub.py répare les résidus, le mimetype, les doublons et la fiche de l'.opf ; le reste (fichiers manquants, liens cassés, XML cassé, archive abîmée) se corrige dans le livre ou se remplace : nouveau téléchargement, sauvegarde."
+NOTE = "Ce contrôle n'est pas EpubCheck : il ne valide ni le schéma EPUB 3, ni la grammaire du CSS, ni l'accessibilité."
 SEPARATEUR = "\n" + " " * 11      # les défauts d'un même livre s'alignent sous le premier
 
 

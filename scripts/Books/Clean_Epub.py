@@ -9,7 +9,7 @@ Trois corrections, chacune sûre parce qu'elle ne touche à aucun contenu du liv
 
 Rien n'est perdu en route. Le livre est réécrit sous un nom provisoire (.epub.part), puis CONTRÔLÉ : mêmes entrées à ce qui est retiré près, mêmes octets partout ailleurs, même fiche, et aucun défaut qu'il n'avait pas (le contrôle de Verify_Epub.py). Si un seul point échoue, rien n'est remplacé. Sinon l'original est mis de côté en "Livre.epub.bak" (".bak2", ".bak3"... jamais par-dessus une sauvegarde) et le livre propre prend sa place ; --no-backup supprime cette sauvegarde, une fois le contrôle passé.
 
-Un livre sans rien à nettoyer n'est pas réécrit : un second passage ne change rien. Une archive illisible n'est pas touchée et fait sortir en code 1. Ce qui ne se répare pas sans perte (fichiers du manifeste absents, XML cassé) n'est pas l'affaire de ce script : Verify_Epub.py le nomme.
+Un livre sans rien à nettoyer n'est pas réécrit : un second passage ne change rien. Une archive illisible n'est pas touchée et fait sortir en code 1. Ce qui ne se répare pas sans perte (fichiers du manifeste absents, liens ou images cassés, XML cassé, fichiers hors manifeste) n'est pas l'affaire de ce script : Verify_Epub.py le nomme.
 
 Usage :
   python Clean_Epub.py --dir "D:\Livres"                           # simulation : dit ce qui serait nettoyé
