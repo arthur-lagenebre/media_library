@@ -13,7 +13,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Video/Movies/Metadata.py](scripts/Video/Movies/Metadata.py) | Étiquette des films : titre, date de sortie **française**, synopsis, casting, genres, jaquette, noms de pistes  |
 | [scripts/Video/TV_Shows/Metadata.py](scripts/Video/TV_Shows/Metadata.py) | Idem pour une série, saison par saison, |
 | [scripts/Music/Metadata.py](scripts/Music/Metadata.py) | Étiquette des albums `.flac` et `.mp3` depuis MusicBrainz : tags à la Picard, identifiants, pochette ; ReplayGain et paroles restent en place |
-| [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
+| [scripts/Music/Cover.py](scripts/Music/Cover.py) | Embarque dans les pistes le fichier `cover.jpg` / `cover.png` du dossier de chaque album — les pochettes seules, aucun tag touché, sans Internet (image réduite à 1500x1500 et convertie en JPEG au passage, avec `ffmpeg`) ; `--candidates` (avec Internet) dépose dans `_covers/` les pochettes entre lesquelles choisir |
 | [scripts/Music/Discography.py](scripts/Music/Discography.py) | Pose dans le dossier de chaque artiste la pochette `1997 - OK Computer.jpg` (ou un fichier vide `1997 - OK Computer` sans pochette) de chaque album qu'il a sorti d'après MusicBrainz et que la médiathèque n'a pas ; les albums possédés ne sont jamais touchés ; `--candidates` dépose dans `_covers/<album>/` toutes les pochettes de toutes les éditions pour choisir la meilleure |
 | [scripts/Video/TV_Shows/Rename_Episodes.py](scripts/Video/TV_Shows/Rename_Episodes.py) | Renomme les épisodes en `{numéro} - {titre TMDB}.ext`, sous-titres compris |
 | [scripts/Video/Movies/Rename_Movies.py](scripts/Video/Movies/Rename_Movies.py) | Renomme les dossiers de films en `Titre (Année)`, avec épinglage de l'id TMDB |
@@ -50,7 +50,7 @@ docs/                   le suivi (TODO) et l'usage des agents et des skills Clau
 
 - Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
-- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son
+- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son ; nécessaire à `Cover.py --apply` pour réduire ou convertir une pochette
 
 ```powershell
 winget install MoritzBunkus.MKVToolNix
@@ -163,6 +163,8 @@ python scripts\Music\Cover.py --dir "D:\Musique" --apply          # embarque cov
 python scripts\Music\Cover.py --dir "D:\Musique" --verify         # vérifie seulement (code 1 s'il reste un écart)
 python scripts\Music\Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --apply   # un seul album
 ```
+
+**Image mise aux normes.** Avant d'embarquer, `--apply` réduit l'image pour qu'elle tienne dans **1500x1500** (proportions gardées, jamais agrandie) si un côté dépasse, et la convertit en **JPEG** si ce n'est pas du JPEG (un PNG ; la transparence est perdue). Le fichier du dossier est **remplacé** par le résultat : `cover.png` devient `cover.jpg` et disparaît, un `cover.jpg` trop grand est réduit sur place, et l'original n'est pas gardé. Un JPEG déjà assez petit n'est jamais recompressé, donc un second passage ne change rien. Le résultat s'écrit sous un nom provisoire et n'est retenu qu'une fois contrôlé ; un échec laisse le fichier et les pistes intacts. Cela demande `ffmpeg` (sans lui, l'album concerné est signalé, code 1, et rien n'est touché) ; la simulation dit ce qui serait fait, et `--verify` compte comme écart un fichier à réduire ou à convertir.
 
 **Récupérer les pochettes des albums déjà traités.** Leurs pistes portent une pochette, mais leur dossier n'a pas de fichier : `--extract` l'écrit en `cover.jpg` (ou `cover.png`, selon l'image) dans le dossier de chaque album qui n'en a pas. Un fichier cover existant n'est jamais remplacé, et les pistes ne sont pas touchées. Les albums sans pochette exploitable sont listés à la fin ; une image qui n'est pas typée « face » (un dos, un livret) est signalée.
 
