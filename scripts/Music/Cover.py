@@ -4,6 +4,8 @@ Cover.py — Embarque dans les pistes la pochette posée dans le dossier de chaq
 
 Un fichier "cover.jpg" (ou .jpeg, .png ; aussi "folder", "front", "album", "albumart", casse libre) dans le dossier d'un album est LA pochette de cet album : elle l'emporte sur celle que portent déjà les pistes - un scan recto-verso, une image mal cadrée - comme sur celle de Cover Art Archive. La fiche de la médiathèque (Recap.py) la lit directement. Ce script, lui, la recopie dans chaque .flac et .mp3 de l'album, pour que l'Explorateur de Windows, les lecteurs et les téléphones l'affichent aussi.
 
+Avant d'embarquer, --apply met l'image aux normes : elle est réduite pour tenir dans 1500x1500 (proportions gardées, jamais agrandie) si un côté dépasse, et convertie en JPEG si c'est un PNG. Le fichier du dossier est REMPLACÉ par ce résultat - cover.png devient cover.jpg et disparaît, un cover.jpg trop grand est réduit sur place : l'original n'est pas gardé, garde-en une copie si tu y tiens. Une image déjà JPEG et assez petite n'est jamais recompressée, donc un second passage ne change rien. Cela demande ffmpeg (sans lui, l'album concerné est signalé et rien n'est touché) ; la simulation dit ce qui serait fait, et --verify compte comme écart un fichier à réduire ou à convertir. La transparence d'un PNG est perdue.
+
 Il ne touche à aucun tag : ni titre, ni genre, ni identifiant. Il n'a pas besoin d'Internet : MusicBrainz n'est pas interrogé (sauf par --candidates). Une piste qui porte déjà exactement cette image n'est pas réécrite, une autre image de face est remplacée, et les images d'un autre type (dos, livret...) sont gardées.
 
 Un album sans fichier cover est listé à la fin, pour savoir où en poser un. Le fichier cover d'un album en plusieurs disques se pose à la racine de l'album, à côté de CD1, CD2... Seuls le JPEG et le PNG s'embarquent ; un .webp, .gif ou .bmp sert à la fiche mais pas aux pistes (signalé). L'Explorateur de Windows ne lit rien d'un en-tête .flac de plus de 4 Mio : une image qui le fait dépasser est signalée.
@@ -24,7 +26,7 @@ Usage :
 
 Options : --apply --verify --extract --candidates --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original)
 
-Aucune dépendance, aucun outil externe, aucune clé. --candidates nécessite Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
+Aucune dépendance ni clé ; ffmpeg n'est requis que pour réduire ou convertir une image. --candidates nécessite Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
 """
 
 import argparse
@@ -59,11 +61,30 @@ def process_album(album, args):
 
     report = Report(total=len(album.files))
     print(f"  pochette : {path.name} ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
-    if len(wanted.data) > flac.WINDOWS_HEADER_LIMIT:
+    todo = coverfile.steps(wanted)
+    if todo:
+        label = f"pochette à {' et '.join(todo)}"
+        if args.verify:
+            print(f"  [DIFF] {path.name} : {label}")
+            report.diffs += 1
+            return report, path
+        if coverfile.ffmpeg_missing():
+            print(f"  [NON TRAITÉ] {path.name} : {label}, et ffmpeg est introuvable dans le PATH (winget install Gyan.FFmpeg)")
+            return Report(total=len(album.files), skipped=1), path
+        print(f"  {path.name} : {label}" + ("" if args.apply else " (simulation)"))
+        if args.apply:
+            try:
+                path = coverfile.convert(path)
+                wanted = coverfile.picture(path)
+            except audio.AudioError as e:
+                print(f"  [ÉCHEC] {e}")
+                return Report(total=len(album.files), failures=1), path
+            print(f"  [OK] {path.name} écrit ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
+    if len(wanted.data) > flac.WINDOWS_HEADER_LIMIT and not (todo and not args.apply):
         print("      /!\\ plus de 4 Mio : l'Explorateur de Windows ne lira rien des pistes qui la portent (réduis l'image)")
     for track, meta in metas.items():
         name = filenames.relative_name(track, album.folder)
-        if coverfile.same_front(meta, wanted):
+        if not todo and coverfile.same_front(meta, wanted):   # une pochette à convertir donnera une image que nulle piste ne porte déjà
             print(f"  {name} : déjà conforme")
             continue
         if args.verify:
@@ -309,7 +330,7 @@ def main():
 def parse_args():
     ap = argparse.ArgumentParser(description="Embarque dans les pistes le fichier cover du dossier de chaque album, sans toucher aux tags.")
     ap.add_argument("--dir", required=True, help="Dossier de musique, parcouru récursivement (un album, ou toute la médiathèque)")
-    ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation)")
+    ap.add_argument("--apply", action="store_true", help="Applique réellement (défaut : simulation) : réduit à 1500x1500 et convertit en JPEG le fichier cover qui ne l'est pas, puis l'embarque")
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement (aucune écriture)")
     ap.add_argument("--extract", action="store_true", help="Fait l'inverse : écrit en cover.jpg / cover.png, dans le dossier de chaque album qui n'en a pas, la pochette que ses pistes portent déjà")
     ap.add_argument("--candidates", action="store_true", help="Dépose dans _covers/, dans le dossier de chaque album, les pochettes de face de Cover Art Archive (son édition et les autres éditions du même album) : on y choisit, on copie la bonne en cover.jpg, puis --apply l'embarque")

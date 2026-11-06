@@ -1,6 +1,7 @@
 """Le fichier cover du dossier d'un album : repéré, préféré à toute pochette embarquée par la fiche et par Metadata.py, et embarqué seul par Cover.py."""
 
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -353,14 +354,6 @@ class TestCover(CoverTestCase):
         self.assertIn("TOTAL : 0/1", texte)
         self.assertEqual(self.octets(), avant)
 
-    def test_png(self):
-        self.poser()
-        png = b"\x89PNG\r\n\x1a\n" + bytes(30)
-        (self.dossier / "folder.png").write_bytes(png)
-        self.lancer("--apply")
-        (front,) = [p for p in self.relire().pictures if p.kind == 3]
-        self.assertEqual((front.data, front.mime), (png, "image/png"))
-
     def test_webp_signale_et_rien_n_est_ecrit(self):
         self.poser()
         (self.dossier / "cover.webp").write_bytes(b"RIFF")
@@ -401,6 +394,192 @@ class TestCover(CoverTestCase):
         code, texte = self.lancer(dossier=vide)
         self.assertEqual(code, 0)
         self.assertIn("Aucun album trouvé", texte)
+
+
+def jpeg(largeur, hauteur):
+    """Un JPEG minimal, juste de quoi en lire les dimensions."""
+    return b"\xff\xd8\xff\xc0\x00\x11\x08" + hauteur.to_bytes(2, "big") + largeur.to_bytes(2, "big") + b"\x03" + bytes(9) + b"\xff\xd9"
+
+
+def png(largeur, hauteur):
+    return b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR" + largeur.to_bytes(4, "big") + hauteur.to_bytes(4, "big") + bytes([8, 2])
+
+
+def faux_ffmpeg(resultat=None, code=0):
+    """Un ffmpeg qui écrit `resultat` (octets) dans le fichier de sortie, dernier mot de la commande, et sort avec `code`."""
+    appels = []
+
+    def run(commande, **kwargs):
+        appels.append(commande)
+        if code == 0:
+            Path(commande[-1]).write_bytes(resultat)
+        return subprocess.CompletedProcess(commande, code, "", "Invalid data found" if code else "")
+    run.appels = appels
+    return run
+
+
+class TestPochetteAuxNormes(unittest.TestCase):
+    def test_une_pochette_conforme_n_a_rien_a_faire(self):
+        self.assertEqual(coverfile.steps(coverfile.front_cover(jpeg(1500, 1500))), [])
+        self.assertEqual(coverfile.steps(coverfile.front_cover(b"\xff\xd8COVER")), [])      # dimensions inconnues : on ne touche pas
+
+    def test_un_cote_trop_grand_se_reduit(self):
+        self.assertEqual(coverfile.steps(coverfile.front_cover(jpeg(1500, 1501))), ["réduire à 1500x1500 au plus"])
+        self.assertEqual(coverfile.steps(coverfile.front_cover(jpeg(3000, 800))), ["réduire à 1500x1500 au plus"])
+
+    def test_un_png_se_convertit_meme_petit(self):
+        self.assertEqual(coverfile.steps(coverfile.front_cover(png(600, 600), "image/png")), ["convertir en JPEG"])
+
+    def test_un_grand_png_se_reduit_et_se_convertit(self):
+        self.assertEqual(len(coverfile.steps(coverfile.front_cover(png(3000, 3000), "image/png"))), 2)
+
+    def test_le_format_est_celui_du_contenu_pas_de_l_extension(self):
+        self.assertEqual(coverfile.steps(coverfile.front_cover(png(10, 10), "image/jpeg")), ["convertir en JPEG"])
+
+    def test_la_commande_tient_dans_1500_sans_agrandir(self):
+        commande = coverfile.convert_command(Path("cover.png"), Path("cover.jpg.part"))
+        self.assertIn("scale='min(1500,iw)':'min(1500,ih)':force_original_aspect_ratio=decrease", commande)
+        self.assertEqual((commande[commande.index("-i") + 1], commande[-1]), ("cover.png", "cover.jpg.part"))
+        self.assertIn("image2", commande)       # le nom provisoire (.part) ne dit pas le format
+
+
+class TestConversion(CoverTestCase):
+    """--apply réduit à 1500x1500 et convertit en JPEG le fichier cover avant de l'embarquer."""
+
+    def lancer_avec(self, ffmpeg, *argv, manquant=False):
+        with mock.patch.object(coverfile, "run_tool", ffmpeg), mock.patch.object(coverfile, "ffmpeg_missing", return_value=manquant):
+            return self.lancer(*argv)
+
+    def cover(self, nom, octets):
+        self.poser()
+        (self.dossier / nom).write_bytes(octets)
+
+    def covers(self):
+        return sorted(p.name for p in self.dossier.iterdir() if p.name.casefold().startswith(("cover", "folder")))
+
+    def test_un_png_devient_cover_jpg_et_s_embarque(self):
+        self.cover("cover.png", png(3000, 3000))
+        ffmpeg = faux_ffmpeg(jpeg(1500, 1500))
+        code, texte = self.lancer_avec(ffmpeg, "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("pochette à réduire à 1500x1500 au plus et convertir en JPEG", texte)
+        self.assertIn("[OK] cover.jpg écrit", texte)
+        self.assertEqual(self.covers(), ["cover.jpg"])
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), jpeg(1500, 1500))
+        for n in (1, 2, 3):
+            self.assertEqual(self.fronts(n), [jpeg(1500, 1500)])
+        self.assertEqual(len(ffmpeg.appels), 1)
+
+    def test_un_jpeg_trop_grand_est_reduit_sur_place(self):
+        self.cover("cover.jpg", jpeg(3000, 3000))
+        code, texte = self.lancer_avec(faux_ffmpeg(jpeg(1500, 1500)), "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("pochette à réduire à 1500x1500 au plus\n", texte)
+        self.assertNotIn("convertir", texte)
+        self.assertEqual(self.covers(), ["cover.jpg"])
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), jpeg(1500, 1500))
+        self.assertEqual(self.fronts(), [jpeg(1500, 1500)])
+
+    def test_la_casse_et_le_nom_sont_gardes(self):
+        self.cover("Folder.PNG", png(800, 800))
+        self.lancer_avec(faux_ffmpeg(jpeg(800, 800)), "--apply")
+        self.assertEqual(self.covers(), ["Folder.jpg"])
+
+    def test_un_jpeg_conforme_n_est_jamais_recompresse(self):
+        self.cover("cover.jpg", jpeg(1500, 1200))
+        ffmpeg = faux_ffmpeg(b"")
+        code, texte = self.lancer_avec(ffmpeg, "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(ffmpeg.appels, [])
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), jpeg(1500, 1200))
+
+    def test_simulation_dit_ce_qui_serait_fait_sans_rien_toucher(self):
+        self.cover("cover.png", png(3000, 3000))
+        avant, ffmpeg = self.octets(), faux_ffmpeg(jpeg(1500, 1500))
+        code, texte = self.lancer_avec(ffmpeg)
+        self.assertEqual(code, 0)
+        self.assertIn("pochette à réduire à 1500x1500 au plus et convertir en JPEG (simulation)", texte)
+        self.assertIn("pochette ajoutée (simulation)", texte)
+        self.assertEqual(ffmpeg.appels, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_deuxieme_passage_ne_change_rien(self):
+        self.cover("cover.png", png(3000, 3000))
+        self.lancer_avec(faux_ffmpeg(jpeg(1500, 1500)), "--apply")
+        avant, ffmpeg = self.octets(), faux_ffmpeg(b"")
+        code, texte = self.lancer_avec(ffmpeg, "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(texte.count("déjà conforme"), 3)
+        self.assertEqual(ffmpeg.appels, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_verify_compte_un_ecart_sans_rien_ecrire(self):
+        self.cover("cover.png", png(3000, 3000))
+        avant, ffmpeg = self.octets(), faux_ffmpeg(jpeg(1500, 1500))
+        code, texte = self.lancer_avec(ffmpeg, "--verify")
+        self.assertEqual(code, 1)
+        self.assertIn("[DIFF] cover.png : pochette à réduire à 1500x1500 au plus et convertir en JPEG", texte)
+        self.assertEqual(ffmpeg.appels, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_verify_passe_apres_apply(self):
+        self.cover("cover.png", png(3000, 3000))
+        self.lancer_avec(faux_ffmpeg(jpeg(1500, 1500)), "--apply")
+        code, _ = self.lancer_avec(faux_ffmpeg(b""), "--verify")
+        self.assertEqual(code, 0)
+
+    def test_sans_ffmpeg_l_album_est_signale_et_rien_n_est_touche(self):
+        self.cover("cover.png", png(3000, 3000))
+        avant = self.octets()
+        for argv in (("--apply",), ()):
+            with self.subTest(argv):
+                code, texte = self.lancer_avec(faux_ffmpeg(b""), *argv, manquant=True)
+                self.assertEqual(code, 1)
+                self.assertIn("ffmpeg est introuvable", texte)
+                self.assertEqual(self.octets(), avant)
+
+    def test_sans_ffmpeg_un_jpeg_conforme_s_embarque_quand_meme(self):
+        self.cover("cover.jpg", jpeg(1000, 1000))
+        code, _ = self.lancer_avec(faux_ffmpeg(b""), "--apply", manquant=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fronts(), [jpeg(1000, 1000)])
+
+    def test_ffmpeg_en_echec_laisse_tout_en_place(self):
+        self.cover("cover.png", png(3000, 3000))
+        avant = self.octets()
+        code, texte = self.lancer_avec(faux_ffmpeg(code=1), "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC] cover.png : ffmpeg n'a pas produit de JPEG exploitable (Invalid data found)", texte)
+        self.assertIn("1 écriture(s) en échec", texte)
+        self.assertEqual(self.octets(), avant)       # ni .part qui traîne, ni piste touchée
+
+    def test_un_resultat_inexploitable_n_est_pas_retenu(self):
+        self.cover("cover.png", png(3000, 3000))
+        avant = self.octets()
+        for resultat in (b"", png(100, 100), jpeg(2000, 2000)):
+            with self.subTest(resultat[:12]):
+                code, texte = self.lancer_avec(faux_ffmpeg(resultat), "--apply")
+                self.assertEqual(code, 1)
+                self.assertIn("pas produit de JPEG exploitable", texte)
+                self.assertEqual(self.octets(), avant)
+
+    def test_une_piste_illisible_empeche_de_toucher_au_fichier(self):
+        self.cover("cover.png", png(3000, 3000))
+        (self.dossier / "02 - Blizzard.flac").write_bytes(b"pas un flac")
+        avant, ffmpeg = self.octets(), faux_ffmpeg(jpeg(1500, 1500))
+        code, _ = self.lancer_avec(ffmpeg, "--apply")
+        self.assertEqual(code, 1)
+        self.assertEqual(ffmpeg.appels, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_un_autre_jpeg_deja_la_n_est_jamais_ecrase(self):
+        self.cover("cover.png", png(3000, 3000))
+        (self.dossier / "cover.jpg").write_bytes(b"A MOI")
+        with self.assertRaises(AudioError), mock.patch.object(coverfile, "run_tool", faux_ffmpeg(jpeg(10, 10))):
+            coverfile.convert(self.dossier / "cover.png")
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), b"A MOI")
+        self.assertTrue((self.dossier / "cover.png").is_file())
+        self.assertFalse((self.dossier / "cover.jpg.part").exists())
 
 
 class TestExtraction(CoverTestCase):

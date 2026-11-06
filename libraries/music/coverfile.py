@@ -5,13 +5,17 @@ C'est la pochette que l'on choisit soi-même, et elle l'emporte sur toute autre 
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
 from libraries.common import filenames
+from libraries.common.tools import partial_path, read_timeout, run_tool
 from .tags import FRONT_COVER, AudioError, Picture, front_cover, image_dimensions
 
 CANDIDATES_DIR = "_covers"                                     # où Cover.py --candidates dépose les pochettes entre lesquelles choisir
+MAX_DIMENSION = 1500                                           # la pochette embarquée tient dans 1500x1500 : au-delà, des pistes lourdes pour rien (un scan de 3000x3000 pèse plusieurs Mo par piste)
 NAMES = ("cover", "folder", "front", "album", "albumart")      # dans cet ordre : "cover" l'emporte sur "folder"
 EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")      # dans cet ordre : un .jpg l'emporte sur un .png
 # Un .flac ou un .mp3 ne porte que du JPEG ou du PNG, que tous les lecteurs savent afficher : les autres formats servent à la fiche, pas à l'embarquement.
@@ -60,6 +64,63 @@ def picture(path):
     if not data:
         raise AudioError(f"{Path(path).name} : illisible, vide ou trop lourd")
     return front_cover(data, mime)
+
+
+def steps(picture):
+    """Ce qu'il faut faire à la pochette avant de l'embarquer : "réduire à 1500x1500 au plus" si un côté dépasse, "convertir en JPEG" si ce n'est pas du JPEG. Liste vide quand elle est déjà conforme - elle n'est alors jamais recompressée, d'où un second passage qui ne change rien. C'est le contenu qui dit le format, pas l'extension du fichier."""
+    todo = []
+    if max(picture.width, picture.height) > MAX_DIMENSION:
+        todo.append(f"réduire à {MAX_DIMENSION}x{MAX_DIMENSION} au plus")
+    if extension(picture.data) != ".jpg":
+        todo.append("convertir en JPEG")
+    return todo
+
+
+def ffmpeg_missing():
+    """Vrai quand ffmpeg, qui réduit et convertit l'image, n'est pas dans le PATH."""
+    return shutil.which("ffmpeg") is None
+
+
+def convert_command(source, target):
+    """La commande ffmpeg qui écrit `source` en JPEG dans `target`, réduite pour tenir dans 1500x1500 (les proportions sont gardées, une image plus petite n'est jamais agrandie). La transparence d'un PNG est perdue : le JPEG n'en a pas."""
+    fit = f"scale='min({MAX_DIMENSION},iw)':'min({MAX_DIMENSION},ih)':force_original_aspect_ratio=decrease"
+    return ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(source), "-frames:v", "1", "-vf", fit,
+            "-c:v", "mjpeg", "-q:v", "2", "-f", "image2", "-update", "1", str(target)]   # -f : le nom provisoire (.part) ne dit pas le format
+
+
+def convert(path):
+    """Remplace le fichier cover par sa version JPEG tenant dans 1500x1500 et retourne le chemin du JPEG : le même fichier s'il l'était déjà, "cover.jpg" à côté d'un "cover.png" (qui est alors supprimé). AudioError si ça échoue, auquel cas rien n'a bougé.
+
+    L'image s'écrit d'abord sous un nom provisoire, contrôlée (un JPEG lisible dans la limite de taille) avant de prendre la place de l'original : un échec ou un Ctrl-C ne laissent pas une pochette tronquée. Un autre fichier déjà nommé comme le résultat n'est jamais écrasé.
+    """
+    path = Path(path)
+    final = path.with_suffix(".jpg")
+    partial = partial_path(final)
+    try:
+        if final.exists() and not os.path.samefile(path, final):
+            raise AudioError(f"{final.name} existe déjà à côté de {path.name} : à supprimer ou renommer à la main")
+        try:
+            result = run_tool(convert_command(path, partial), timeout=read_timeout(path))
+        except FileNotFoundError:
+            raise AudioError("ffmpeg est introuvable dans le PATH (winget install Gyan.FFmpeg)")
+        except subprocess.TimeoutExpired:
+            raise AudioError(f"{path.name} : lecture sans fin, le partage ne répond plus ?")
+        data = read(partial) if result.returncode == 0 and partial.exists() else None
+        if not data or extension(data) != ".jpg" or not 0 < max(image_dimensions(data)[:2]) <= MAX_DIMENSION:
+            error = next((line.strip() for line in (result.stderr or "").splitlines() if line.strip()), "")
+            raise AudioError(f"{path.name} : ffmpeg n'a pas produit de JPEG exploitable" + (f" ({error})" if error else ""))
+        try:
+            os.replace(partial, final)
+        except OSError as e:
+            raise AudioError(f"{final.name} n'a pas pu être écrit : {e.strerror or e}")
+    finally:
+        partial.unlink(missing_ok=True)
+    if not os.path.samefile(path, final):      # "cover.png" -> "cover.jpg" : l'original n'a plus lieu d'être (sur Windows, "Cover.JPG" et "Cover.jpg" sont le même fichier : jamais supprimé)
+        try:
+            path.unlink()
+        except OSError as e:
+            raise AudioError(f"{path.name} n'a pas pu être supprimé après conversion : {e.strerror or e}")
+    return final
 
 
 def extension(data):
