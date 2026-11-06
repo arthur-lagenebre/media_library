@@ -1,8 +1,10 @@
-"""Contrôler un .epub sans outil externe : l'archive, le conteneur, l'.opf et le XHTML.
+"""Contrôler un .epub sans outil externe : l'archive, le conteneur, l'.opf, le XHTML et ce qu'ils citent.
 
 Un .epub est un zip qui obéit à quelques règles que beaucoup de lecteurs font semblant d'ignorer, et qu'un seul refuse un jour : "mimetype" en première entrée, stocké sans compression, sans champ "extra" ; un conteneur qui désigne un .opf ; un manifeste dont chaque fichier existe ; un ordre de lecture (spine) qui ne cite que le manifeste ; du XHTML bien formé. `audit` les vérifie toutes, en bibliothèque standard.
 
-Ce n'est pas EpubCheck : ni schéma EPUB 3, ni CSS, ni accessibilité. Seulement ce qui fait qu'un livre s'ouvre ou ne s'ouvre pas, et ce qu'un script peut réparer sans rien perdre (`Defect.fixable`, voir epubclean.py).
+Il vérifie aussi que le livre tient ses promesses : les liens et les ancres mènent quelque part (XHTML, table des matières NCX), les images et les ressources des feuilles de style existent, une image est bien du type que le manifeste annonce, les accolades d'un CSS s'équilibrent, et aucun fichier ne traîne hors du manifeste.
+
+Ce n'est pas EpubCheck : ni schéma EPUB 3, ni grammaire du CSS (seulement ses accolades et ce qu'il cite), ni accessibilité. Seulement ce qui fait qu'un livre s'ouvre ou ne s'ouvre pas, et ce qu'un script peut réparer sans rien perdre (`Defect.fixable`, voir epubclean.py).
 
 Rien n'est écrit.
 """
@@ -27,6 +29,15 @@ OPTIONAL_DC = ("contributor", "coverage", "creator", "date", "description", "for
 XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 ENTITY_RE = re.compile(rb"&([A-Za-z][A-Za-z0-9]*);")
 MAX_LISTED = 3          # noms cités dans un message qui en regroupe beaucoup
+
+XLINK = "{http://www.w3.org/1999/xlink}"
+XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
+SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")           # http:, mailto:, data:... : ce n'est pas un fichier du livre
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+CSS_STRING_RE = re.compile(r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'")
+CSS_URL_RE = re.compile(r"url\(\s*(?:\"([^\"]*)\"|'([^']*)'|([^)\s\"']*))\s*\)|@import\s+(?:\"([^\"]*)\"|'([^']*)')")
+# Les premiers octets d'une image : le manifeste dit "image/jpeg", le contenu dit si c'en est une.
+IMAGE_SIGNATURES = {"image/jpeg": (b"\xff\xd8",), "image/png": (b"\x89PNG\r\n\x1a\n",), "image/gif": (b"GIF87a", b"GIF89a")}
 
 
 class Defect(NamedTuple):
@@ -53,9 +64,15 @@ def is_external(href):
     return "://" in href or href.startswith("data:")
 
 
-def entry_name(opf_path, href):
-    """Nom, dans l'archive, du fichier que l'.opf désigne par `href` : relatif à l'.opf, '%20' décodé, sans ancre."""
-    return posixpath.normpath(posixpath.join(posixpath.dirname(opf_path), unquote(href.split("#", 1)[0])))
+def entry_name(base, href):
+    """Nom, dans l'archive, du fichier que `href` désigne depuis le fichier `base` (l'.opf pour le manifeste, une page pour ses liens) : relatif à son dossier, '%20' décodé, sans ancre."""
+    return posixpath.normpath(posixpath.join(posixpath.dirname(base), unquote(href.split("#", 1)[0])))
+
+
+def shown(opf_path, name):
+    """Le nom d'un fichier tel que le manifeste l'écrit : relatif au dossier de l'.opf."""
+    prefix = posixpath.dirname(opf_path)
+    return name[len(prefix) + 1:] if prefix and name.startswith(prefix + "/") else name
 
 
 def manifest_items(root):
@@ -122,18 +139,17 @@ def cited(names):
 # --------------------------------------------------------------------------
 # L'.opf
 # --------------------------------------------------------------------------
-def xml_problem(data):
-    """Pourquoi ce document n'est pas du XML bien formé, ou "".
+def parse_xml(data):
+    """(racine, "") d'un document XML bien formé, ou (None, pourquoi il ne l'est pas).
 
     Un XHTML qui porte un DOCTYPE peut employer les entités nommées de HTML (&nbsp;, &eacute;...) que sa DTD définit : l'analyseur n'ouvre pas la DTD, ces entités sont donc remplacées avant lui par leur code, faute de quoi tout livre en XHTML 1.1 passerait pour cassé.
     """
     if b"<!DOCTYPE" in data[:4096]:
         data = ENTITY_RE.sub(_html_entity, data)
     try:
-        ElementTree.fromstring(data)
+        return ElementTree.fromstring(data), ""
     except (ElementTree.ParseError, ValueError, LookupError) as e:
-        return str(e)
-    return ""
+        return None, str(e) or "illisible"
 
 
 def _html_entity(match):
@@ -172,8 +188,145 @@ def _metadata_defects(root, metadata, version):
     return defects
 
 
-def _manifest_defects(archive, opf_path, items):
+class Document(NamedTuple):
+    """Ce qu'une page XHTML (ou un NCX) offre et cite : ses ancres, ses liens, ses images."""
+    ids: frozenset
+    links: tuple
+    images: tuple
+
+
+def _local(tag):
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def read_document(root):
+    """Le Document d'une page déjà analysée."""
+    ids, links, images = set(), [], []
+    for element in root.iter():
+        name = _local(element.tag)
+        ids.update(v for v in (element.get("id"), element.get(XML_ID)) if v)
+        if name == "a":
+            if element.get("name"):
+                ids.add(element.get("name"))
+            if element.get("href") is not None:
+                links.append(element.get("href"))
+        elif name == "content" and element.get("src") is not None:        # la table des matières d'un NCX
+            links.append(element.get("src"))
+        elif name in ("img", "image"):
+            src = element.get("src") if name == "img" else (element.get("href") or element.get(XLINK + "href"))
+            if src:
+                images.append(src)
+    return Document(frozenset(ids), tuple(links), tuple(images))
+
+
+def css_text(data):
+    """Le texte d'une feuille de style : UTF-8 (BOM compris), ou UTF-16 quand elle en porte la marque."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    return data.decode("utf-8-sig", errors="replace")
+
+
+def css_references(text):
+    """Les fichiers qu'une feuille de style cite (url(...) et @import), hors commentaires."""
+    found = []
+    for match in CSS_URL_RE.finditer(CSS_COMMENT_RE.sub("", text)):
+        url = next((g for g in match.groups() if g), "")
+        if url:
+            found.append(url)
+    return found
+
+
+def css_braces(text):
+    """(accolades ouvrantes, fermantes) d'une feuille de style, hors commentaires et chaînes."""
+    text = CSS_STRING_RE.sub('""', CSS_COMMENT_RE.sub("", text))
+    return text.count("{"), text.count("}")
+
+
+def sniff(head):
+    """Le type d'image que ces premiers octets annoncent (JPEG, PNG, GIF, WebP), "" pour tout le reste."""
+    for media, signatures in IMAGE_SIGNATURES.items():
+        if head.startswith(signatures):
+            return media
+    return "image/webp" if head[:4] == b"RIFF" and head[8:12] == b"WEBP" else ""
+
+
+def _image_defects(href, media, head):
+    actual = sniff(head)
+    if actual == media:
+        return []
+    if actual:
+        return [Defect(f"{href} est déclaré {media} mais c'est du {actual}")]
+    return [Defect(f"{href} est déclaré {media} mais n'est pas une image de ce type (fichier vide ou abîmé ?)")]
+
+
+def _item_defects(archive, name, href, media, docs, styles):
+    """Lit un fichier du manifeste : XML bien formé, CSS équilibré, image du type annoncé. Range ce qu'il cite dans `docs` (pages) ou `styles` (feuilles de style)."""
+    try:
+        if media in IMAGE_SIGNATURES:
+            with archive.open(name) as image:
+                return _image_defects(href, media, image.read(12))
+        if media not in XML_TYPES and media != "text/css":
+            return []
+        data = archive.read(name)
+    except ZIP_ERRORS as e:
+        return [Defect(f"{href} illisible : {e}")]
+    if media == "text/css":
+        text = css_text(data)
+        styles[name] = css_references(text)
+        opened, closed = css_braces(text)
+        return [Defect(f"CSS : accolades déséquilibrées dans {href} ({opened} « {{ », {closed} « }} »)")] if opened != closed else []
+    root, problem = parse_xml(data)
+    if root is None:
+        return [Defect(f"XML mal formé : {href} ({problem})")]
+    docs[name] = read_document(root)
+    return []
+
+
+def _target(document, href):
+    """(nom d'entrée, ancre) que `href` désigne depuis `document`, ou None pour ce qui n'est pas un fichier du livre : lien externe, courriel, URI de données, ancre vide."""
+    href = href.strip()
+    if not href or SCHEME_RE.match(href) or href.startswith("//"):
+        return None
+    path, _, fragment = href.partition("#")
+    path = path.split("?", 1)[0]
+    return (entry_name(document, path) if path else document), unquote(fragment)
+
+
+def _absent(document, href, names):
+    target = _target(document, href)
+    return target is not None and target[0] not in names
+
+
+def _broken(document, href, names, docs):
+    """Vrai quand le lien ne mène nulle part : fichier absent, ou ancre que la page visée ne porte pas (« #top » et epubcfi sont admis)."""
+    target = _target(document, href)
+    if target is None:
+        return False
+    name, fragment = target
+    if name not in names:
+        return True
+    return bool(fragment) and fragment != "top" and not fragment.startswith("epubcfi(") and name in docs and fragment not in docs[name].ids
+
+
+def _reference_defects(opf_path, names, docs, styles):
+    """Un défaut par page ou feuille de style qui cite ce qui n'existe pas : liens, ancres, images, polices."""
     defects = []
+    for document, doc in docs.items():
+        broken = [h for h in doc.links if _broken(document, h, names, docs)]
+        missing = [s for s in doc.images if _absent(document, s, names)]
+        if broken:
+            defects.append(Defect(f"liens cassés dans {shown(opf_path, document)} ({len(broken)}) : {cited(broken)}"))
+        if missing:
+            defects.append(Defect(f"images absentes de {shown(opf_path, document)} ({len(missing)}) : {cited(missing)}"))
+    for style, refs in styles.items():
+        missing = [r for r in refs if _absent(style, r, names)]
+        if missing:
+            defects.append(Defect(f"fichiers cités par {shown(opf_path, style)} et absents ({len(missing)}) : {cited(missing)}"))
+    return defects
+
+
+def _manifest_defects(archive, opf_path, items):
+    defects, docs, styles = [], {}, {}
     names = set(archive.namelist())
     if not items:
         defects.append(Defect("manifeste vide ou absent"))
@@ -188,18 +341,9 @@ def _manifest_defects(archive, opf_path, items):
             name = entry_name(opf_path, href)
             if name not in names:
                 defects.append(Defect(f"fichier du manifeste absent de l'archive : {href}"))
-            elif item.get("media-type") in XML_TYPES:
-                defects += _xml_defect(archive, name, href)
-    return defects
-
-
-def _xml_defect(archive, name, href):
-    try:
-        data = archive.read(name)
-    except ZIP_ERRORS as e:
-        return [Defect(f"{href} illisible : {e}")]
-    problem = xml_problem(data)
-    return [Defect(f"XML mal formé : {href} ({problem})")] if problem else []
+            else:
+                defects += _item_defects(archive, name, href, item.get("media-type"), docs, styles)
+    return defects + _reference_defects(opf_path, names, docs, styles)
 
 
 def _spine_defects(root, items, version):
@@ -259,7 +403,18 @@ def audit(path):
         except BookError as e:
             return defects + [Defect(str(e))]
         defects += package_defects(archive, root, opf_path)
-        found = residues(archive, listed_entries(root, opf_path))
+        listed = listed_entries(root, opf_path)
+        found = residues(archive, listed)
         if found:
             defects.append(Defect(f"résidus à retirer ({len(found)}) : {cited(found)}", True))
+        unlisted = _unlisted(archive, listed, opf_path)
+        if unlisted:
+            defects.append(Defect(f"fichiers absents du manifeste ({len(unlisted)}) : {cited(unlisted)}"))
         return defects
+
+
+def _unlisted(archive, listed, opf_path):
+    """Les fichiers du livre que le manifeste ne déclare pas : un lecteur les ignore, EpubCheck les signale. Ni mimetype, ni META-INF/, ni l'.opf, ni les résidus (déjà dits à part), ni les dossiers."""
+    return [n for n in dict.fromkeys(archive.namelist())
+            if not n.endswith("/") and n not in listed and n not in (opf_path, "mimetype")
+            and not n.startswith("META-INF/") and not is_parasite(n)]

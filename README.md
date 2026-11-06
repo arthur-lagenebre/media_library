@@ -21,7 +21,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Video/Verify_Mkv.py](scripts/Video/Verify_Mkv.py) | Contrôle la structure Matroska des `.mkv` d'un dossier, et remultiplexe ceux qui sont abîmés |
 | [scripts/Music/Verify_Flac.py](scripts/Music/Verify_Flac.py) | Contrôle les `.flac` d'un dossier, en lecture seule : fichier coupé, CRC de chaque trame, empreinte MD5 du son |
 | [scripts/Music/Verify_Mp3.py](scripts/Music/Verify_Mp3.py) | Contrôle les `.mp3` d'un dossier, en lecture seule : fichier coupé, trou, bruit dans la chaîne de trames, nombre de trames annoncé |
-| [scripts/Books/Verify_Epub.py](scripts/Books/Verify_Epub.py) | Contrôle les `.epub` d'un dossier, en lecture seule et sans Java : archive et CRC, `mimetype`, conteneur, `.opf` (manifeste, spine, navigation), XHTML bien formé, résidus ; code 1 s'il reste un livre en défaut |
+| [scripts/Books/Verify_Epub.py](scripts/Books/Verify_Epub.py) | Contrôle les `.epub` d'un dossier, en lecture seule et sans Java : archive et CRC, `mimetype`, conteneur, `.opf` (manifeste, spine, navigation), XHTML bien formé, liens et ancres, images et ressources CSS citées, type des images, accolades du CSS, fichiers hors manifeste, résidus ; code 1 s'il reste un livre en défaut |
 | [scripts/Books/Clean_Epub.py](scripts/Books/Clean_Epub.py) | Nettoie les `.epub` : retire leurs résidus (`__MACOSX`, `.DS_Store`…), répare l'archive (`mimetype`, doublons), assainit la fiche de l'`.opf` ; contrôlé avant de remplacer, original gardé en `.bak` |
 | [scripts/Video/Avi_To_Mkv.py](scripts/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
 | [scripts/Video/Mp4_To_Mkv.py](scripts/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
@@ -234,7 +234,7 @@ La bibliothèque est rangée **par section** — un dossier `Manga`, `BD`, `Comi
 
 Ces livres portent déjà leur fiche : `ComicInfo.xml` dans un `.cbz` (série, numéro, résumé, auteurs, éditeur, date, genres…), le `.opf` d'un `.epub` quand Calibre est passé par là. Il n'y a donc **rien à étiqueter** ici : media_library n'y écrit aucun tag, et [media_hub](../media_hub) les lit (`libraries/books/`). Les seuls scripts de livres contrôlent et nettoient les `.epub`.
 
-**Contrôler les `.epub`.** [Verify_Epub.py](scripts/Books/Verify_Epub.py) ouvre chaque livre en lecture seule, sans Java ni EpubCheck, et nomme ce qui cloche : archive illisible ou entrée corrompue (CRC), `mimetype` absent, mal placé, compressé ou au mauvais contenu, entrées en double, conteneur ou `.opf` illisible, titre, langue ou identifiant manquant, fichier du manifeste absent, spine qui cite un inconnu, navigation absente (`nav` en EPUB 3, `toc` en EPUB 2), XHTML mal formé, résidus. Ce n'est **pas** EpubCheck : ni schéma EPUB 3, ni CSS, ni accessibilité — seulement ce qui fait qu'un livre s'ouvre ou non sur une liseuse. Il sort en **code 1** s'il reste un livre en défaut et écrit `verification_epub.log` à la racine de `--dir`.
+**Contrôler les `.epub`.** [Verify_Epub.py](scripts/Books/Verify_Epub.py) ouvre chaque livre en lecture seule, sans Java ni EpubCheck, et nomme ce qui cloche : archive illisible ou entrée corrompue (CRC), `mimetype` absent, mal placé, compressé ou au mauvais contenu, entrées en double, conteneur ou `.opf` illisible, titre, langue ou identifiant manquant, fichier du manifeste absent, spine qui cite un inconnu, navigation absente (`nav` en EPUB 3, `toc` en EPUB 2), XHTML mal formé, liens et ancres qui ne mènent nulle part (pages et table des matières NCX), images et fichiers cités par un CSS (images, polices) qui n'existent pas, image dont le contenu n'est pas du type annoncé par le manifeste, accolades d'un CSS déséquilibrées, fichiers que le manifeste ne déclare pas, résidus. Ce n'est **pas** EpubCheck : ni schéma EPUB 3, ni grammaire du CSS (seulement ses accolades et ce qu'il cite), ni accessibilité — seulement ce qui fait qu'un livre s'ouvre ou non sur une liseuse, et qu'il tient ses promesses. Il sort en **code 1** s'il reste un livre en défaut et écrit `verification_epub.log` à la racine de `--dir`.
 
 **Nettoyer les `.epub`.** [Clean_Epub.py](scripts/Books/Clean_Epub.py) fait trois corrections, chacune sans toucher au texte, aux images ni aux styles (`--fix` en choisit, les trois par défaut) :
 
@@ -253,7 +253,7 @@ python scripts\Books\Clean_Epub.py --dir "D:\Livres" --apply                 # n
 python scripts\Books\Clean_Epub.py --dir "D:\Livres" --fix residues --apply  # seulement les résidus
 ```
 
-Ce que `Clean_Epub.py` ne répare pas — fichiers du manifeste absents, XML cassé, archive abîmée — se remplace (nouveau téléchargement, sauvegarde) : `Verify_Epub.py` le nomme.
+Ce que `Clean_Epub.py` ne répare pas — fichiers du manifeste absents, liens ou images cassés, fichiers hors manifeste, XML cassé, archive abîmée — se corrige dans le livre (Calibre) ou se remplace (nouveau téléchargement, sauvegarde) : `Verify_Epub.py` le nomme.
 
 ### Convertir les AVI
 
