@@ -279,6 +279,20 @@ class TestLectureDesMetadonnees(unittest.TestCase):
         tags, _ = self.lire(with_metadata())
         self.assertEqual(tags, mkv.parse_tags(xml))
 
+    def test_tag_fils_range_sous_son_pere_comme_mkvextract(self):
+        # L'id TMDB d'un acteur est un SimpleTag imbriqué : les deux lectures doivent le rendre pareil.
+        from libraries.video import mkv
+        fils = element(ebml.SIMPLE_TAG, element(ebml.TAG_NAME, b"TMDB") + element(ebml.TAG_STRING, b"person/13"))
+        acteur = element(ebml.SIMPLE_TAG, element(ebml.TAG_NAME, b"ACTOR") + element(ebml.TAG_STRING, b"C (Role)") + fils)
+        bloc = element(ebml.TAG, element(ebml.TARGETS, element(ebml.TARGET_TYPE_VALUE, b"\x32")) + simple_tag("TMDB", "movie/9") + acteur)
+        lus = ebml.parse_tags(bloc)
+        xml = ("<Tags><Tag><Targets><TargetTypeValue>50</TargetTypeValue></Targets>"
+               "<Simple><Name>TMDB</Name><String>movie/9</String></Simple>"
+               "<Simple><Name>ACTOR</Name><String>C (Role)</String>"
+               "<Simple><Name>TMDB</Name><String>person/13</String></Simple></Simple></Tag></Tags>")
+        self.assertEqual(lus, mkv.parse_tags(xml))
+        self.assertIn((50, "ACTOR/TMDB", "person/13"), lus)
+
 
 def with_cover(indexed=True, name="cover.jpg", data=b"\xff\xd8JPEG"):
     """Un .mkv dont la jaquette vit en QUEUE, après les clusters, comme mkvpropedit la pose."""

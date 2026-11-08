@@ -301,6 +301,33 @@ class TestTagsXML(unittest.TestCase):
         self.assertEqual(sum("ACTOR" in x for x in lines), 2)
         self.assertIn("Acteur0 (Role0)", lines[2])
 
+    def test_credits_portent_l_id_tmdb_de_la_personne(self):
+        crew = [{"id": 11, "name": "A", "job": "Director", "department": "Directing"}, {"id": 99, "name": "A", "job": "Director", "department": "Directing"},
+                {"id": 12, "name": "B", "job": "Writer", "department": "Writing"}]
+        cast = [{"id": 13, "name": "C", "character": "Role"}, {"name": "Sans id"}]
+        xml = mkv.tags_document([mkv.tag_block(50, mkv.credits_lines(crew, cast))])
+        racine = ElementTree.fromstring(xml)
+        self.assertEqual(racine.findtext(".//Simple[Name='DIRECTOR']/Simple[Name='TMDB']/String"), "person/11")   # la première occurrence
+        self.assertEqual(racine.findtext(".//Simple[Name='WRITTEN_BY']/Simple[Name='TMDB']/String"), "person/12")
+        acteurs = racine.findall(".//Simple[Name='ACTOR']")
+        self.assertEqual([a.findtext("String") for a in acteurs], ["C (Role)", "Sans id"])   # la valeur de premier niveau ne change pas
+        self.assertEqual(acteurs[0].findtext("Simple/String"), "person/13")
+        self.assertIsNone(acteurs[1].find("Simple"))           # pas d'id, pas de fils
+
+    def test_tags_fils_ranges_sous_le_nom_du_pere(self):
+        xml = mkv.tags_document([mkv.tag_block(50, [mkv.simple("TMDB", "movie/9"), mkv.person_tag("ACTOR", "C (Role)", 13)])])
+        tags = mkv.parse_tags(xml)
+        self.assertEqual(tags, {(50, "TMDB", "movie/9"), (50, "ACTOR", "C (Role)"), (50, "ACTOR/TMDB", "person/13")})
+        self.assertEqual(mkv.tmdb_id(tags), "9")               # l'id d'une personne n'est jamais pris pour celui du film
+
+    def test_fichier_sans_id_de_personne_n_est_pas_conforme(self):
+        # Un fichier étiqueté avant l'ajout des ids doit être réécrit : --skip-done ne doit pas le sauter.
+        cible = mkv.tags_document([mkv.tag_block(50, [mkv.person_tag("ACTOR", "C (Role)", 13)])])
+        ancien = mkv.tags_document([mkv.tag_block(50, [mkv.simple("ACTOR", "C (Role)")])])
+        target = mkv.Target(title="X", tags_xml=cible)
+        self.assertFalse(mkv._tags_check(target, mkv.parse_tags(ancien))[0][1])
+        self.assertTrue(mkv._tags_check(target, mkv.parse_tags(cible))[0][1])
+
 
 # Les tags tels que mkvextract les rend : un bloc de saga (70), un bloc de film (cible vide = 50), des blocs de piste (statistiques).
 TAGS_RENDUS = chr(0xFEFF) + """<?xml version="1.0"?>

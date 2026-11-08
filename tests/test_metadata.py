@@ -77,6 +77,12 @@ class TestTagsEpisode(unittest.TestCase):
         self.assertEqual(self.valeur(50, "ACTOR"), "A. Acteur (Lui-meme)")
         self.assertEqual(self.valeur(50, "COMMENT"), "TMDB 7.8/10 (12 votes)")
 
+    def test_personnes_de_l_episode_avec_leur_id_tmdb(self):
+        episode = dict(SAISON["episodes"][0], crew=[{"id": 5, "name": "R. Real", "job": "Director"}], guest_stars=[{"id": 6, "name": "A. Acteur", "character": "Lui-meme"}])
+        racine = ElementTree.fromstring(episodetags.build_tags_xml(SAISON, episode, "Ma Serie"))
+        self.assertEqual(racine.findtext(".//Simple[Name='DIRECTOR']/Simple[Name='TMDB']/String"), "person/5")
+        self.assertEqual(racine.findtext(".//Simple[Name='ACTOR']/Simple[Name='TMDB']/String"), "person/6")
+
     def test_cible_de_l_episode(self):
         target = episodetags.episode_target(SAISON, SAISON["episodes"][0], "Ma Serie", OPTS)
         self.assertEqual((target.title, target.date), ("Pilote", "2024-01-02"))
@@ -142,6 +148,15 @@ class TestFilms(unittest.TestCase):
         root = ElementTree.fromstring(movietags.build_movie_tags_xml({"id": 314, "title": "Catwoman"}))
         film = root.findall("Tag")[-1]
         self.assertEqual(film.find("Simple[Name='TMDB']/String").text, "movie/314")
+
+    def test_les_personnes_portent_leur_id_tmdb(self):
+        movie = {"id": 1, "title": "Heat", "credits": {"crew": [{"id": 7, "name": "M. Mann", "job": "Director"}], "cast": [{"id": 8, "name": "A. Pacino", "character": "Hanna"}]}}
+        film = ElementTree.fromstring(movietags.build_movie_tags_xml(movie)).find("Tag")
+        self.assertEqual(film.find("Simple[Name='DIRECTOR']/Simple[Name='TMDB']/String").text, "person/7")
+        self.assertEqual(film.find("Simple[Name='ACTOR']/String").text, "A. Pacino (Hanna)")
+        self.assertEqual(film.find("Simple[Name='ACTOR']/Simple[Name='TMDB']/String").text, "person/8")
+        self.assertEqual(film.find("Simple[Name='TMDB']/String").text, "movie/1")     # le tag du film, au premier niveau, reste seul de son nom
+
     def test_film_hors_saga(self):
         movie = {"title": "Heat", "credits": {}}
         root = ElementTree.fromstring(movietags.build_movie_tags_xml(movie))
