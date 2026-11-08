@@ -406,7 +406,7 @@ def parse_info(block):
 def parse_tags(block, ordered=False):
     """{(niveau de cible, nom, valeur)} d'après le contenu d'un élément Tags.
 
-    Même forme que mkv.parse_tags, qui lit la sortie XML de mkvextract : les tags de PISTE sont écartés (statistiques de mkvpropedit), un bloc sans TargetTypeValue vaut 50, et seuls les SimpleTag de premier niveau comptent.
+    Même forme que mkv.parse_tags, qui lit la sortie XML de mkvextract : les tags de PISTE sont écartés (statistiques de mkvpropedit), un bloc sans TargetTypeValue vaut 50, et un SimpleTag fils se range sous le nom de son père ("ACTOR/TMDB").
 
     `ordered=True` rend une liste, dans l'ordre du fichier : celui d'un casting (ACTOR, du premier rôle au dernier), qu'un ensemble perdrait.
     """
@@ -423,16 +423,28 @@ def parse_tags(block, ordered=False):
                     elif leaf == TAG_TRACK_UID:
                         of_track = True
             elif sub == SIMPLE_TAG:
-                name = value = ""
-                for leaf, pos, n in _elements(block, at, at + length):
-                    if leaf == TAG_NAME:
-                        name = _text(block, pos, n)
-                    elif leaf == TAG_STRING:
-                        value = _text(block, pos, n)
-                simples.append((name, value))
+                simples.extend(_simple_tag(block, at, at + length))
         if not of_track:
             tags.extend((level, name, value) for name, value in simples)
     return tags if ordered else set(tags)
+
+
+def _simple_tag(block, start, end, parent=""):
+    """[(nom, valeur)] d'un SimpleTag puis de ses fils, le fils s'appelant "PERE/FILS" (comme mkv.parse_tags)."""
+    name = value = ""
+    children = []
+    for leaf, pos, n in _elements(block, start, end):
+        if leaf == TAG_NAME:
+            name = _text(block, pos, n)
+        elif leaf == TAG_STRING:
+            value = _text(block, pos, n)
+        elif leaf == SIMPLE_TAG:
+            children.append((pos, pos + n))
+    name = parent + name
+    found = [(name, value)]
+    for child_start, child_end in children:
+        found.extend(_simple_tag(block, child_start, child_end, name + "/"))
+    return found
 
 
 def _locate(f, start, end, wanted=(INFO, TAGS)):

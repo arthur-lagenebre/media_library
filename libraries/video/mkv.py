@@ -150,6 +150,8 @@ def annotate_bitrates(info, path):
 def parse_tags(xml):
     """{(niveau de cible, nom, valeur)} pour les tags de niveau film/saison/série.
 
+    Un tag fils se range sous le nom de son père : l'id TMDB d'un acteur donne (50, "ACTOR/TMDB", "person/1234"). Il ne se confond donc jamais avec le tag TMDB du film, que `tmdb_id` cherche sous le nom "TMDB".
+
     Les tags de PISTE sont écartés : ce sont les statistiques écrites par --add-track-statistics-tags, qui ne viennent pas de TMDB. Et un bloc sans TargetTypeValue vaut 50 : c'est la valeur par défaut de Matroska, que mkvpropedit omet à l'écriture - sans cette équivalence, un fichier fraîchement etiquete paraîtrait déjà différent de ce qu'on vient d'y écrire.
     """
     try:
@@ -164,8 +166,16 @@ def parse_tags(xml):
         niveau = targets.find("TargetTypeValue") if targets is not None else None
         niveau = int(niveau.text) if (niveau is not None and niveau.text) else 50
         for simple in bloc.findall("Simple"):
-            tags.add((niveau, simple.findtext("Name") or "", simple.findtext("String") or ""))
+            tags.update(_flatten(niveau, simple))
     return tags
+
+
+def _flatten(niveau, simple, parent=""):
+    """Les tuples d'un <Simple> et de ses fils : le fils s'appelle "PERE/FILS"."""
+    name = parent + (simple.findtext("Name") or "")
+    yield (niveau, name, simple.findtext("String") or "")
+    for child in simple.findall("Simple"):
+        yield from _flatten(niveau, child, name + "/")
 
 
 def read_tags(path):
@@ -247,6 +257,11 @@ TMDB_VALUE_RE = re.compile(r"^\s*(?:movie/)?(\d+)\s*$", re.IGNORECASE)
 def tmdb_value(movie_id):
     """Valeur normalisée du tag TMDB pour un film."""
     return f"movie/{movie_id}"
+
+
+def tmdb_person_value(person_id):
+    """Valeur normalisée du tag TMDB pour une personne."""
+    return f"person/{person_id}"
 
 
 def tmdb_id(tags):
@@ -468,9 +483,21 @@ def unique(seq):
     return out
 
 
-def simple(name, value):
-    """Une ligne <Simple> de tag Matroska (contenu echappe, apostrophes et guillemets écrits droits)."""
-    return f"      <Simple><Name>{escape(name)}</Name><String>{escape(straight_quotes(str(value)))}</String></Simple>"
+def simple(name, value, nested=()):
+    """Une ligne <Simple> de tag Matroska (contenu echappe, apostrophes et guillemets écrits droits).
+
+    `nested` : des tags <Simple> fils, que Matroska prévoit pour qualifier un tag (l'identifiant d'une personne sous son ACTOR).
+    """
+    return f"      <Simple><Name>{escape(name)}</Name><String>{escape(straight_quotes(str(value)))}</String>{''.join(nested)}</Simple>"
+
+
+def person_tag(name, value, person_id):
+    """Un tag de personne (DIRECTOR, WRITTEN_BY, ACTOR) qui porte, en fils, son identifiant TMDB (`person/1234`).
+
+    La valeur du tag reste celle d'avant : un lecteur qui ne regarde que le premier niveau (media_hub) ne voit aucune différence.
+    """
+    child = (f"<Simple><Name>{TMDB_TAG}</Name><String>{tmdb_person_value(person_id)}</String></Simple>",) if person_id else ()
+    return simple(name, value, child)
 
 
 def tag_block(target_type, lines):
@@ -487,16 +514,26 @@ def tags_document(blocks):
     return "\n".join(lines)
 
 
+def _people(crew):
+    """[(nom, id TMDB)] sans doublon de nom, dans l'ordre ; l'id est celui de la première occurrence."""
+    seen = {}
+    for member in crew:
+        name = member.get("name")
+        if name and name not in seen:
+            seen[name] = member.get("id")
+    return list(seen.items())
+
+
 def credits_lines(crew, cast, max_actors=20):
-    """Lignes <Simple> DIRECTOR / WRITTEN_BY / ACTOR à partir des crédits TMDB."""
+    """Lignes <Simple> DIRECTOR / WRITTEN_BY / ACTOR à partir des crédits TMDB, chacune avec l'id TMDB de la personne."""
     lines = []
-    for name in unique(c.get("name") for c in crew if c.get("job") == "Director"):
-        lines.append(simple("DIRECTOR", name))
-    for name in unique(c.get("name") for c in crew if c.get("department") == "Writing"):
-        lines.append(simple("WRITTEN_BY", name))
+    for name, person_id in _people(c for c in crew if c.get("job") == "Director"):
+        lines.append(person_tag("DIRECTOR", name, person_id))
+    for name, person_id in _people(c for c in crew if c.get("department") == "Writing"):
+        lines.append(person_tag("WRITTEN_BY", name, person_id))
     for person in cast[:max_actors]:
         name, char = person.get("name", ""), person.get("character", "")
-        lines.append(simple("ACTOR", f"{name} ({char})" if char else name))
+        lines.append(person_tag("ACTOR", f"{name} ({char})" if char else name, person.get("id")))
     return lines
 
 
