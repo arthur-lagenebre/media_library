@@ -52,8 +52,9 @@ Options principales :
   --verify         vérifie seulement (aucune écriture)
   --skip-done      saute les fichiers déjà conformes
   --no-tag         ne modifie aucun épisode ; avec --artwork, écrit seulement folder.jpg
+  --credits-only   ne change que le casting (réalisateurs, scénaristes, guest stars et leur id TMDB) d'un épisode déjà étiqueté : les tags sont relus et réécrits à l'identique, les personnes exceptées. Un épisode sans tag TITLE est signalé [SANS TAGS]. Incompatible avec --no-tag.
   --no-cover / --no-date / --no-audio-names / --no-sub-names / --no-flags / --no-stats
-  --artwork        écrit folder.jpg (vignette de dossier) en anglais (série et chaque saison)
+  --artwork       écrit folder.jpg (vignette de dossier) en anglais (série et chaque saison)
   --image-size STR taille TMDB jaquette / folder.jpg : w300 / w780 / original (défaut : w780)
 """
 
@@ -67,7 +68,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, casing, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, casing, credits, lookup, mkv, naming  # noqa: E402
 from libraries.video.episodetags import episode_target  # noqa: E402
 from libraries.video.passfiles import TITLES_NAME, read_titles, remember_title, titles_path  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError                    # noqa: E402
@@ -116,7 +117,7 @@ def build_plan(mkv_dir, season, args, opts):
         plan.append(Candidate(f, ep, method))
 
     # Les tags ne sont relus que si on doit les comparer : un processus de plus.
-    besoin_tags = args.verify or args.skip_done
+    besoin_tags = args.verify or args.skip_done or getattr(args, "credits_only", False)
     lectures = mkv.inspect_all([c.path for c in plan if c.episode], args.probe, besoin_tags)
     for candidate in plan:
         lecture = lectures.get(candidate.path)
@@ -131,15 +132,29 @@ def build_plan(mkv_dir, season, args, opts):
     return plan
 
 
-def show_candidate(c, season, args, opts, report):
-    """Affiche l'association d'un fichier à son épisode, puis - sous --verify - son écart avec l'état visé, sinon ce qui serait écrit."""
+def show_association(c, season):
+    """Affiche l'association d'un fichier à son épisode, avec les remarques sur sa lecture."""
     sn, en = season.get("season_number", 1), c.episode.get("episode_number", 0)
     print(f"  [S{sn:02d}E{en:02d}] {c.path.name}")
     print(f"            -> {c.episode.get('name', '')}   ({c.method})")
     for note in c.notes:
         print(f"            /!\\ {note}")
+
+
+def credits_candidate(c, season, args, opts, report):
+    """--credits-only : l'association, puis le casting seul, comparé et - sous --apply - réécrit."""
+    show_association(c, season)
     target = episode_target(season, c.episode, args.series_name, opts)
-    if args.verify:                     # mode vérification : état actuel vs vise
+    non_conforme, echec = credits.process(c.path, c.tags, target, args.verify, args.apply)
+    report.diffs += non_conforme
+    report.failures += echec
+
+
+def show_candidate(c, season, args, opts, report):
+    """Affiche l'association d'un fichier à son épisode, puis - sous --verify - son écart avec l'état visé, sinon ce qui serait écrit."""
+    show_association(c, season)
+    target = episode_target(season, c.episode, args.series_name, opts)
+    if args.verify:                   # mode vérification : état actuel vs vise
         diffs = [(lbl, det) for lbl, ok, det in mkv.verify(c.info, target, opts, c.tags) if not ok]
         for lbl, det in diffs:
             print(f"      [DIFF] {lbl} : actuel = {det!r}")
@@ -183,9 +198,12 @@ def process_season(mkv_dir, season, args, opts, tmdb):
             print(f"  [NON ASSOCIÉ] {c.path.name}")
             continue
         report.matched += 1
-        show_candidate(c, season, args, opts, report)
+        if getattr(args, "credits_only", False):
+            credits_candidate(c, season, args, opts, report)
+        else:
+            show_candidate(c, season, args, opts, report)
 
-    if args.apply and not args.verify:
+    if args.apply and not args.verify and not getattr(args, "credits_only", False):
         write_season(plan, season, args, opts, tmdb, report)
 
     print(f"  => {report.matched}/{report.total} associé(s).")
@@ -226,6 +244,7 @@ def parse_args():
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement l'état des fichiers (aucune écriture)")
     ap.add_argument("--skip-done", action="store_true", help="Saute les fichiers déjà conformes")
     ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun épisode ; avec --artwork, écrit seulement folder.jpg")
+    ap.add_argument("--credits-only", action="store_true", help="Ne change que le casting : réalisateurs, scénaristes et guest stars (avec leur id TMDB) d'un épisode déjà étiqueté ; titre, synopsis, pistes, date et jaquette ne bougent pas")
     ap.add_argument("--no-cover", action="store_true", help="N'embarque pas la jaquette")
     ap.add_argument("--no-date", action="store_true", help="Ne modifie pas la date du segment")
     ap.add_argument("--no-audio-names", action="store_true", help="Ne renomme pas les pistes audio")
@@ -236,7 +255,10 @@ def parse_args():
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (vignette de dossier) en anglais")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquée / folder.jpg : w300 / w780 / original")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
-    return ap.parse_args()
+    args = ap.parse_args()
+    if args.credits_only and args.no_tag:
+        ap.error("--credits-only et --no-tag se contredisent : l'un ne change que le casting, l'autre rien")
+    return args
 
 
 def settle_series_name(title, args):
