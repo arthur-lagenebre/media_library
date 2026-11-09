@@ -1,6 +1,6 @@
 # Utiliser les agents et les skills Claude Code
 
-Le dépôt contient cinq **sous-agents** dans [.claude/agents/](../.claude/agents/) et cinq **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
+Le dépôt contient cinq **sous-agents** dans [.claude/agents/](../.claude/agents/) et six **skills** dans [.claude/skills/](../.claude/skills/). Ces dossiers restent à la racine : c'est là que Claude Code les cherche.
 
 Un sous-agent est un assistant spécialisé : Claude Code lui confie une tâche, il travaille dans son propre contexte avec ses propres outils, puis ne renvoie que son compte rendu. Un skill est une marche à suivre que Claude charge dans la conversation en cours, sans changer d'interlocuteur.
 
@@ -74,6 +74,7 @@ Plusieurs agents peuvent travailler en parallèle s'ils touchent des fichiers di
 | `/ship` | livrer : vérifications, branche, commits, push et PR au format du dépôt | **par toi seulement** (`disable-model-invocation`) |
 | `/merged` | ranger après une fusion : vérifier que GitHub a fusionné la PR, synchroniser `main`, supprimer la branche fusionnée (`git branch -d`, jamais `-D`), vérifier que sa copie distante a disparu | par toi (`/merged`), ou quand tu dis que la PR est fusionnée |
 | `/ub-mode` | travailler selon les principes réduits : d'abord que ça marche, ensuite que ce soit juste, puis suivre la pratique | par toi |
+| `/tech-debt-audit` | auditer toute la dette technique du dépôt : écrit `TECH_DEBT_AUDIT.md` (constats `fichier:ligne`, gravité, coût, plan en PR, section « semble mauvais mais volontaire »), sans rien corriger ; relancé, il marque les constats résolus et nouveaux | **par toi seulement** (`disable-model-invocation`) |
 
 `/ship` ne se lance jamais seul : il commite, pousse et ouvre une PR. Il ne fusionne pas, c'est toujours à toi de le faire une fois la CI verte. `/merged` est son pendant, une fois la fusion faite : il ne fusionne ni ne pousse rien, et ne supprime que la branche de la PR fusionnée.
 
@@ -105,4 +106,4 @@ Les consignes de l'agent, en Markdown libre.
 - Garde les consignes courtes et vérifiables (invariants du dépôt, commandes à lancer, format du compte rendu).
 - Ne mets **pas** d'autre fichier `.md` dans `.claude/agents/` : chaque fichier y est lu comme un agent. Cette documentation vit donc dans `docs/`.
 
-Un skill est un dossier `.claude/skills/<nom>/` avec un `SKILL.md` (en-tête `name` et `description`, puis la marche à suivre). `disable-model-invocation: true` en fait un skill que toi seul peux lancer, à réserver aux actions qui sortent de la machine (commit, push, PR).
+Un skill est un dossier `.claude/skills/<nom>/` avec un `SKILL.md` (en-tête `name` et `description`, puis la marche à suivre). `disable-model-invocation: true` en fait un skill que toi seul peux lancer, à réserver aux actions qui sortent de la machine (commit, push, PR) et aux traitements longs et coûteux (l'audit complet).
