@@ -103,6 +103,7 @@ Les consignes de l'agent, en Markdown libre.
 
 - `description` : sois concret sur *quand* l'utiliser ; c'est ce que Claude lit pour choisir.
 - `tools` : donne le minimum. Un relecteur n'a pas besoin de `Edit` ni de `Write`.
+- `skills` : liste les skills chargés avec l'agent. `video-expert`, `music-expert` et `library-tester` chargent `ub-mode` (test d'abord, puis `crapper` / `dryer` / `mutator`, puis journal des actions) ; leurs consignes précisent que les règles du dépôt passent avant lui, et qu'ils ne commitent ni ne poussent sans demande.
 - Garde les consignes courtes et vérifiables (invariants du dépôt, commandes à lancer, format du compte rendu).
 - Ne mets **pas** d'autre fichier `.md` dans `.claude/agents/` : chaque fichier y est lu comme un agent. Cette documentation vit donc dans `docs/`.
 
