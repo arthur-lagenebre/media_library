@@ -232,13 +232,23 @@ def retitle(xml, wanted):
 
 
 def write_titles(path, title, tags_xml):
-    """Écrit le titre du conteneur et, si `tags_xml` n'est pas vide, les tags : un seul appel à mkvpropedit, qui ne touche ni aux pistes, ni à la date, ni à la jaquette. Retourne (code, message).
+    """Écrit le titre du conteneur et, si `tags_xml` n'est pas vide, les tags : un seul appel à mkvpropedit, qui ne touche ni aux pistes, ni à la date, ni à la jaquette. Retourne (code, message)."""
+    return _propedit(path, ["--edit", "info", "--set", f"title={title}"], tags_xml)
+
+
+def write_tags(path, tags_xml):
+    """Écrit seulement les tags (le titre du conteneur, les pistes, la date et la jaquette ne bougent pas). Retourne (code, message)."""
+    return _propedit(path, [], tags_xml)
+
+
+def _propedit(path, edits, tags_xml):
+    """Un appel à mkvpropedit : `edits`, puis les tags si `tags_xml` n'est pas vide.
 
     Un dossier temporaire sert de cwd pour référencer tags.xml en relatif (évite les soucis de ':' dans les chemins Windows).
     """
     path = Path(path).resolve()
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = ["mkvpropedit", str(path), "--edit", "info", "--set", f"title={title}"]
+        cmd = ["mkvpropedit", str(path), *edits]
         if tags_xml:
             (Path(tmp) / "tags.xml").write_text(tags_xml, encoding="utf-8")
             cmd += ["--tags", "all:tags.xml"]
@@ -524,7 +534,10 @@ def _people(crew):
     return list(seen.items())
 
 
-def credits_lines(crew, cast, max_actors=20):
+MAX_ACTORS = 50   # un seul plafond, jamais une option : --verify et --skip-done comparent les tags, le contenu d'un fichier ne doit pas dépendre du lancement
+
+
+def credits_lines(crew, cast, max_actors=MAX_ACTORS):
     """Lignes <Simple> DIRECTOR / WRITTEN_BY / ACTOR à partir des crédits TMDB, chacune avec l'id TMDB de la personne."""
     lines = []
     for name, person_id in _people(c for c in crew if c.get("job") == "Director"):

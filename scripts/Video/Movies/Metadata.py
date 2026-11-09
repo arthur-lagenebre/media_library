@@ -48,6 +48,7 @@ Une association suspecte (durée incohérente, fiche presque inconnue) est signa
 Le titre de COLLECTION inscrit dans le film ne garde pas le suffixe " - Saga" que TMDB ajoute en français : il est retiré d'office. Le reste se CHOISIT : le nom TMDB, ce nom sans son " Collection" final ("Iron Man Collection" ; il peut faire partie du nom : "The Criterion Collection"), le nom de ton dossier de saga quand il en diffère, ou un titre que tu tapes ("autre"). La question est posée une fois par collection, dans le terminal - Entrée prend la proposition marquée "(défaut)", t prend le défaut pour toutes les suivantes (casse des titres comprise) - et la réponse est mémorisée dans "metadata.collections", à côté du journal ("nom TMDB => titre inscrit", une ligne par collection, modifiable à la main ; supprime la ligne pour que la question soit reposée). Une seule proposition, et il n'y a rien à choisir. Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le nom TMDB est gardé tel quel.
 La CASSE du titre se décide avec toi quand TMDB et ton fichier ne diffèrent que par elle : TMDB écrit ses titres français à l'anglaise ("28 Ans plus tard : Le Temple des morts"), ton fichier à la française ("28 ans plus tard - Le temple des morts"). Rien ne dit lequel est juste ("American History X" doit garder ses majuscules), donc la question est posée une fois par titre, dans le terminal - Entrée prend la casse du fichier pour un titre français, celle de TMDB pour un titre anglais -, et la réponse est mémorisée dans "metadata.titles", à côté du journal ("titre TMDB => titre inscrit", modifiable à la main). Hors terminal, sous --no-ask ou en vérification, rien n'est demandé et le titre TMDB est gardé tel quel.
 --title-only ne change QUE les titres d'un film déjà étiqueté : le titre du conteneur et les tags TITLE (film, et collection si le fichier en porte un). Les tags sont relus tels quels et réécrits à l'identique, le TITLE excepté : synopsis, casting, genres, identifiant TMDB, statistiques de pistes, noms de pistes, drapeaux, date et jaquette ne bougent pas. Utile après avoir arrêté une casse ou un titre de collection (metadata.titles, metadata.collections) sans réécrire toute la médiathèque. Un fichier sans tag TITLE n'a pas été étiqueté : il est signalé [SANS TAGS] et laissé tel quel (code de sortie 1). Avec --verify, seuls les titres sont comparés ; incompatible avec --no-tag.
+--credits-only ne change QUE le casting d'un film déjà étiqueté : DIRECTOR, WRITTEN_BY et ACTOR, chacun avec son id TMDB. Même principe que --title-only : les tags sont relus tels quels et réécrits à l'identique, les personnes exceptées ; titre, synopsis, genres, statistiques de pistes, noms de pistes, drapeaux, date et jaquette ne bougent pas, et le titre du conteneur non plus. Utile après avoir relevé le plafond du casting (50 acteurs) sans réécrire toute la médiathèque. Un fichier sans tag TITLE est signalé [SANS TAGS] et laissé tel quel (code de sortie 1) ; une fiche TMDB sans aucune personne ne vide pas un casting déjà écrit. Avec --verify, seul le casting est comparé ; incompatible avec --no-tag et --title-only.
 Ordre de priorité : --tmdb-id, puis l'identifiant épinglé dans le NOM, puis celui lu dans le FICHIER, puis la recherche.
 Si un passage à inscrit le mauvais identifiant, corrige-le en épinglant le bon dans le nom - "Dune (2021) [tmdbid-438631]" ou "Dune {tmdb-438631}" - le passage suivant le réécrira dans le fichier.
 
@@ -57,7 +58,7 @@ Usage :
   python Metadata.py --dir "D:\Films\Inception (2010)" --tmdb-id 27205 --apply   # force l'id (1 film)
   python Metadata.py --dir "D:\Films" --verify                # vérifie seulement
 
-Options : --apply --verify --skip-done --title-only --artwork --no-tag --no-cache --no-ask
+Options : --apply --verify --skip-done --title-only --credits-only --artwork --no-tag --no-cache --no-ask
           --no-saga --log-dir
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
@@ -75,7 +76,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
 from libraries.common import cache, cli  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
-from libraries.video import artwork, casing, lookup, mkv, naming  # noqa: E402
+from libraries.video import artwork, casing, credits, lookup, mkv, naming  # noqa: E402
 from libraries.video.doubts import identity_doubts  # noqa: E402
 from libraries.video.movietags import collection_choices, collection_title, movie_target  # noqa: E402
 from libraries.video.resolve import movie_details, resolve_movie, saga_corrections, tag_movie_id  # noqa: E402
@@ -136,6 +137,8 @@ def process_file(path, lecture, movie, args, opts, tmdb):
     if getattr(args, "title_only", False):
         return process_title_only(path, lecture, movie, args, opts)
     target = movie_target(movie, opts)
+    if getattr(args, "credits_only", False):
+        return credits.process(path, tags, target, args.verify, args.apply)
 
     if args.verify:
         diffs = [(lbl, det) for lbl, ok, det in mkv.verify(info, target, opts, tags) if not ok]
@@ -418,11 +421,16 @@ def parse_args():
     ap.add_argument("--no-stats", action="store_true", help="N'ajoute pas les tags de statistiques")
     ap.add_argument("--no-tag", action="store_true", help="Ne modifie aucun film ; avec --artwork, écrit seulement folder.jpg")
     ap.add_argument("--title-only", action="store_true", help="Ne change que le titre : celui du conteneur et les tags TITLE (film, collection) d'un film déjà étiqueté ; synopsis, casting, pistes, date et jaquette ne bougent pas")
+    ap.add_argument("--credits-only", action="store_true", help="Ne change que le casting : réalisateurs, scénaristes et acteurs (avec leur id TMDB) d'un film déjà étiqueté ; titre, synopsis, pistes, date et jaquette ne bougent pas")
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (affiche EN) par film")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB : w300 / w780 / original")
     args = ap.parse_args()
     if args.title_only and args.no_tag:
         ap.error("--title-only et --no-tag se contredisent : l'un ne change que les titres, l'autre rien")
+    if args.credits_only and args.no_tag:
+        ap.error("--credits-only et --no-tag se contredisent : l'un ne change que le casting, l'autre rien")
+    if args.credits_only and args.title_only:
+        ap.error("--credits-only et --title-only ne se combinent pas : une seule catégorie à la fois")
     return args
 
 
@@ -441,7 +449,7 @@ def read_files(movies, args):
     """{chemin: Reading} de tous les fichiers, lus d'un coup, en parallèle : chaque fichier coûte deux à trois sous-processus qu'on ne fait qu'attendre, et rien là-dedans ne dépend de TMDB. L'affichage, lui, garde son ordre."""
     fichiers = [f for entry in movies for f in entry.files]
     if not args.no_tag:
-        return mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done or args.title_only)
+        return mkv.inspect_all(fichiers, args.probe, with_tags=args.verify or args.skip_done or args.title_only or args.credits_only)
     # Sans étiquetage, on ne lit des fichiers que leurs tags et leur durée - pour l'identifiant TMDB qu'un passage précédent y a inscrit, et le contrôle de l'association. Sans lui, la fiche rechercherait chaque film par son nom et "Mortal Kombat" (1995) y redeviendrait celui de 2021. Lu en Python pur : ni MKVToolNix ni ffprobe, de quoi tourner sur un NAS.
     return mkv.read_light_all(fichiers)
 
@@ -505,6 +513,8 @@ def main():
     print(f"=== {cli.mode_label(args)} ===   source : TMDB {args.language}\n")
     if args.title_only:
         print("Titres seulement : le titre du conteneur et les tags TITLE sont seuls modifiés ; le reste du fichier ne bouge pas.\n")
+    if args.credits_only:
+        print("Casting seulement : les réalisateurs, scénaristes et acteurs sont seuls modifiés ; le reste du fichier ne bouge pas.\n")
 
     movies = naming.find_movies(args.dir)
     if not movies:

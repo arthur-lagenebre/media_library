@@ -196,6 +196,70 @@ class TestEcriture(SaisonTestCase):
 # ----------------------------------------------------------------------------
 # main() avec étiquetage
 # ----------------------------------------------------------------------------
+class TestCastingSeul(SaisonTestCase):
+    """--credits-only : l'association, puis le casting seul ; un épisode jamais étiqueté est signalé, rien d'autre n'est écrit."""
+
+    SAISON = {"season_number": 1, "name": "Saison 1", "episodes": [
+        dict(SAISON["episodes"][0], guest_stars=[{"id": 5, "name": "Invité", "character": "Lui (voice)"}]),
+        SAISON["episodes"][1]]}
+    DEJA = {(50, "TITLE", "Pilote"), (50, "ACTOR", "Vieux (Rôle)"), (50, "ACTOR/TMDB", "person/2")}
+    XML = ('<Tags><Tag><Targets/><Simple><Name>TITLE</Name><String>Pilote</String></Simple>'
+           '<Simple><Name>ACTOR</Name><String>Vieux (Rôle)</String></Simple></Tag></Tags>')
+
+    def traiter_casting(self, **options):
+        self.tags_ecrits = []
+        lectures = self.lectures(**{"01": lecture(tags=self.DEJA), "02": lecture(tags=set())})
+        sortie = io.StringIO()
+        with mock.patch.object(series.mkv, "inspect_all", lectures), \
+                mock.patch.object(series.credits.mkv, "read_tags_xml", lambda path: self.XML), \
+                mock.patch.object(series.credits.mkv, "write_tags", lambda path, xml: self.tags_ecrits.append((Path(path).name, xml)) or (0, "")), \
+                mock.patch.object(series.mkv, "write", side_effect=AssertionError("--credits-only ne doit rien écrire d'autre")), redirect_stdout(sortie):
+            report = series.process_season(self.dossier, self.SAISON, arguments(credits_only=True, **options), OPTS, None)
+        self.sortie = sortie.getvalue()
+        return report
+
+    def test_les_tags_sont_relus_sans_verify_ni_skip_done(self):
+        vu = {}
+        with mock.patch.object(series.mkv, "inspect_all", lambda paths, with_probe=True, with_tags=False, **k: vu.setdefault("tags", with_tags) and {}):
+            series.build_plan(self.dossier, SAISON, arguments(credits_only=True), OPTS)
+        self.assertTrue(vu["tags"])
+
+    def test_simulation_ne_change_rien(self):
+        report = self.traiter_casting()
+        self.assertEqual(self.tags_ecrits, [])
+        self.assertIn("casting : 2 manquant(s), 2 en trop", self.sortie)
+        self.assertEqual((report.matched, report.diffs, report.failures), (2, 1, 0))     # le 2e épisode n'a jamais été étiqueté
+        self.assertIn("[SANS TAGS]", self.sortie)
+
+    def test_application_n_ecrit_que_le_casting_de_l_episode_etiquete(self):
+        report = self.traiter_casting(apply=True)
+        self.assertEqual([nom for nom, _ in self.tags_ecrits], ["01 - brut.mkv"])
+        self.assertIn("Invité (Lui (voice))", self.tags_ecrits[0][1])
+        self.assertNotIn("--- écriture ---", self.sortie)
+        self.assertEqual((report.diffs, report.failures), (1, 0))
+
+    def test_verification(self):
+        report = self.traiter_casting(verify=True, apply=True)
+        self.assertEqual(self.tags_ecrits, [])
+        self.assertIn("[DIFF] casting", self.sortie)
+        self.assertEqual(report.diffs, 2)
+
+
+class TestOptionCreditsOnlySeries(unittest.TestCase):
+    def analyser(self, *argv):
+        with mock.patch.object(sys, "argv", ["Metadata.py", "--dir", "x", *argv]):
+            return series.parse_args()
+
+    def test_absente_par_defaut_puis_activee(self):
+        self.assertFalse(self.analyser().credits_only)
+        self.assertTrue(self.analyser("--credits-only").credits_only)
+
+    def test_incompatible_avec_no_tag(self):
+        with mock.patch.object(sys, "stderr", io.StringIO()), self.assertRaises(SystemExit) as sortie:
+            self.analyser("--credits-only", "--no-tag")
+        self.assertEqual(sortie.exception.code, 2)
+
+
 class TestSeriesDeBoutEnBout(ProgrammeTestCase):
     def setUp(self):
         super().setUp()

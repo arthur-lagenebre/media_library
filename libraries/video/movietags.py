@@ -48,7 +48,7 @@ def collection_choices(name, folder=""):
     return unique, default
 
 
-def build_movie_tags_xml(movie, max_actors=20):
+def build_movie_tags_xml(movie):
     credits = movie.get("credits", {})
     blocks = []
 
@@ -69,7 +69,7 @@ def build_movie_tags_xml(movie, max_actors=20):
         lines.append(mkv.simple("SUMMARY", movie["overview"]))
     if movie.get("release_date"):
         lines.append(mkv.simple("DATE_RELEASED", movie["release_date"]))
-    lines += mkv.credits_lines(credits.get("crew", []), credits.get("cast", []), max_actors)
+    lines += mkv.credits_lines(credits.get("crew", []), credits.get("cast", []))
     genres = ", ".join(g.get("name", "") for g in movie.get("genres", []))
     if genres:
         lines.append(mkv.simple("GENRE", genres))

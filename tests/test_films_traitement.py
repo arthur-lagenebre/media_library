@@ -307,6 +307,33 @@ class TestOptionTitleOnly(unittest.TestCase):
         self.assertIn("se contredisent", erreur.getvalue())
 
 
+class TestOptionCreditsOnly(unittest.TestCase):
+    def analyser(self, *argv):
+        with mock.patch.object(sys, "argv", ["Metadata.py", "--dir", "x", *argv]):
+            return films.parse_args()
+
+    def test_absente_par_defaut_puis_activee(self):
+        self.assertFalse(self.analyser().credits_only)
+        self.assertTrue(self.analyser("--credits-only").credits_only)
+
+    def test_incompatible_avec_no_tag_et_title_only(self):
+        for autre in ("--no-tag", "--title-only"):
+            with mock.patch.object(sys, "stderr", io.StringIO()), self.assertRaises(SystemExit) as sortie:
+                self.analyser("--credits-only", autre)
+            self.assertEqual(sortie.exception.code, 2, autre)
+
+    def test_le_traitement_d_un_fichier_ne_fait_que_le_casting(self):
+        tags = {(50, "TITLE", "Dune")}
+        with mock.patch.object(films.credits, "process", return_value=(1, 0)) as process, \
+                mock.patch.object(films.mkv, "write", side_effect=AssertionError("--credits-only ne doit rien écrire d'autre")), \
+                mock.patch.object(films.mkv, "write_titles", side_effect=AssertionError("--credits-only ne touche pas au titre")):
+            resultat = films.process_file(Path("dune.mkv"), mkv.Reading(info=INFO, tags=tags), DUNE, arguments(credits_only=True, verify=True), OPTS, None)
+        self.assertEqual(resultat, (1, 0))
+        chemin, tags_lus, cible, verify, apply = process.call_args[0]
+        self.assertEqual((chemin, tags_lus, verify, apply), (Path("dune.mkv"), tags, True, False))
+        self.assertIn("Dune", cible.tags_xml)
+
+
 class TestFilmEnPlusieursFichiers(unittest.TestCase):
     def test_chaque_fichier_est_nomme_et_traite(self):
         entree = naming.MovieFolder(folder=Path("."), files=[Path("Dune CD1.mkv"), Path("Dune CD2.mkv")], rawname="Dune")
