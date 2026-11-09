@@ -157,7 +157,7 @@ python scripts\Music\Metadata.py --dir "D:\_Music" --replace-cover --apply
 
 Les albums qui portent déjà une pochette que `Metadata.py` n'a pas besoin de remplacer n'ont pas de fichier : `Cover.py --extract` (plus bas) leur en écrit un.
 
-**Choisir soi-même la pochette.** Un fichier `cover.jpg` (ou `.jpeg`, `.png` ; aussi `folder`, `front`, `album`, `albumart`, casse libre) posé dans le dossier de l'album — à côté de `CD1`, `CD2`… pour un album en plusieurs disques — est **la** pochette de l'album : elle l'emporte sur celle que portent déjà les pistes (un scan recto-verso, une image mal cadrée) comme sur celle de Cover Art Archive. La fiche de la médiathèque la lit directement, et `Metadata.py` l'embarque à la place de tout téléchargement. Pour n'appliquer **que** les pochettes, sans toucher à un tag ni interroger MusicBrainz :
+**Choisir soi-même la pochette.** Un fichier `cover.jpg` (ou `.jpeg`, `.png` ; aussi `folder`, `front`, `album`, `albumart`, casse libre) posé dans le dossier de l'album — à côté de `CD1`, `CD2`… pour un album en plusieurs disques, où il sert à tous les disques ; à défaut, le `cover.jpg` de chaque dossier de disque s'applique aux pistes de ce disque (`Cover.py` et `Metadata.py`) — est **la** pochette de l'album : elle l'emporte sur celle que portent déjà les pistes (un scan recto-verso, une image mal cadrée) comme sur celle de Cover Art Archive. La fiche de la médiathèque la lit directement, et `Metadata.py` l'embarque à la place de tout téléchargement. Pour n'appliquer **que** les pochettes, sans toucher à un tag ni interroger MusicBrainz :
 
 ```powershell
 python scripts\Music\Cover.py --dir "D:\Musique"                  # simulation

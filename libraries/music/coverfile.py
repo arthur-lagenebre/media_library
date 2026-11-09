@@ -1,6 +1,6 @@
 """La pochette posée dans le dossier de l'album : "cover.jpg", "folder.png"...
 
-C'est la pochette que l'on choisit soi-même, et elle l'emporte sur toute autre : celle d'un fichier audio (souvent un scan recto-verso ou mal cadré), comme celle de Cover Art Archive. Elle s'écrit à côté des pistes, dans le dossier de l'album - jamais dans celui d'un disque (CD1, CD2...), qui partage celle de l'album.
+C'est la pochette que l'on choisit soi-même, et elle l'emporte sur toute autre : celle d'un fichier audio (souvent un scan recto-verso ou mal cadré), comme celle de Cover Art Archive. Elle s'écrit à côté des pistes, dans le dossier de l'album, et celle de l'album sert à tous ses disques (CD1, CD2...). Seul Cover.py (et Metadata.py) connaît aussi le fichier posé dans un dossier de disque, à défaut de celui de l'album : la fiche de la médiathèque, elle, ne lit que celui de l'album.
 """
 
 from __future__ import annotations
