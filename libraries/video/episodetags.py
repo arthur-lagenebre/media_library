@@ -6,7 +6,7 @@ Tout est pur : une saison et un épisode TMDB en entrée, du XML de tags et une 
 from . import mkv
 
 
-def build_tags_xml(season, ep, series_name, max_actors=20):
+def build_tags_xml(season, ep, series_name):
     blocks = []
     if series_name:
         blocks.append(mkv.tag_block(70, [mkv.simple("TITLE", series_name)]))
@@ -23,7 +23,7 @@ def build_tags_xml(season, ep, series_name, max_actors=20):
         lines.append(mkv.simple("SUMMARY", ep["overview"]))
     if ep.get("air_date"):
         lines.append(mkv.simple("DATE_RELEASED", ep["air_date"]))
-    lines += mkv.credits_lines(ep.get("crew", []), ep.get("guest_stars", []), max_actors)
+    lines += mkv.credits_lines(ep.get("crew", []), ep.get("guest_stars", []))
     if ep.get("vote_average"):
         lines.append(mkv.simple("COMMENT", f"TMDB {round(ep['vote_average'], 1)}/10 ({ep.get('vote_count', 0)} votes)"))
     blocks.append(mkv.tag_block(50, lines))

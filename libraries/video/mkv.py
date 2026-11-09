@@ -524,7 +524,10 @@ def _people(crew):
     return list(seen.items())
 
 
-def credits_lines(crew, cast, max_actors=20):
+MAX_ACTORS = 50   # un seul plafond, jamais une option : --verify et --skip-done comparent les tags, le contenu d'un fichier ne doit pas dépendre du lancement
+
+
+def credits_lines(crew, cast, max_actors=MAX_ACTORS):
     """Lignes <Simple> DIRECTOR / WRITTEN_BY / ACTOR à partir des crédits TMDB, chacune avec l'id TMDB de la personne."""
     lines = []
     for name, person_id in _people(c for c in crew if c.get("job") == "Director"):

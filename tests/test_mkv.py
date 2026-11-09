@@ -10,7 +10,7 @@ from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.video import mkv
+from libraries.video import episodetags, mkv, movietags
 def piste(kind, **props):
     return {"type": kind, "codec": props.pop("codec", ""), "properties": props}
 
@@ -300,6 +300,23 @@ class TestTagsXML(unittest.TestCase):
         self.assertEqual(sum("WRITTEN_BY" in x for x in lines), 1)
         self.assertEqual(sum("ACTOR" in x for x in lines), 2)
         self.assertIn("Acteur0 (Role0)", lines[2])
+
+    def test_credits_plafonnes_a_50_acteurs_par_defaut_dans_l_ordre_tmdb(self):
+        # Movie 43 (TMDB 87818) compte 102 acteurs : Gerard Butler (rang 28), Halle Berry (31), Seth MacFarlane (40) doivent être écrits.
+        cast = [{"id": i + 1, "name": f"Acteur{i}", "character": f"Role{i}"} for i in range(60)]
+        acteurs = [x for x in mkv.credits_lines([], cast) if "ACTOR" in x]
+        self.assertEqual(mkv.MAX_ACTORS, 50)
+        self.assertEqual(len(acteurs), 50)
+        self.assertIn("Acteur0 (Role0)", acteurs[0])
+        self.assertIn("Acteur49 (Role49)", acteurs[-1])
+        self.assertTrue(all(f"person/{i + 1}<" in x for i, x in enumerate(acteurs)))
+
+    def test_films_et_episodes_gardent_50_acteurs(self):
+        cast = [{"id": i, "name": f"Acteur{i}", "character": f"Role{i}"} for i in range(60)]
+        film = movietags.build_movie_tags_xml({"title": "F", "credits": {"cast": cast}})
+        episode = episodetags.build_tags_xml({}, {"name": "E", "guest_stars": cast}, "")
+        for xml in (film, episode):
+            self.assertEqual(sum(1 for t in mkv.parse_tags(xml) if t[1] == "ACTOR"), 50)
 
     def test_credits_portent_l_id_tmdb_de_la_personne(self):
         crew = [{"id": 11, "name": "A", "job": "Director", "department": "Directing"}, {"id": 99, "name": "A", "job": "Director", "department": "Directing"},
