@@ -8,7 +8,7 @@ Avant d'embarquer, --apply met l'image aux normes : elle est réduite pour tenir
 
 Il ne touche à aucun tag : ni titre, ni genre, ni identifiant. Il n'a pas besoin d'Internet : MusicBrainz n'est pas interrogé (sauf par --candidates). Une piste qui porte déjà exactement cette image n'est pas réécrite, une autre image de face est remplacée, et les images d'un autre type (dos, livret...) sont gardées.
 
-Un album sans fichier cover est listé à la fin, pour savoir où en poser un. Le fichier cover d'un album en plusieurs disques se pose à la racine de l'album, à côté de CD1, CD2... Seuls le JPEG et le PNG s'embarquent ; un .webp, .gif ou .bmp sert à la fiche mais pas aux pistes (signalé). L'Explorateur de Windows ne lit rien d'un en-tête .flac de plus de 4 Mio : une image qui le fait dépasser est signalée.
+Un album sans fichier cover est listé à la fin, pour savoir où en poser un. Le fichier cover d'un album en plusieurs disques se pose à la racine de l'album, à côté de CD1, CD2... : il sert alors à tous les disques. S'il n'y en a pas à la racine mais un dans chaque dossier de disque (deux éditions aux pochettes différentes, par exemple), chaque disque porte le sien ; un disque sans fichier est signalé et ses pistes ne sont pas touchées. Seuls le JPEG et le PNG s'embarquent ; un .webp, .gif ou .bmp sert à la fiche mais pas aux pistes (signalé). L'Explorateur de Windows ne lit rien d'un en-tête .flac de plus de 4 Mio : une image qui le fait dépasser est signalée.
 
 --extract fait le chemin inverse, pour les albums déjà étiquetés dont les pistes portent une pochette mais dont le dossier n'a pas de fichier : il écrit cette pochette en cover.jpg (ou cover.png, selon l'image) dans le dossier de l'album. Un fichier cover existant n'est jamais remplacé, et les pistes ne sont pas touchées. C'est le point de départ pour corriger : extraire, ouvrir les cover.jpg, remplacer à la main les mauvaises (recto-verso, mal cadrées), puis embarquer avec --apply.
 
@@ -31,6 +31,7 @@ Aucune dépendance ni clé ; ffmpeg n'est requis que pour réduire ou convertir 
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
@@ -41,45 +42,76 @@ from libraries.music import audio, coverfile, flac, lookup  # noqa: E402
 from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError  # noqa: E402
 
 
+def cover_groups(album):
+    """([(fichier cover, album réduit à ses pistes)], [dossiers de disque sans fichier]) : à quelles pistes va quel fichier.
+
+    Un fichier cover à la racine de l'album sert à toutes les pistes, dossiers de disque compris. À défaut, chaque dossier de disque (CD1, CD2...) qui a le sien l'applique à ses pistes ; ceux qui n'en ont pas sont rendus à part, leurs pistes ne reçoivent rien. Sans aucun fichier : ([], [])."""
+    root = coverfile.find(album.folder)
+    if root is not None:
+        return [(root, album)], []
+    groups, bare = [], []
+    for folder in sorted({Path(f).parent for f in album.files}):
+        if folder == album.folder:
+            continue                  # des pistes à la racine, qui n'a pas de fichier : rien à leur donner
+        path = coverfile.find(folder)
+        if path is None:
+            bare.append(folder)
+        else:
+            groups.append((path, replace(album, files=[f for f in album.files if Path(f).parent == folder])))
+    return (groups, bare) if groups else ([], [])
+
+
 def process_album(album, args):
-    """Embarque la pochette du dossier dans chaque piste. Retourne (Report, fichier cover ou None) : le fichier est None quand l'album n'en a pas."""
-    path = coverfile.find(album.folder)
-    if path is None:
-        return Report(), None
+    """Embarque dans chaque piste le fichier cover qui la concerne (voir cover_groups). Retourne (Report, premier fichier cover ou None, [dossiers de disque sans fichier]) : None quand l'album n'en a aucun."""
+    groups, bare = cover_groups(album)
+    if not groups:
+        return Report(), None, []
+    report = Report()
+    for path, part in groups:
+        report += process_tracks(part, path, args)
+    for folder in bare:
+        print(f"  {folder.name} : aucun fichier cover, ses pistes restent comme elles sont")
+    return report, groups[0][0], bare
+
+
+def process_tracks(album, path, args):
+    """Embarque le fichier cover `path` dans chaque piste de `album`. Retourne le Report."""
     try:
         wanted = coverfile.picture(path)
     except audio.AudioError as e:
         print(f"  [NON TRAITÉ] {e}")
-        return Report(total=len(album.files), skipped=1), path
+        return Report(total=len(album.files), skipped=1)
 
     metas, errors = lookup.read_album(album)
     if errors:
         print("  [NON TRAITÉ] fichier(s) illisible(s) :")
         for error in errors:
             print(f"      - {error}")
-        return Report(total=len(album.files), skipped=1), path
+        return Report(total=len(album.files), skipped=1)
 
     report = Report(total=len(album.files))
-    print(f"  pochette : {path.name} ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
+    shown = filenames.relative_name(path, album.folder)        # "cover.jpg", ou "CD1\cover.jpg" quand il n'est que dans un dossier de disque
+    print(f"  pochette : {shown} ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
     todo = coverfile.steps(wanted)
     if todo:
         label = f"pochette à {' et '.join(todo)}"
         if args.verify:
-            print(f"  [DIFF] {path.name} : {label}")
+            print(f"  [DIFF] {shown} : {label}")
             report.diffs += 1
-            return report, path
+            return report
         if coverfile.ffmpeg_missing():
-            print(f"  [NON TRAITÉ] {path.name} : {label}, et ffmpeg est introuvable dans le PATH (winget install Gyan.FFmpeg)")
-            return Report(total=len(album.files), skipped=1), path
-        print(f"  {path.name} : {label}" + ("" if args.apply else " (simulation)"))
+            print(f"  [NON TRAITÉ] {shown} : {label}, et ffmpeg est introuvable dans le PATH (winget install Gyan.FFmpeg)")
+            return Report(total=len(album.files), skipped=1)
+        print(f"  {shown} : {label}" + ("" if args.apply else " (simulation)"))
         if args.apply:
             try:
                 path = coverfile.convert(path)
                 wanted = coverfile.picture(path)
             except audio.AudioError as e:
                 print(f"  [ÉCHEC] {e}")
-                return Report(total=len(album.files), failures=1), path
-            print(f"  [OK] {path.name} écrit ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
+                return Report(total=len(album.files), failures=1)
+            shown = filenames.relative_name(path, album.folder)
+            print(f"  [OK] {shown} écrit ({len(wanted.data) / 1024:.0f} Ko, {wanted.width}x{wanted.height})")
     if len(wanted.data) > flac.WINDOWS_HEADER_LIMIT and not (todo and not args.apply):
         print("      /!\\ plus de 4 Mio : l'Explorateur de Windows ne lira rien des pistes qui la portent (réduis l'image)")
     for track, meta in metas.items():
@@ -101,7 +133,7 @@ def process_album(album, args):
         except audio.AudioError as e:
             print(f"      [ÉCHEC] {e}")
             report.failures += 1
-    return report, path
+    return report
 
 
 def readable(album):
@@ -115,9 +147,9 @@ def readable(album):
 
 def extract_album(album, args):
     """Écrit la pochette embarquée de l'album en cover.jpg / cover.png dans son dossier. Retourne (Report, "extrait" | "existe" | "aucune") : "existe" quand le dossier a déjà un fichier cover, qu'on ne remplace jamais ; "aucune" quand aucune piste ne porte d'image exploitable."""
-    existing = coverfile.find(album.folder)
-    if existing is not None:
-        print(f"  {existing.name} existe déjà : rien à extraire")
+    groups, _ = cover_groups(album)
+    if groups:       # à la racine, ou dans les dossiers de disque : dans les deux cas, écrire un cover.jpg à la racine masquerait celui des disques
+        print(f"  {filenames.relative_name(groups[0][0], album.folder)} existe déjà : rien à extraire")
         return Report(), "existe"
     picture, is_front = coverfile.embedded(readable(album))
     if picture is None or not coverfile.extension(picture.data):
@@ -307,20 +339,21 @@ def main():
     report, without, with_file = Report(), [], 0
     for album in found:
         print(f"--- {album.display} ---")
-        done, path = process_album(album, args)
+        done, path, bare = process_album(album, args)
         if path is None:
             print("  aucun fichier cover : rien à embarquer")
-            without.append(album)
+            without.append(album.display)
         else:
             with_file += 1
+            without += [f"{album.display}\\{folder.name}" for folder in bare]
         report += done
         print()
 
     print(f"TOTAL : {with_file}/{len(found)} album(s) ont un fichier cover.")
     if without:
         print(f"\nSans fichier cover ({len(without)}) : pose un cover.jpg dans le dossier de chacun.")
-        for album in without:
-            print(f"  - {album.display}")
+        for name in without:
+            print(f"  - {name}")
     rest = report.epilogue()
     if rest:
         print(f"\nÀ CORRIGER : {rest}.")

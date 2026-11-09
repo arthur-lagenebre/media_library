@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from libraries.music import coverfile, library, mp3
+from libraries.music import coverfile, flac, library, mp3
 from libraries.music.musicbrainz import MusicBrainzError
 from libraries.music.tags import AudioError
 from scripts.Music import Cover as cover
@@ -190,6 +190,41 @@ class TestMetadata(AlbumTestCase):
         self.traiter(faux())
         report, _ = self.traiter(faux(), verify=True)
         self.assertEqual(report.diffs, 0)
+
+
+class TestMetadataPochetteDeDisque(AlbumTestCase):
+    """Metadata.py : sans cover à la racine, celui d'un dossier de disque sert à ses pistes, et aucun cover.jpg téléchargé n'est écrit à la racine par-dessus."""
+
+    def preparer(self):
+        (self.dossier / "CD1").mkdir()
+        self.poser(name_pattern="CD1/0{n} - {title}.flac")
+
+    def front(self, n=1):
+        return [p.data for p in flac.read(self.dossier / "CD1" / f"0{n} - {self.TITRES[n - 1]}.flac").pictures if p.kind == 3]
+
+    def test_le_cover_du_disque_est_embarque_sans_rien_telecharger_ni_ecrire_a_la_racine(self):
+        self.preparer()
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        mb = faux()
+        report, texte = self.traiter(mb)
+        self.assertEqual(report.failures, 0)
+        self.assertEqual(mb.covers, [])
+        self.assertIn("pochette du dossier (cover.jpg)", texte)
+        self.assertEqual([self.front(n) for n in (1, 2, 3)], [[COVER_CD1]] * 3)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_sans_aucun_cover_la_pochette_telechargee_va_toujours_a_la_racine(self):
+        self.preparer()
+        self.traiter(faux())
+        self.assertEqual((self.dossier / "cover.jpg").read_bytes(), EN_LIGNE)
+        self.assertEqual(self.front(), [EN_LIGNE])
+
+    def test_le_cover_de_la_racine_l_emporte(self):
+        self.preparer()
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        self.traiter(faux())
+        self.assertEqual(self.front(), [FICHIER])
 
 
 class TestMetadataTelechargement(AlbumTestCase):
@@ -394,6 +429,96 @@ class TestCover(CoverTestCase):
         code, texte = self.lancer(dossier=vide)
         self.assertEqual(code, 0)
         self.assertIn("Aucun album trouvé", texte)
+
+
+COVER_CD1 = b"\xff\xd8COVER-CD1"
+COVER_CD2 = b"\xff\xd8COVER-CD2"
+
+
+class TestCoverDisques(CoverTestCase):
+    """Un album en plusieurs disques : le cover de la racine sert à tous ; à défaut, chaque dossier de disque applique le sien à ses pistes."""
+
+    def poser_disques(self, *disques):
+        for disque in disques:
+            (self.dossier / disque).mkdir()
+            self.poser(name_pattern=disque + "/0{n} - {title}.flac")
+
+    def front(self, disque, n=1):
+        return [p.data for p in flac.read(self.dossier / disque / f"0{n} - {self.TITRES[n - 1]}.flac").pictures if p.kind == 3]
+
+    def test_un_cover_par_disque_chaque_disque_porte_le_sien(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        (self.dossier / "CD2" / "cover.jpg").write_bytes(COVER_CD2)
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 1/1 album(s) ont un fichier cover.", texte)
+        self.assertNotIn("Sans fichier cover", texte)
+        self.assertIn(f"pochette : {Path('CD1') / 'cover.jpg'}", texte)
+        for n in (1, 2, 3):
+            self.assertEqual(self.front("CD1", n), [COVER_CD1])
+            self.assertEqual(self.front("CD2", n), [COVER_CD2])
+
+    def test_le_cover_de_la_racine_l_emporte_sur_ceux_des_disques(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        (self.dossier / "CD2" / "cover.jpg").write_bytes(COVER_CD2)
+        code, _ = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        for disque in ("CD1", "CD2"):
+            self.assertEqual(self.front(disque), [FICHIER])
+        self.assertEqual((self.dossier / "CD1" / "cover.jpg").read_bytes(), COVER_CD1)     # les fichiers des disques ne bougent pas
+
+    def test_un_disque_sans_cover_est_signale_et_ses_pistes_ne_bougent_pas(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        avant = (self.dossier / "CD2" / "01 - Prelude.flac").read_bytes()
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 1/1 album(s) ont un fichier cover.", texte)
+        self.assertIn("Sans fichier cover (1)", texte)
+        self.assertIn("CD2", texte.split("Sans fichier cover (1)")[1])
+        self.assertEqual(self.front("CD1"), [COVER_CD1])
+        self.assertEqual((self.dossier / "CD2" / "01 - Prelude.flac").read_bytes(), avant)
+
+    def test_aucun_cover_nulle_part_l_album_est_liste(self):
+        self.poser_disques("CD1", "CD2")
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("TOTAL : 0/1", texte)
+        self.assertIn("Sans fichier cover (1)", texte)
+
+    def test_simulation_n_ecrit_rien(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        (self.dossier / "CD2" / "cover.jpg").write_bytes(COVER_CD2)
+        avant = {p.relative_to(self.dossier): p.read_bytes() for p in self.dossier.rglob("*") if p.is_file()}
+        code, texte = self.lancer()
+        self.assertEqual(code, 0)
+        self.assertIn("pochette ajoutée (simulation)", texte)
+        self.assertEqual({p.relative_to(self.dossier): p.read_bytes() for p in self.dossier.rglob("*") if p.is_file()}, avant)
+
+    def test_verify_code_1_puis_0(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        (self.dossier / "CD2" / "cover.jpg").write_bytes(COVER_CD2)
+        code, texte = self.lancer("--verify")
+        self.assertEqual(code, 1)
+        self.assertIn("À CORRIGER : 6 fichier(s) non conforme(s)", texte)
+        self.lancer("--apply")
+        code, _ = self.lancer("--verify")
+        self.assertEqual(code, 0)
+
+    def test_extract_n_ecrit_pas_de_cover_a_la_racine_quand_les_disques_ont_le_leur(self):
+        self.poser_disques("CD1", "CD2", )
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(COVER_CD1)
+        (self.dossier / "CD2" / "cover.jpg").write_bytes(COVER_CD2)
+        self.lancer("--apply")        # les pistes portent maintenant une pochette : de quoi extraire
+        code, texte = self.lancer("--extract", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("existe déjà : rien à extraire", texte)
+        self.assertFalse((self.dossier / "cover.jpg").exists())
 
 
 def jpeg(largeur, hauteur):

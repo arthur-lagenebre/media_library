@@ -228,11 +228,20 @@ def process_album(found, release, group, args, mb):
         print(f"  artiste imposé : {found.artist_name}")
         if not any(albums.names_artist(c, found.artist_name) for c in release.get("artist-credit") or []):
             print(f"      /!\\ aucun artiste crédité de l'album ne ressemble à '{found.artist_name}' : les noms de MusicBrainz sont gardés")
-    covers = CoverCache(release, mb, args.image_size, album.folder, not args.no_cover_file)
-    local = None if args.no_cover else covers.local()
+    album_covers = CoverCache(release, mb, args.image_size, album.folder, not args.no_cover_file)
+    # Sans fichier cover à la racine, celui d'un dossier de disque s'applique aux pistes de ce disque ; et tant qu'un disque a le sien, aucun cover.jpg téléchargé n'est écrit à la racine : il passerait devant ceux des disques.
+    disc_covers = {}
+    if album_covers.file is None:
+        for folder in sorted({entry.path.parent for entry in entries} - {album.folder}):
+            if coverfile.find(folder) is not None:
+                disc_covers[folder] = CoverCache(release, mb, args.image_size, folder, save_file=False)
+        if disc_covers:
+            album_covers.save_file = False
     for entry in sorted(entries, key=lambda e: (placed[e.path][0].get("position") or 0, placed[e.path][1].get("position") or 0)):
         medium, track = placed[entry.path]
         meta = metas[entry.path]
+        covers = disc_covers.get(entry.path.parent, album_covers)
+        local = None if args.no_cover else covers.local()
         target = albums.target_tags(release, group, medium, track, with_genres=not args.no_genres, artist=found.artist_name)
         plan = plan_track(meta, target, covers, local, args)
         describe_track(entry, medium, track, meta, album.folder)
