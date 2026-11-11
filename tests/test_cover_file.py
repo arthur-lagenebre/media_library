@@ -1,6 +1,7 @@
 """Le fichier cover du dossier d'un album : repéré, préféré à toute pochette embarquée par la fiche et par Metadata.py, et embarqué seul par Cover.py."""
 
 import io
+import struct
 import subprocess
 import sys
 import tempfile
@@ -1019,6 +1020,211 @@ class TestCandidates(CoverTestCase):
             code, texte = self.lancer("--clean-candidates", "--apply")
         self.assertEqual(code, 1)
         self.assertIn("[ÉCHEC] _covers : Accès refusé", texte)
+
+
+def jpeg(largeur, hauteur, marque=b""):
+    """Un JPEG réduit à son en-tête SOF : de quoi lire ses dimensions, pas de quoi l'afficher."""
+    return b"\xff\xd8\xff\xc0\x00\x11\x08" + struct.pack(">HH", hauteur, largeur) + b"\x03" + b"\0" * 10 + marque
+
+
+def png(largeur, hauteur):
+    return b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR" + struct.pack(">II", largeur, hauteur) + bytes([8, 2])
+
+
+class TestMeilleurChoix(unittest.TestCase):
+    """coverfile.best : l'image la plus carrée, puis la plus grande ; à égalité, la première."""
+
+    def meilleure(self, *tailles):
+        images = [(n, jpeg(*taille)) for n, taille in enumerate(tailles)]
+        trouvee = coverfile.best(images)
+        return None if trouvee is None else trouvee[0]
+
+    def test_la_plus_grande_des_carrees(self):
+        self.assertEqual(self.meilleure((800, 800), (1200, 1200), (500, 500)), 1)
+
+    def test_un_recto_verso_passe_apres_une_face_plus_petite(self):
+        self.assertEqual(self.meilleure((3000, 1500), (600, 600)), 1)
+
+    def test_a_defaut_de_carree_la_plus_proche_du_carre(self):
+        self.assertEqual(self.meilleure((2000, 1000), (1400, 1000)), 1)
+
+    def test_au_dela_de_la_taille_embarquee_la_premiere_l_emporte(self):
+        self.assertEqual(self.meilleure((3000, 3000), (1500, 1500)), 0)
+        self.assertEqual(self.meilleure((1500, 1500), (3000, 3000)), 0)
+
+    def test_en_dessous_de_la_taille_embarquee_la_plus_grande_l_emporte(self):
+        self.assertEqual(self.meilleure((1400, 1400), (1500, 1500)), 1)
+
+    def test_vingt_pour_cent_d_ecart_passe_encore_pour_carre(self):
+        self.assertEqual(self.meilleure((1000, 1200), (900, 900)), 0)
+        self.assertEqual(self.meilleure((1000, 1250), (900, 900)), 1)
+
+    def test_les_dimensions_se_lisent_aussi_dans_un_png(self):
+        self.assertEqual(coverfile.best([("a", png(2000, 1000)), ("b", png(700, 700))])[0], "b")
+
+    def test_le_portrait_vaut_le_paysage(self):
+        self.assertEqual(self.meilleure((1000, 1400), (1400, 1000)), 0)
+
+    def test_une_image_inexploitable_est_ignoree(self):
+        self.assertEqual(coverfile.best([("gif", b"GIF89a"), ("sans taille", b"\xff\xd8x"), ("bonne", jpeg(300, 300))])[0], "bonne")
+
+    def test_rien_d_exploitable(self):
+        self.assertIsNone(coverfile.best([("gif", b"GIF89a"), ("sans taille", b"\xff\xd8x")]))
+        self.assertIsNone(coverfile.best([]))
+
+
+class TestBest(CoverTestCase):
+    """--best : la meilleure pochette de Cover Art Archive écrite en cover.jpg, pour les seuls albums qui n'en ont pas."""
+
+    lancer_mb = TestCandidates.lancer_mb
+    poser_disques = TestCoverDisques.poser_disques
+
+    def editions(self, **kwargs):
+        images = {"rel-1": [(1, jpeg(1000, 1000, b"A"))], "rel-9": [(2, jpeg(1500, 750, b"B")), (3, jpeg(1400, 1400, b"C"))]}
+        return CandidatsMusicBrainz(images, [edition("rel-9", "2014-05-01", "US")], **kwargs)
+
+    def ecrits(self):
+        return {p.name: p.read_bytes() for p in self.dossier.iterdir() if p.suffix in (".jpg", ".png")}
+
+    def test_simulation_n_ecrit_rien_et_ne_telecharge_rien(self):
+        self.poser()
+        mb, avant = self.editions(), self.octets()
+        code, texte = self.lancer_mb(mb, "--best")
+        self.assertEqual(code, 0)
+        self.assertIn("SIMULATION", texte)
+        self.assertIn("3 pochette(s) de face chez 2 édition(s)", texte)
+        self.assertIn("TOTAL : 1 cover à écrire", texte)
+        self.assertEqual(mb.telechargements, [])
+        self.assertEqual(self.octets(), avant)
+
+    def test_apply_ecrit_la_meilleure_parmi_toutes_les_editions(self):
+        self.poser()
+        code, texte = self.lancer_mb(self.editions(), "--best", "--apply")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.ecrits(), {"cover.jpg": jpeg(1400, 1400, b"C")})
+        self.assertIn("1400x1400", texte)
+        self.assertEqual(texte.count("<- retenue"), 1)
+        self.assertIn("TOTAL : 1 cover écrit(s)", texte)
+
+    def test_a_qualite_egale_l_edition_retenue_l_emporte(self):
+        self.poser()
+        mb = CandidatsMusicBrainz({"rel-1": [(1, jpeg(1200, 1200, b"A"))], "rel-9": [(2, jpeg(1200, 1200, b"B"))]}, [edition("rel-9", "2014-05-01", "US")])
+        self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(self.ecrits(), {"cover.jpg": jpeg(1200, 1200, b"A")})
+
+    def test_un_png_est_ecrit_en_cover_png(self):
+        self.poser()
+        self.lancer_mb(CandidatsMusicBrainz({"rel-1": [(1, png(1000, 1000))]}), "--best", "--apply")
+        self.assertEqual(self.ecrits(), {"cover.png": png(1000, 1000)})
+
+    def test_un_fichier_cover_n_est_jamais_touche_et_internet_n_est_pas_interroge(self):
+        self.poser()
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)
+        mb, avant = self.editions(), self.octets()
+        code, texte = self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("existe déjà : on n'y touche pas", texte)
+        self.assertIn("1 album(s) en avaient déjà un", texte)
+        self.assertEqual((mb.index, mb.telechargements), ([], []))
+        self.assertEqual(self.octets(), avant)
+
+    def test_un_cover_dans_un_dossier_de_disque_compte_aussi(self):
+        self.poser_disques("CD1", "CD2")
+        (self.dossier / "CD1" / "cover.jpg").write_bytes(FICHIER)
+        mb = self.editions()
+        self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(mb.telechargements, [])
+        self.assertFalse((self.dossier / "cover.jpg").exists())
+
+    def test_la_taille_demandee_est_transmise(self):
+        self.poser()
+        mb = self.editions()
+        self.lancer_mb(mb, "--best", "--apply", "--image-size", "1200")
+        self.assertEqual({taille for _, taille in mb.telechargements}, {"1200"})
+
+    def test_un_telechargement_en_echec_n_ecrit_rien(self):
+        self.poser()
+        code, texte = self.lancer_mb(self.editions(panne=[2]), "--best", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC]", texte)
+        self.assertIn("la meilleure ne serait pas sûre", texte)
+        self.assertEqual(self.ecrits(), {})
+
+    def test_une_image_identique_n_est_comptee_qu_une_fois(self):
+        self.poser()
+        mb = CandidatsMusicBrainz({"rel-1": [(1, jpeg(900, 900))], "rel-9": [(2, jpeg(900, 900))]}, [edition("rel-9", "2014-05-01", "US")])
+        _, texte = self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(texte.count("900x900"), 1)
+
+    def test_aucune_pochette_nulle_part(self):
+        self.poser()
+        code, texte = self.lancer_mb(CandidatsMusicBrainz({}, [edition("rel-8", "2015-01-01", "JP", avec_pochette=False)]), "--best", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("Sans pochette (1)", texte)
+        self.assertEqual(self.ecrits(), {})
+
+    def test_aucune_image_exploitable(self):
+        self.poser()
+        code, texte = self.lancer_mb(CandidatsMusicBrainz({"rel-1": [(1, b"GIF89a")]}), "--best", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("aucune des pochettes n'est un JPEG ou un PNG exploitable", texte)
+        self.assertIn("Sans pochette (1)", texte)
+        self.assertEqual(self.ecrits(), {})
+
+    def test_ecriture_en_echec_se_compte(self):
+        self.poser()
+        with mock.patch.object(cover.coverfile, "write", side_effect=PermissionError(13, "Accès refusé")):
+            code, texte = self.lancer_mb(self.editions(), "--best", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ÉCHEC] cover : Accès refusé", texte)
+
+    def test_panne_de_musicbrainz_sur_l_album(self):
+        self.poser()
+        mb = self.editions()
+        mb.search_releases = mock.Mock(side_effect=MusicBrainzError("réseau"))
+        code, texte = self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("échec MusicBrainz : réseau", texte)
+
+    def test_album_non_associe(self):
+        self.poser()
+        mb = self.editions()
+        mb.results = []
+        code, texte = self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[NON ASSOCIÉ]", texte)
+
+    def test_piste_illisible_bloque_l_album(self):
+        self.poser()
+        (self.dossier / "02 - Blizzard.flac").write_bytes(b"pas un flac")
+        mb = self.editions()
+        code, texte = self.lancer_mb(mb, "--best", "--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("fichier(s) illisible(s)", texte)
+        self.assertEqual(mb.index, [])
+
+    def test_les_modes_s_excluent(self):
+        self.poser()
+        for argv in (("--best", "--candidates"), ("--best", "--extract"), ("--best", "--clean-candidates"), ("--best", "--verify")):
+            with self.subTest(argv), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                self.lancer(*argv)
+
+    def test_best_puis_embarquer_met_la_pochette_dans_chaque_piste(self):
+        self.poser()
+        self.lancer_mb(self.editions(), "--best", "--apply")
+        code, _ = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        for n in (1, 2, 3):
+            self.assertEqual(self.fronts(n), [jpeg(1400, 1400, b"C")])
+
+    def test_un_deuxieme_passage_ne_change_rien(self):
+        self.poser()
+        self.lancer_mb(self.editions(), "--best", "--apply")
+        avant = self.octets()
+        code, texte = self.lancer_mb(self.editions(), "--best", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("1 album(s) en avaient déjà un", texte)
+        self.assertEqual(self.octets(), avant)
 
 
 class TestNomDeCandidate(unittest.TestCase):
