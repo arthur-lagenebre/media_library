@@ -20,7 +20,8 @@ NAMES = ("cover", "folder", "front", "album", "albumart")      # dans cet ordre 
 EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")      # dans cet ordre : un .jpg l'emporte sur un .png
 # Un .flac ou un .mp3 ne porte que du JPEG ou du PNG, que tous les lecteurs savent afficher : les autres formats servent à la fiche, pas à l'embarquement.
 EMBEDDABLE = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-MAX_SIZE = 20 * 1024 * 1024                                     # au-delà, ce n'est pas une pochette
+SQUARE_RATIO = 1.2                                             # une pochette dont le grand côté ne dépasse pas le petit de plus de 20 % passe pour carrée : les faces de CD, de vinyle et de digipack
+MAX_SIZE = 20 * 1024 * 1024                                    # au-delà, ce n'est pas une pochette
 
 
 def find(folder):
@@ -171,6 +172,27 @@ def candidate_sources(editions, mb):
             continue
         sources += [(edition, image) for image in mb.cover_images(edition["id"])]
     return sources
+
+
+def quality(data):
+    """Clé de tri d'une pochette, la plus petite étant la meilleure ; None quand ce n'est ni un JPEG ni un PNG lisible, ou que sa taille est inconnue.
+
+    Dans l'ordre : une image à peu près carrée (un recto de CD ou de vinyle ; un scan recto-verso est deux fois plus large que haut), à défaut la plus proche du carré ; puis la plus grande, au plus MAX_DIMENSION - au-delà, la pochette est réduite avant d'être embarquée. Deux images à égalité ne sont pas départagées ici : `best` garde la première."""
+    if not extension(data):
+        return None
+    width, height, _ = image_dimensions(data)
+    if not width or not height:
+        return None
+    ratio = max(width, height) / min(width, height)
+    square = ratio <= SQUARE_RATIO
+    return (not square, 1.0 if square else ratio, -min(max(width, height), MAX_DIMENSION))
+
+
+def best(images):
+    """L'élément de `images` - une liste de (quoi que ce soit, octets) dans l'ordre de préférence - dont l'image est la meilleure selon `quality`, ou None si aucune n'est exploitable. À qualité égale, le premier : l'édition retenue passe avant les autres."""
+    scored = [(quality(item[1]), n, item) for n, item in enumerate(images)]
+    usable = [s for s in scored if s[0] is not None]
+    return min(usable, key=lambda s: s[:2])[2] if usable else None
 
 
 def write_candidate(folder, name, data, album=""):
