@@ -15,7 +15,10 @@ Un album sans fichier cover est listé à la fin, pour savoir où en poser un. L
 --candidates sert à CHOISIR la pochette : pour chaque album, il retrouve l'édition sur MusicBrainz (comme Metadata.py : l'identifiant déjà dans les pistes ou le nom du dossier, sinon la recherche) et télécharge dans un sous-dossier _covers/ de l'album toutes les pochettes de face que Cover Art Archive garde pour cette édition et pour les autres éditions du même album, sans limite de nombre, en taille d'origine sauf si --image-size en demande une autre. Chaque fichier dit d'où il vient : "01_FR-2013-CD_3000x3000.jpg" - le 01 est l'édition retenue. Les images identiques entre elles, ou au fichier cover déjà là, ne sont déposées qu'une fois. Rien n'est touché ailleurs : ni cover.jpg, ni les pistes.
 Pour choisir : ouvrir _covers/ dans l'Explorateur, copier la bonne image en cover.jpg dans le dossier de l'album (un cover.jpg l'emporte sur un cover.png : supprimer l'ancien si le format change), puis embarquer avec --apply. --clean-candidates supprime ensuite les dossiers _covers/ (il n'est jamais fait en embarquant : un passage sur toute la médiathèque ne doit pas effacer des candidates que l'on n'a pas encore regardées).
 
+--best choisit la pochette À TA PLACE, pour les albums qui n'ont pas de fichier cover : même recherche que --candidates (l'édition retenue, puis les autres éditions du même album), mais le script télécharge toutes les pochettes de face, retient la meilleure et l'écrit en cover.jpg (ou cover.png). La meilleure : une image à peu près carrée (un scan recto-verso, deux fois plus large que haut, passe après) puis la plus grande, jusqu'à 1500 px - au-delà elle est réduite de toute façon ; à égalité, l'édition retenue l'emporte, puis la plus ancienne. Le script ne voit pas l'image : le cadrage, la netteté, une pochette d'une autre version restent à ton œil, d'où --candidates pour trancher à la main. Un album qui a déjà un fichier cover n'est jamais touché, et Internet n'est pas interrogé pour lui. En simulation rien n'est téléchargé : le script dit seulement combien de pochettes il a trouvées. Si un téléchargement échoue, aucun cover n'est écrit pour cet album (la meilleure ne serait pas sûre) : relancer suffit. Les pistes ne sont pas touchées : Cover.py --apply embarque ensuite le fichier.
+
 Usage :
+  python Cover.py --dir "D:\Musique" --best --apply                        # un cover.jpg par album qui n'en a pas : la meilleure pochette de Cover Art Archive
   python Cover.py --dir "D:\Musique" --extract --apply   # un cover.jpg par album, d'après les pochettes déjà embarquées
   python Cover.py --dir "D:\Musique"                  # simulation : dit ce qui serait embarqué
   python Cover.py --dir "D:\Musique" --apply          # embarque
@@ -24,9 +27,9 @@ Usage :
   python Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --candidates --apply   # dépose les pochettes entre lesquelles choisir
   python Cover.py --dir "D:\Musique" --clean-candidates --apply                    # supprime les dossiers _covers
 
-Options : --apply --verify --extract --candidates --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original)
+Options : --apply --verify --extract --candidates --best --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original)
 
-Aucune dépendance ni clé ; ffmpeg n'est requis que pour réduire ou convertir une image. --candidates nécessite Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
+Aucune dépendance ni clé ; ffmpeg n'est requis que pour réduire ou convertir une image. --candidates et --best nécessitent Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
 """
 
 import argparse
@@ -40,6 +43,7 @@ from libraries.common.report import Report  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
 from libraries.music import audio, coverfile, flac, lookup  # noqa: E402
 from libraries.music.musicbrainz import COVER_SIZES, MusicBrainz, MusicBrainzError  # noqa: E402
+from libraries.music.tags import front_cover, image_dimensions  # noqa: E402
 
 
 def cover_groups(album):
@@ -285,6 +289,92 @@ def candidate_albums(found, args):
     return report.exit_code
 
 
+def best_album(album, args, mb):
+    """Écrit en cover.jpg / cover.png la meilleure pochette de face de Cover Art Archive (voir coverfile.best), pour l'édition de l'album comme pour les autres éditions du même album. Retourne (Report, "écrit" | "existe" | "aucune" | "échec") ; "écrit" vaut aussi pour la simulation."""
+    groups, _ = cover_groups(album)
+    if groups:        # un fichier cover, à la racine ou dans les dossiers de disque, est un choix : on n'y touche jamais, et Internet n'est pas interrogé
+        print(f"  {filenames.relative_name(groups[0][0], album.folder)} existe déjà : on n'y touche pas")
+        return Report(), "existe"
+    metas, errors = lookup.read_album(album)
+    if errors:
+        print("  [NON TRAITÉ] fichier(s) illisible(s) :")
+        for error in errors:
+            print(f"      - {error}")
+        return Report(total=1, skipped=1), "échec"
+    try:
+        release, _ = lookup.resolve(lookup.Found(album, metas), mb, country=args.country, ask=False, with_genres=False)
+        sources = candidate_sources(release, mb) if release else []
+    except MusicBrainzError as e:
+        print(f"  échec MusicBrainz : {e}")
+        return Report(total=1, unresolved=1), "échec"
+    if release is None:
+        return Report(total=1, unresolved=1), "échec"
+    report = Report(total=1, matched=1)
+    if not sources:
+        print("  aucune pochette de face sur Cover Art Archive, pour cette édition comme pour les autres")
+        return report, "aucune"
+    print(f"  {len(sources)} pochette(s) de face chez {len({edition['id'] for edition, _ in sources})} édition(s)")
+    if not args.apply:
+        print("  la meilleure serait écrite en cover.jpg (simulation : rien n'est téléchargé pour la choisir)")
+        return report, "écrit"
+
+    images, seen = [], set()
+    for edition, image in sources:
+        try:
+            data = mb.cover_image(image, args.image_size)
+        except MusicBrainzError as e:
+            print(f"  [ÉCHEC] {albums.describe(edition)} : {e}")
+            report.failures += 1
+            continue
+        if data and data not in seen:
+            seen.add(data)
+            images.append((edition, data))
+    if report.failures:
+        print("  aucune pochette écrite : une image manque, la meilleure ne serait pas sûre (relance le passage)")
+        return report, "échec"
+    chosen = coverfile.best(images)
+    for edition, data in images:
+        width, height, _ = image_dimensions(data)
+        print(f"  {albums.describe(edition)} : " + (f"{width}x{height}, {len(data) / 1024:.0f} Ko" if coverfile.quality(data) else "ni JPEG ni PNG exploitable") + ("  <- retenue" if chosen is not None and data is chosen[1] else ""))
+    if chosen is None:
+        print("  aucune des pochettes n'est un JPEG ou un PNG exploitable")
+        return report, "aucune"
+    try:
+        path = coverfile.write(album.folder, front_cover(chosen[1]))
+    except OSError as e:
+        print(f"  [ÉCHEC] cover : {e.strerror or e}")
+        report.failures += 1
+        return report, "échec"
+    print(f"  [OK] {path.name} écrit")
+    return report, "écrit"
+
+
+def best_albums(found, args):
+    """--best : un cover.jpg, la meilleure pochette de Cover Art Archive, dans le dossier de chaque album qui n'en a pas. Retourne le code de sortie."""
+    mb = MusicBrainz(cache=cache.Cache(read=not args.no_cache, source="musicbrainz"))
+    report, counts, bare = Report(), {}, []
+    for album in found:
+        print(f"--- {album.display} ---")
+        done, status = best_album(album, args, mb)
+        report += done
+        counts[status] = counts.get(status, 0) + 1
+        if status == "aucune":
+            bare.append(album)
+        print()
+    verb = "écrit(s)" if args.apply else "à écrire"
+    print(f"TOTAL : {counts.get('écrit', 0)} cover {verb}, {counts.get('existe', 0)} album(s) en avaient déjà un, {counts.get('aucune', 0)} sans pochette exploitable.")
+    if bare:
+        print(f"\nSans pochette ({len(bare)}) : pose un cover.jpg à la main.")
+        for album in bare:
+            print(f"  - {album.display}")
+    if counts.get("écrit") and args.apply:
+        print("\nPour les embarquer dans les pistes : Cover.py --apply (sans --best).")
+    rest = report.epilogue()
+    if rest:
+        print(f"\nÀ CORRIGER : {rest}.")
+    return report.exit_code
+
+
 def clean_candidates(found, args):
     """--clean-candidates : supprime le dossier _covers/ de chaque album qui en a un. Retourne le code de sortie."""
     report, removed = Report(), 0
@@ -319,6 +409,8 @@ def main():
         what = "la pochette embarquée dans les pistes de chaque album"
     elif args.candidates:
         what = "MusicBrainz et Cover Art Archive : les pochettes entre lesquelles choisir"
+    elif args.best:
+        what = "MusicBrainz et Cover Art Archive : la meilleure pochette de chaque album"
     elif args.clean_candidates:
         what = f"les dossiers {coverfile.CANDIDATES_DIR} des albums"
     else:
@@ -333,6 +425,8 @@ def main():
         return extract_albums(found, args)
     if args.candidates:
         return candidate_albums(found, args)
+    if args.best:
+        return best_albums(found, args)
     if args.clean_candidates:
         return clean_candidates(found, args)
 
@@ -367,16 +461,17 @@ def parse_args():
     ap.add_argument("--verify", action="store_true", help="Vérifie seulement (aucune écriture)")
     ap.add_argument("--extract", action="store_true", help="Fait l'inverse : écrit en cover.jpg / cover.png, dans le dossier de chaque album qui n'en a pas, la pochette que ses pistes portent déjà")
     ap.add_argument("--candidates", action="store_true", help="Dépose dans _covers/, dans le dossier de chaque album, les pochettes de face de Cover Art Archive (son édition et les autres éditions du même album) : on y choisit, on copie la bonne en cover.jpg, puis --apply l'embarque")
+    ap.add_argument("--best", action="store_true", help="Choisit seul la meilleure pochette de face de Cover Art Archive (carrée, la plus grande ; son édition et les autres éditions du même album) et l'écrit en cover.jpg dans le dossier de chaque album qui n'en a pas")
     ap.add_argument("--clean-candidates", action="store_true", help="Supprime les dossiers _covers/ déposés par --candidates")
-    ap.add_argument("--no-cache", action="store_true", help="--candidates : ignore le cache des réponses MusicBrainz et le rafraîchit")
-    ap.add_argument("--country", default="FR", help="--candidates : pays préféré parmi les éditions d'un album, code à deux lettres (défaut : FR)")
-    ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="--candidates : taille des pochettes Cover Art Archive (défaut : original, le scan d'origine ; 250, 500 ou 1200 pour des miniatures)")
+    ap.add_argument("--no-cache", action="store_true", help="--candidates, --best : ignore le cache des réponses MusicBrainz et le rafraîchit")
+    ap.add_argument("--country", default="FR", help="--candidates, --best : pays préféré parmi les éditions d'un album, code à deux lettres (défaut : FR)")
+    ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="--candidates, --best : taille des pochettes Cover Art Archive (défaut : original, le scan d'origine ; 250, 500 ou 1200 pour des miniatures)")
     args = ap.parse_args()
     args.country = args.country.upper()
-    if args.extract + args.candidates + args.clean_candidates > 1:
-        ap.error("--extract, --candidates et --clean-candidates sont trois modes distincts : un seul à la fois")
-    if args.verify and (args.extract or args.candidates or args.clean_candidates):
-        ap.error("--verify ne va pas avec --extract, --candidates ni --clean-candidates : sans --apply, ils sont déjà une simulation")
+    if args.extract + args.candidates + args.best + args.clean_candidates > 1:
+        ap.error("--extract, --candidates, --best et --clean-candidates sont quatre modes distincts : un seul à la fois")
+    if args.verify and (args.extract or args.candidates or args.best or args.clean_candidates):
+        ap.error("--verify ne va pas avec --extract, --candidates, --best ni --clean-candidates : sans --apply, ils sont déjà une simulation")
     return args
 
 
