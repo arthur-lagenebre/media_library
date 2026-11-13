@@ -37,7 +37,7 @@ PLACEHOLDERS = {"[none]", "[no label]", "[unknown]"}
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 TOTAL_RE = re.compile(r"/\s*(\d{1,3})\s*$")          # "3/12" : le total, quand il est collé au numéro
 UUID_RE = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
-CATALOG_VERSION = 2                                  # 2 : l'identifiant MusicBrainz de l'artiste de l'album
+CATALOG_VERSION = 3                                  # 2 : l'identifiant MusicBrainz de l'artiste de l'album ; 3 : année de première sortie d'abord, et la date de l'édition
 
 
 def _int(text):
@@ -69,7 +69,7 @@ def track_info(path, meta, disc_folder=None):
     """
     entry = albums.entry_for(path, meta, disc_folder)
     genres = [g.strip() for value in meta.values("GENRE") for g in value.split(";") if g.strip()]
-    year = YEAR_RE.search(meta.first("DATE") or meta.first("YEAR") or meta.first("ORIGINALYEAR"))
+    year = YEAR_RE.search(meta.first("ORIGINALYEAR") or meta.first("ORIGINALDATE") or meta.first("DATE") or meta.first("YEAR"))
     return {
         "title": entry.title, "disc": entry.disc, "number": entry.track,
         "artist": meta.first("ARTIST"),
@@ -77,6 +77,7 @@ def track_info(path, meta, disc_folder=None):
         "album": meta.first("ALBUM"),
         "artistid": _artist_mbid(meta),
         "year": year.group(0) if year else "",
+        "date": meta.first("DATE"),
         "genres": genres,
         "label": meta.first("LABEL"), "catalog": meta.first("CATALOGNUMBER"),
         "tracktotal": _total(meta, "TRACKTOTAL", "TOTALTRACKS", joined="TRACKNUMBER"),
