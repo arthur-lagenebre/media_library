@@ -5,7 +5,7 @@
 - metadata.collections : les titres de collection arrêtés avec lui ;
 - metadata.titles : la casse des titres de film arrêtée avec lui (voir casing.py).
 
-Tous trois se rangent à la racine de --dir, ou dans --log-dir (utile quand la médiathèque est en lecture seule).
+Le journal n'est écrit qu'avec --log FICHIER. Les trois autres se rangent à côté de lui, ou à la racine de --dir sans --log.
 """
 
 import re
@@ -18,12 +18,12 @@ from .tmdb import movie_url
 
 
 def log_path(root_dir, args):
-    """Où écrire le journal : à la racine de --dir, où on le cherche, ou dans --log-dir.
+    """Le journal : le fichier donné par --log, sinon metadata.log à la racine de --dir (qui n'est alors pas écrit).
 
-    metadata.ok, metadata.collections et metadata.titles sont rangés avec lui : ils suivent donc --log-dir.
+    metadata.ok, metadata.collections et metadata.titles sont rangés à côté : ils suivent donc --log (utile quand la médiathèque est en lecture seule).
     """
-    log_dir = getattr(args, "log_dir", None)
-    return (Path(log_dir) if log_dir else Path(root_dir)) / "metadata.log"
+    log = getattr(args, "log", None)
+    return Path(log) if log else Path(root_dir) / "metadata.log"
 
 
 APPROVED_NAME = "metadata.ok"
@@ -121,8 +121,10 @@ def remember_title(path, name, title):
 def write_log(root_dir, journal, args, report):
     """Écrit le journal du passage : un lien TMDB par film, les vides à la fin.
 
-    Le terminal defile et se perd ; ce fichier reste. Les films sans lien sont groupés en fin de fichier : ce sont eux qui demandent quelque chose. Comme la fiche, il n'est pas réécrit quand seul son horodatage changerait.
+    Le terminal defile et se perd ; ce fichier reste. Les films sans lien sont groupés en fin de fichier : ce sont eux qui demandent quelque chose. Comme la fiche, il n'est pas réécrit quand seul son horodatage changerait. Sans --log, rien n'est écrit.
     """
+    if not getattr(args, "log", None):
+        return
     out = log_path(root_dir, args)
     trouves = [(nom, mid, st) for nom, mid, st in journal if mid]
     vides = [(nom, st) for nom, mid, st in journal if not mid]
@@ -140,8 +142,7 @@ def write_log(root_dir, journal, args, report):
         print(f"[log] {out.name} inchangé")
         return
     try:
-        if getattr(args, "log_dir", None):
-            out.parent.mkdir(parents=True, exist_ok=True)
+        out.parent.mkdir(parents=True, exist_ok=True)
         textfile.write(out, text)
     except OSError as e:
         print(f"[log] {out.name} non écrit : {e}")

@@ -27,7 +27,7 @@ Usage :
   python Cover.py --dir "D:\Musique\Eminem\1996 - Infinite" --candidates --apply   # dépose les pochettes entre lesquelles choisir
   python Cover.py --dir "D:\Musique" --clean-candidates --apply                    # supprime les dossiers _covers
 
-Options : --apply --verify --extract --candidates --best --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original)
+Options : --apply --verify --extract --candidates --best --clean-candidates --no-cache --country (défaut FR) --image-size (défaut original) --log FICHIER
 
 Aucune dépendance ni clé ; ffmpeg n'est requis que pour réduire ou convertir une image. --candidates et --best nécessitent Internet (MusicBrainz + Cover Art Archive). Pour ajouter la pochette de Cover Art Archive aux albums qui n'ont ni fichier ni image, c'est Metadata.py .
 """
@@ -38,7 +38,7 @@ from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, filenames  # noqa: E402
+from libraries.common import cache, cli, filenames, journal  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
 from libraries.music import audio, coverfile, flac, lookup  # noqa: E402
@@ -404,6 +404,12 @@ def clean_candidates(found, args):
 def main():
     args = parse_args()
     cli.setup_console()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     cli.check_dir(args.dir)
     if args.extract:
         what = "la pochette embarquée dans les pistes de chaque album"
@@ -466,6 +472,7 @@ def parse_args():
     ap.add_argument("--no-cache", action="store_true", help="--candidates, --best : ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--country", default="FR", help="--candidates, --best : pays préféré parmi les éditions d'un album, code à deux lettres (défaut : FR)")
     ap.add_argument("--image-size", default="original", choices=COVER_SIZES, help="--candidates, --best : taille des pochettes Cover Art Archive (défaut : original, le scan d'origine ; 250, 500 ou 1200 pour des miniatures)")
+    journal.add_option(ap)
     args = ap.parse_args()
     args.country = args.country.upper()
     if args.extract + args.candidates + args.best + args.clean_candidates > 1:

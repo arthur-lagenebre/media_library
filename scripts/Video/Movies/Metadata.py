@@ -59,11 +59,11 @@ Usage :
   python Metadata.py --dir "D:\Films" --verify                # vérifie seulement
 
 Options : --apply --verify --skip-done --title-only --credits-only --artwork --no-tag --no-cache --no-ask
-          --no-saga --log-dir
+          --no-saga --log FICHIER
           --no-cover --no-date --no-audio-names --no-sub-names --no-flags --no-stats
           --tmdb-id (force, si un seul film) --language (défaut fr-FR) --image-size (w780)
 
-À chaque passage, un JOURNAL est écrit à la racine de --dir (ou dans --log-dir, qui accueille alors aussi metadata.ok, metadata.collections et metadata.titles - utile quand la médiathèque est en lecture seule) : "metadata.log" donne le lien TMDB de chaque film trouve, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
+Avec --log FICHIER, un JOURNAL est écrit : il donne le lien TMDB de chaque film trouvé, et groupe en fin de fichier ceux qui n'en ont pas - non associes, ou laissés en attente d'une réponse.
 """
 
 from __future__ import annotations
@@ -404,7 +404,7 @@ def resolve_pending(attente, library, args, opts, tmdb):
 def parse_args():
     ap = argparse.ArgumentParser(description="Étiquette des films .mkv depuis TMDB (en français).")
     ap.add_argument("--dir", required=True, help="Dossier de films, parcouru récursivement (dossiers de saga compris)")
-    ap.add_argument("--log-dir", help="Dossier où ranger metadata.log, metadata.ok, metadata.collections et metadata.titles (défaut : la racine de --dir ; créé au besoin)")
+    ap.add_argument("--log", metavar="FICHIER", help="Fichier journal : le lien TMDB de chaque film (défaut : pas de journal) ; metadata.ok, metadata.collections et metadata.titles se rangent à côté (sans --log : à la racine de --dir)")
     ap.add_argument("--tmdb-id", help="Force l'id TMDB (utile si --dir ne contient qu'un seul film)")
     ap.add_argument("--language", default="fr-FR", help="Langue TMDB (défaut : fr-FR)")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")

@@ -29,7 +29,7 @@ Usage :
   python Discography.py --dir "D:\Musique" --only "Radiohead" --candidates --apply   # dépose les pochettes entre lesquelles choisir
   python Discography.py --dir "D:\Musique" --clean-candidates --apply   # supprime les dossiers _covers
 
-Options : --apply --only --cats (défaut album) --no-covers --candidates --clean-candidates --image-size (défaut original) --no-ask --no-cache
+Options : --apply --only --cats (défaut album) --no-covers --candidates --clean-candidates --image-size (défaut original) --no-ask --no-cache --log FICHIER
 
 Ne touche ni aux albums possédés, ni aux tags, ni aux pochettes de leurs pistes. Aucune dépendance, aucune clé : Internet pour MusicBrainz et Cover Art Archive.
 """
@@ -40,7 +40,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, filenames  # noqa: E402
+from libraries.common import cache, cli, filenames, journal  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
 from libraries.music import coverfile, discography, library  # noqa: E402
@@ -358,6 +358,7 @@ def parse_args():
     ap.add_argument("--clean-candidates", action="store_true", help="Supprime les dossiers _covers/ déposés par --candidates")
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--apply", action="store_true", help="Pose réellement les fichiers (défaut : simulation)")
+    journal.add_option(ap)
     args = ap.parse_args()
     if args.candidates + args.clean_candidates + args.no_covers > 1:
         ap.error("--candidates, --clean-candidates et --no-covers s'excluent : un seul à la fois")
@@ -374,6 +375,12 @@ def parse_args():
 def main():
     args = parse_args()
     cli.setup_console()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     root = cli.check_dir(args.dir)
     mb = MusicBrainz(cache=cache.Cache(read=not args.no_cache, source="musicbrainz"))
     labels = ", ".join(discography.CATEGORIES[c] for c in discography.CATEGORIES if c in args.cats)

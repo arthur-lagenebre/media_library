@@ -66,7 +66,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
-from libraries.common import cache, cli  # noqa: E402
+from libraries.common import cache, cli, journal  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.video import artwork, casing, credits, lookup, mkv, naming  # noqa: E402
 from libraries.video.episodetags import episode_target  # noqa: E402
@@ -255,6 +255,7 @@ def parse_args():
     ap.add_argument("--artwork", action="store_true", help="Écrit folder.jpg (vignette de dossier) en anglais")
     ap.add_argument("--image-size", default="w780", help="Taille TMDB de la jaquette embarquée / folder.jpg : w300 / w780 / original")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
+    journal.add_option(ap)
     args = ap.parse_args()
     if args.credits_only and args.no_tag:
         ap.error("--credits-only et --no-tag se contredisent : l'un ne change que le casting, l'autre rien")
@@ -290,6 +291,12 @@ def settle_series_name(title, args):
 def main():
     args = parse_args()
     cli.setup_console()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     cli.check_dir(args.dir)
     args.probe = mkv.check_tools(needs_mkvtoolnix=not args.no_tag)
     opts = mkv.Options.from_args(args)

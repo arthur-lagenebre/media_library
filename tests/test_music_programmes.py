@@ -59,6 +59,8 @@ class ProgrammeTestCase(AlbumTestCase):
 
     def lancer(self, module, mb, *argv, can_ask=False, answers=(), dossier=None):
         """(code de sortie, affichage). `answers` : réponses aux questions de fin de passage ; `dossier` : --dir, la racine de l'album par défaut."""
+        if module is music and "--log" not in argv:            # le journal à la racine, où les tests le lisent
+            argv = ("--log", str((dossier or self.racine()) / "metadata.log"), *argv)
         ligne = [str(Path(module.__file__)), "--dir", str(dossier or self.racine()), *argv]
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(sys, "argv", ligne))
@@ -326,7 +328,7 @@ class TestMetadataPannesEtJournal(ProgrammeTestCase):
         journal.note("Autre", "rel-2", "[NON TRAITÉ]")
         report = music.Report(matched=2, total=3)
         with redirect_stdout(io.StringIO()) as texte:
-            music.write_log(self.racine(), journal, arguments(), report)
+            music.write_log(self.racine(), journal, arguments(log=str(self.racine() / "metadata.log")), report)
         contenu = self.journal()
         self.assertIn("# 2/3 album(s) associé(s)", contenu)
         self.assertIn(f"Kavinsky - Outrun  {release_url('rel-1')}", contenu)
@@ -339,7 +341,7 @@ class TestMetadataPannesEtJournal(ProgrammeTestCase):
         journal = music.Journal()
         journal.note("x", "rel-1")
         with redirect_stdout(io.StringIO()) as texte:
-            music.write_log(self.racine() / "n_existe_pas", journal, arguments(), music.Report())
+            music.write_log(self.racine(), journal, arguments(log=str(self.racine() / "n_existe_pas" / "metadata.log")), music.Report())
         self.assertIn("metadata.log non écrit", texte.getvalue())
 
 
@@ -384,6 +386,13 @@ class TestRenameTracksDeBoutEnBout(ProgrammeTestCase):
         self.assertEqual(self.noms(), avant)
         self.assertIn("TOTAL : 0/3 piste(s) au bon nom.", texte)
         self.assertIn("-> 01 - Prelude.flac", texte)
+
+    def test_log_recopie_ce_qui_s_affiche(self):
+        journal = self.racine() / "renommage.log"
+        code, texte = self.lancer(renamer, faux(), "--log", str(journal))
+        self.assertEqual(code, 0)
+        self.assertIn("-> 01 - Prelude.flac", journal.read_text(encoding="utf-8"))
+        self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
 
     def test_application_renomme_d_apres_musicbrainz(self):
         code, texte = self.lancer(renamer, faux(), "--apply")

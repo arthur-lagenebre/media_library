@@ -17,7 +17,7 @@ Usage :
   python Verify_Flac.py --dir "D:\Musique\Radiohead" --full      # décodage intégral
   python Verify_Flac.py --dir "D:\Musique" --no-recursive        # cet étage seul
 
-Options : --full --no-recursive --log (défaut : verification_flac.log à la racine de --dir)
+Options : --full --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Dépendance EXTERNE : ffmpeg (FFmpeg), pour --full seulement. Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -45,7 +45,7 @@ def parse_args():
     p.add_argument("--dir", required=True, help="dossier à contrôler")
     p.add_argument("--full", action="store_true", help="décode tout avec ffmpeg (CRC de chaque trame, empreinte MD5) : lit chaque fichier en entier")
     p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les pistes posées directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : verification_flac.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     return p.parse_args()
 
 
@@ -71,8 +71,9 @@ def main():
     rapport = Report(total=len(fichiers), diffs=len(defauts))
 
     verify.summarize(rapport, time.time() - debut, args, "piste", REMEDE, NOTE)
-    verify.write_log(Path(args.log) if args.log else racine / "verification_flac.log", racine, len(fichiers), defauts, "piste",
-                     "rapide (fin du fichier)", "complet (décodage)", not args.no_recursive, args.full)
+    if args.log:
+        verify.write_log(Path(args.log), racine, len(fichiers), defauts, "piste",
+                         "rapide (fin du fichier)", "complet (décodage)", not args.no_recursive, args.full)
     return rapport.exit_code
 
 

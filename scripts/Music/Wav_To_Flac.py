@@ -16,7 +16,7 @@ Usage :
   python Wav_To_Flac.py --dir "D:\Musique" --apply --compression 12
   python Wav_To_Flac.py --dir "D:\Musique" --apply --delete-source  # + efface le .wav vérifié
 
-Options : --apply --compression --output-dir --overwrite --delete-source --no-recursive --log (défaut : conversion_flac.log à la racine de --dir)
+Options : --apply --compression --output-dir --overwrite --delete-source --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Dépendances EXTERNES : ffmpeg et ffprobe (FFmpeg). Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -48,7 +48,7 @@ def parse_args():
     p.add_argument("--overwrite", action="store_true", help="écrase un .flac déjà présent au lieu de passer son tour")
     p.add_argument("--delete-source", action="store_true", help="efface le .wav une fois le son du .flac vérifié")
     p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .wav posés directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : conversion_flac.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     args = p.parse_args()
     if args.output_dir:
         args.output_dir = Path(args.output_dir)
@@ -236,7 +236,8 @@ def main():
         print("Les .wav sont toujours à côté de leurs .flac : étiquette-les avec "
               "Music/Metadata.py, puis efface-les quand le résultat te convient.")
 
-    write_log(Path(args.log) if args.log else root / "conversion_flac.log", root, entries, args, summary)
+    if args.log:
+        write_log(Path(args.log), root, entries, args, summary)
     return 1 if counts.get("erreur") or counts.get("écart") else 0
 
 

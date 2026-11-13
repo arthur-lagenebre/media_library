@@ -349,6 +349,13 @@ class TestDiscographieDeBoutEnBout(ProgrammeTestCase):
         self.assertIn("3 fichier(s) à poser", texte)
         self.assertIn("SIMULATION", texte)
 
+    def test_log_recopie_ce_qui_s_affiche(self):
+        journal = self.racine / "discographie.log"
+        code, texte = self.lancer(FauxArtistes(), "--log", str(journal))
+        self.assertEqual(code, 0)
+        self.assertIn("+ Radiohead", journal.read_text(encoding="utf-8"))
+        self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
+
     def test_pose_les_albums_qui_manquent(self):
         code, texte = self.lancer(FauxArtistes(), "--apply")
         self.assertEqual(code, 0)

@@ -117,7 +117,7 @@ class TestAnnexesDesFilms(FluxTestCase):
                 return {**super().movie(movie_id, language), "vote_count": 3}
 
         with mock.patch.object(films.mkv, "check_tools", lambda **k: False), mock.patch.object(films.mkv, "read_light_all", lambda paths: {}):
-            return self.lancer(films, ["--dir", str(self.racine), "--no-tag", *options], tmdb=PeuVote())
+            return self.lancer(films, ["--dir", str(self.racine), "--no-tag", "--log", str(self.racine / "metadata.log"), *options], tmdb=PeuVote())
 
     def test_doute_signale_sans_validation(self):
         _, sortie = self.lancer_peu_vote()

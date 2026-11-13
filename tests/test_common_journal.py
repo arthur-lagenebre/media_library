@@ -98,6 +98,16 @@ class TestRecord(unittest.TestCase):
         self.assertEqual(fin.exception.code, 2)
         self.assertEqual(self.fichier.read_text(encoding="utf-8"), "bilan\n")
 
+    def test_le_message_d_arret_finit_au_journal(self):
+        console = io.StringIO()
+        with redirect_stdout(console):
+            with self.assertRaises(SystemExit):
+                with journal.record(self.fichier):
+                    print("début")
+                    sys.exit("Série non identifiée : relance avec --tmdb-id.")
+        self.assertEqual(self.fichier.read_text(encoding="utf-8"), "début\nSérie non identifiée : relance avec --tmdb-id.\n")
+        self.assertNotIn("Série non identifiée", console.getvalue().replace(str(self.fichier), ""))
+
     def test_un_dossier_absent_n_arrete_rien(self):
         destination = self.dossier / "absent" / "passage.log"
         sortie = self.lancer(destination, lambda: print("fait"))

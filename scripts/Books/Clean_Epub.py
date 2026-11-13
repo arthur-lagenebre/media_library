@@ -18,7 +18,7 @@ Usage :
   python Clean_Epub.py --dir "D:\Livres" --fix residues --apply    # seulement les résidus
   python Clean_Epub.py --dir "D:\Livres\Romans" --no-recursive     # cet étage seul
 
-Options : --apply --fix (residues, archive, metadata ; défaut : les trois) --no-backup --no-recursive
+Options : --apply --fix (residues, archive, metadata ; défaut : les trois) --no-backup --no-recursive --log FICHIER
 
 Aucune dépendance externe, aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
 from libraries.books import epubclean  # noqa: E402
 from libraries.books.archive import BookError  # noqa: E402
-from libraries.common import cli, filenames, verify  # noqa: E402
+from libraries.common import cli, filenames, journal, verify  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 
 EXTENSIONS = (".epub",)
@@ -43,6 +43,7 @@ def parse_args():
     p.add_argument("--fix", default=",".join(epubclean.FIXES), help=f"corrections à faire, séparées par des virgules ({', '.join(epubclean.FIXES)} ; défaut : les trois)")
     p.add_argument("--no-backup", action="store_true", help="ne garde pas l'original en .bak une fois le livre nettoyé contrôlé")
     p.add_argument("--no-recursive", action="store_true", help="ne traite que les livres posés directement dans --dir, sans descendre dans les sous-dossiers")
+    journal.add_option(p)
     args = p.parse_args()
     args.fix = [name.strip() for name in args.fix.split(",") if name.strip()]
     unknown = sorted(set(args.fix) - set(epubclean.FIXES))
@@ -82,6 +83,12 @@ def clean_book(chemin, racine, args, report):
 def main():
     cli.setup_console()
     args = parse_args()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     racine, fichiers = verify.locate(args, EXTENSIONS)
     print(f"=== {cli.mode_label(args)} ===   corrections : {', '.join(args.fix)}\n")
     print(f"{len(fichiers)} livre(s) sous {racine}\n" if not args.no_recursive else f"{len(fichiers)} livre(s) dans {racine} (sous-dossiers ignorés)\n")

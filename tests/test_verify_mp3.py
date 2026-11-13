@@ -61,11 +61,19 @@ class TestMain(ProgrammeTestCase):
         self.avant = {p.name: p.read_bytes() for p in self.racine.iterdir()}
 
     def lancer(self, *argv, ffmpeg=None, tools=("ffmpeg",)):
+        if "--log" not in argv:
+            argv = ("--log", str(self.racine / "verification_mp3.log"), *argv)
         with mock.patch.object(decode, "run_tool", ffmpeg or FfmpegSimule()):
             return self.lancer_main(verificateur, *argv, shutil=types.SimpleNamespace(which=outils(*tools)))
 
     def journal(self):
         return (self.racine / "verification_mp3.log").read_text(encoding="utf-8")
+
+    def test_sans_log_aucun_journal(self):
+        with mock.patch.object(decode, "run_tool", FfmpegSimule()):
+            code, texte = self.lancer_main(verificateur, shutil=types.SimpleNamespace(which=outils("ffmpeg")))
+        self.assertFalse((self.racine / "verification_mp3.log").exists())
+        self.assertNotIn("[log]", texte)
 
     def test_pistes_saines(self):
         code, texte = self.lancer()

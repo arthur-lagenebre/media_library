@@ -399,8 +399,9 @@ class TestJournal(unittest.TestCase):
         self.library.note("Film perdu", None, "[NON ASSOCIÉ]")
 
     def ecrire(self, racine=None):
+        racine = racine or self.racine
         with redirect_stdout(io.StringIO()) as sortie:
-            passfiles.write_log(racine or self.racine, self.library.journal, arguments(), films.Report(matched=1, total=2))
+            passfiles.write_log(racine, self.library.journal, arguments(log=str(racine / "metadata.log")), films.Report(matched=1, total=2))
         return sortie.getvalue()
 
     def test_liens_d_abord_puis_les_films_sans_lien(self):
@@ -416,24 +417,35 @@ class TestJournal(unittest.TestCase):
         self.assertIn("metadata.log inchangé", self.ecrire())
         self.assertEqual((self.racine / "metadata.log").stat().st_mtime_ns, avant)
 
-    def test_log_dir_recoit_le_journal_et_ses_voisins(self):
+    def test_log_recoit_le_journal_et_ses_voisins_a_cote(self):
         sortie = self.racine / "sortie" / "logs"
-        args = arguments(log_dir=str(sortie))
+        args = arguments(log=str(sortie / "films.log"))
         with redirect_stdout(io.StringIO()):
             passfiles.write_log(self.racine, self.library.journal, args, films.Report(matched=1, total=2))
-        self.assertTrue((sortie / "metadata.log").exists())
+        self.assertTrue((sortie / "films.log").exists())
         self.assertFalse((self.racine / "metadata.log").exists())
         self.assertEqual(passfiles.approved_path(self.racine, args), sortie / "metadata.ok")
         self.assertEqual(passfiles.collections_path(self.racine, args), sortie / "metadata.collections")
+        self.assertEqual(passfiles.titles_path(self.racine, args), sortie / "metadata.titles")
 
-    def test_reponse_de_collection_creee_dans_log_dir(self):
+    def test_sans_log_ni_journal_et_les_voisins_a_la_racine(self):
+        args = arguments()
+        with redirect_stdout(io.StringIO()) as sortie:
+            passfiles.write_log(self.racine, self.library.journal, args, films.Report(matched=1, total=2))
+        self.assertEqual(list(self.racine.iterdir()), [])
+        self.assertEqual(sortie.getvalue(), "")
+        self.assertEqual(passfiles.approved_path(self.racine, args), self.racine / "metadata.ok")
+        self.assertEqual(passfiles.titles_path(self.racine, args), self.racine / "metadata.titles")
+
+    def test_reponse_de_collection_creee_dans_le_dossier_du_journal(self):
         fichier = self.racine / "sortie" / "metadata.collections"
         with redirect_stdout(io.StringIO()):
             passfiles.remember_collection(fichier, "Iron Man Collection", "Iron Man")
         self.assertEqual(passfiles.read_collections(fichier), {"Iron Man Collection": "Iron Man"})
 
     def test_journal_impossible_a_ecrire_n_arrete_pas_le_script(self):
-        self.assertIn("metadata.log non écrit", self.ecrire(self.racine / "absent"))
+        (self.racine / "fichier").write_text("x", encoding="utf-8")       # un fichier là où il faudrait un dossier
+        self.assertIn("metadata.log non écrit", self.ecrire(self.racine / "fichier"))
 
 
 
@@ -652,7 +664,7 @@ class TestFilmsDeBoutEnBout(ProgrammeTestCase):
         for nom in ("Les Quatre Fantastiques", "Blade"):         # un film seul n'est jamais soumis à la question
             (self.racine / nom).mkdir()
             (self.racine / nom / "film.mkv").write_text("x", encoding="utf-8")
-        code, texte = self.films(Quatre(), "--no-tag", **{"cli.can_ask": lambda: False})
+        code, texte = self.films(Quatre(), "--no-tag", "--log", str(self.racine / "metadata.log"), **{"cli.can_ask": lambda: False})
         self.assertEqual(code, 1)
         self.assertIn("[À CONFIRMER] plusieurs versions portent ce titre", texte)
         self.assertIn("[À CONFIRMER]", (self.racine / "metadata.log").read_text(encoding="utf-8"))

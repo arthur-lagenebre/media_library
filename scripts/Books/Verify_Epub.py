@@ -22,7 +22,7 @@ Usage :
   python Verify_Epub.py --dir "D:\Livres"                       # contrôle de tous les .epub
   python Verify_Epub.py --dir "D:\Livres\Romans" --no-recursive # cet étage seul
 
-Options : --no-recursive --log (défaut : verification_epub.log à la racine de --dir)
+Options : --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Aucune dépendance externe, aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -48,7 +48,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Contrôle les .epub d'un dossier, en lecture seule (récursivement par défaut).")
     p.add_argument("--dir", required=True, help="dossier à contrôler")
     p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les livres posés directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : verification_epub.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     args = p.parse_args()
     args.full = False                      # un seul niveau de contrôle ; verify.* le demande
     return args
@@ -70,8 +70,9 @@ def main():
     rapport = Report(total=len(fichiers), diffs=len(defauts))
 
     verify.summarize(rapport, time.time() - debut, args, "livre", REMEDE, NOTE)
-    verify.write_log(Path(args.log) if args.log else racine / "verification_epub.log", racine, len(fichiers), defauts, "livre",
-                     RAPIDE, RAPIDE, not args.no_recursive, False)
+    if args.log:
+        verify.write_log(Path(args.log), racine, len(fichiers), defauts, "livre",
+                         RAPIDE, RAPIDE, not args.no_recursive, False)
     return rapport.exit_code
 
 
