@@ -92,6 +92,30 @@ class TestLectureDUnePiste(MediathequeTestCase):
         self.assertTrue(track.error)
         self.assertEqual(track.info, {})
 
+    def test_annee_de_premiere_sortie_avant_la_date_de_l_edition(self):
+        """ORIGINALYEAR, puis ORIGINALDATE, puis DATE, puis YEAR : le premier tag non vide donne l'année ; "date" garde la date de l'édition."""
+        cas = [
+            ("les quatre tags", ["ORIGINALYEAR=1997", "ORIGINALDATE=1998-01-01", "YEAR=2014"], "2013-02-25", "1997", "2013-02-25"),
+            ("sans ORIGINALYEAR", ["ORIGINALDATE=1998-05-01", "YEAR=2014"], "2013-02-25", "1998", "2013-02-25"),
+            ("DATE avant YEAR", ["YEAR=2014"], "2013-02-25", "2013", "2013-02-25"),
+            ("YEAR seul", ["YEAR=2014"], None, "2014", ""),
+            ("aucun tag de date", [], None, "", ""),
+        ]
+        for nom, extra, date, annee, edition in cas:
+            with self.subTest(nom):
+                with tempfile.TemporaryDirectory() as tmp:
+                    piste(Path(tmp) / "A", "01.flac", date=date, extra=extra)
+                    info = library.scan(Path(tmp))[0].tracks[0]
+                    library.read_info(info)
+                    self.assertEqual(info.info["year"], annee)
+                    self.assertIn("date", info.info)
+                    self.assertEqual(info.info["date"], edition)
+
+    def test_premier_tag_de_date_non_vide_sans_annee_donne_une_annee_vide(self):
+        piste(self.racine / "A", "01.flac", date="2013-02-25", extra=["ORIGINALYEAR=inconnue"])
+        info = self.lire()[0].tracks[0].info
+        self.assertEqual((info["year"], info["date"]), ("", "2013-02-25"))
+
     def test_pochette_de_face_avant_les_autres(self):
         chemin = piste(self.racine / "A", "01.flac")
         chemin.write_bytes(fichier(["TITLE=x"], extra=[(flac.PICTURE, image(b"BACK", kind=4)), (flac.PICTURE, image(b"FRONT", kind=3))]))
@@ -145,6 +169,11 @@ class TestAlbum(MediathequeTestCase):
         self.assertEqual((album.title, album.artist, album.year, album.label), ("Discovery", "Daft Punk", "2001", "Virgin"))
         self.assertEqual(album.duration, 20.0)
         self.assertEqual(album.formats, ["FLAC"])
+
+    def test_annee_de_l_album_est_celle_de_la_premiere_sortie(self):
+        for n in (1, 2):
+            piste(self.racine / "A", f"{n:02d}.flac", number=n, date="2013-02-25", extra=["ORIGINALYEAR=1997"])
+        self.assertEqual(self.lire()[0].year, "1997")
 
     def test_marqueurs_de_musicbrainz_ne_sont_ni_label_ni_catalogue(self):
         piste(self.racine / "A", "01.flac", label="[no label]", extra=("CATALOGNUMBER=[none]",))
@@ -340,6 +369,12 @@ class TestCatalogue(MediathequeTestCase):
         self.assertEqual(library.load_catalog(autre), {})
         autre.write_text("pas du json", encoding="utf-8")
         self.assertEqual(library.load_catalog(autre), {})
+
+    def test_catalogue_de_la_version_precedente_est_ignore(self):
+        """Un catalogue écrit avant la clé "date" est relu en entier : ses fiches n'ont pas le bon contenu."""
+        ancien = self.racine / "v2.json"
+        ancien.write_text(json.dumps({"version": 2, "tracks": {"A/01.flac": {"year": "2001"}}}), encoding="utf-8")
+        self.assertEqual(library.load_catalog(ancien), {})
 
 
 if __name__ == "__main__":
