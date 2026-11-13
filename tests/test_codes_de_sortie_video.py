@@ -104,7 +104,7 @@ class TestCodeDeSortieMetadataFilms(ProgrammeTestCase):
         self.assertNotIn("À CORRIGER", texte)
 
     def test_film_non_associe(self):
-        code, texte = self.films(TmdbSansResultat())
+        code, texte = self.films(TmdbSansResultat(), "--log", str(self.racine / "metadata.log"))
         self.assertEqual(code, 1)
         self.assertIn("À CORRIGER : 1 sans fiche", texte)
         self.assertIn("[NON ASSOCIÉ]", (self.racine / "metadata.log").read_text(encoding="utf-8"))
@@ -152,6 +152,14 @@ class TestCodeDeSortieRenameMovies(ProgrammeTestCase):
         code, texte = self.renommer(FauxTmdb())
         self.assertEqual(code, 0)
         self.assertNotIn("À CORRIGER", texte)
+
+    def test_log_recopie_ce_qui_s_affiche(self):
+        self.creer("dune.2021.1080p")
+        journal = self.racine / "renommage.log"
+        code, texte = self.renommer(FauxTmdb(), "--log", str(journal))
+        self.assertEqual(code, 0)
+        self.assertIn("dune.2021.1080p", journal.read_text(encoding="utf-8"))
+        self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
 
     def test_des_films_a_renommer_en_simulation_ne_sont_pas_une_erreur(self):
         self.creer("dune.2021.1080p")
@@ -207,6 +215,15 @@ class TestCodeDeSortieSeries(ProgrammeTestCase):
     def test_toutes_les_saisons_repondent(self):
         self.assertEqual(self.metadata(FauxTmdbSerie())[0], 0)
         self.assertEqual(self.renommer(FauxTmdbSerie())[0], 0)
+
+    def test_log_recopie_ce_qui_s_affiche(self):
+        for module, options, nom in ((series, ("--no-tag",), "series.log"), (episodes, (), "episodes.log")):
+            with self.subTest(nom):
+                journal = self.racine / nom
+                code, texte = self.lancer(module, FauxTmdbSerie(), "--tmdb-id", "42", *options, "--log", str(journal))
+                self.assertEqual(code, 0)
+                self.assertIn("Saison 1", journal.read_text(encoding="utf-8"))
+                self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
 
     def test_metadata_une_saison_sans_reponse(self):
         code, texte = self.metadata(SerieDontUneSaisonEchoue())

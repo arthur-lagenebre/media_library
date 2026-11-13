@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # pour importer libraries
-from libraries.common import cache, cli, filenames, rename  # noqa: E402
+from libraries.common import cache, cli, filenames, journal, rename  # noqa: E402
 from libraries.video import lookup, naming  # noqa: E402
 from libraries.video.tmdb import Tmdb, TmdbAuthError, TmdbError            # noqa: E402
 
@@ -106,9 +106,16 @@ def main():
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses TMDB et le rafraîchit")
     ap.add_argument("--apply", action="store_true", help="Renomme réellement (défaut : simulation)")
     ap.add_argument("--match-threshold", type=float, default=0.55, help="Score minimal pour une association par titre (0-1)")
+    journal.add_option(ap)
     args = ap.parse_args()
 
     cli.setup_console()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     cli.check_dir(args.dir)
     tmdb = Tmdb(cli.resolve_tmdb_key(), args.language, user_agent="rename_ep/1.0", cache=cache.Cache(read=not args.no_cache))
 

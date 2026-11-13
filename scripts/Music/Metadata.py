@@ -32,11 +32,11 @@ Usage :
   python Metadata.py --dir "D:\Musique" --verify         # vérifie seulement
   python Metadata.py --dir "D:\Musique\Kavinsky\2013 - Outrun" --mbid 4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6 --apply
 
-Options : --apply --verify --no-cache --no-ask --no-cover --no-cover-file --replace-cover --no-genres --mbid --artist --country (défaut FR) --image-size (défaut 1200)
+Options : --apply --verify --no-cache --no-ask --no-cover --no-cover-file --replace-cover --no-genres --mbid --artist --country (défaut FR) --image-size (défaut 1200) --log FICHIER
 
 Aucune dépendance pip, aucun outil externe. Nécessite Internet (MusicBrainz + Cover Art Archive), à raison d'une requête par seconde - la règle de MusicBrainz - que le cache (7 jours) épargne aux passages suivants.
 Seuls les .flac et les .mp3 sont écrits : un dossier de .m4a, .ogg... est signalé et laissé tel quel. Dans un .mp3, les tags portent les noms de trames de Picard (TXXX "MusicBrainz Album Id"...), les ID3v2.3 sont réécrits en 2.4, et l'étiquette ID3v1 de fin de fichier n'est pas touchée.
-À chaque passage, un JOURNAL "metadata.log" est écrit à la racine de --dir : le lien MusicBrainz de chaque album, ceux qui n'en ont pas à la fin.
+Avec --log FICHIER, un JOURNAL est écrit : le lien MusicBrainz de chaque album, ceux qui n'en ont pas à la fin.
 """
 
 import argparse
@@ -292,8 +292,10 @@ def resolve_pending(pending, journal, args, mb):
 
 
 def write_log(root, journal, args, report):
-    """Écrit le journal du passage : un lien MusicBrainz par album, les vides à la fin."""
-    out = Path(root) / "metadata.log"
+    """Écrit le journal du passage (--log) : un lien MusicBrainz par album, les vides à la fin. Sans --log, rien."""
+    if not getattr(args, "log", None):
+        return
+    out = Path(args.log)
     linked = [(name, mbid, status) for name, mbid, status in journal.entries if mbid]
     empty = [(name, status) for name, mbid, status in journal.entries if not mbid]
     width = min(max((len(name) for name, _, _ in journal.entries), default=0), 70)
@@ -328,6 +330,7 @@ def parse_args():
     ap.add_argument("--replace-cover", action="store_true", help="Remplace aussi les pochettes déjà embarquées par celle de Cover Art Archive (un fichier cover.jpg dans le dossier de l'album l'emporte toujours)")
     ap.add_argument("--no-genres", action="store_true", help="N'écrit pas les genres, et laisse ceux des fichiers")
     ap.add_argument("--image-size", default="1200", choices=COVER_SIZES, help="Taille des pochettes Cover Art Archive (défaut : 1200)")
+    ap.add_argument("--log", metavar="FICHIER", help="Fichier journal : le lien MusicBrainz de chaque album (défaut : pas de journal)")
     args = ap.parse_args()
     args.country = args.country.upper()
     if args.mbid:

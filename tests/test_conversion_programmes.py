@@ -80,6 +80,9 @@ class MainConvertisseur:
         (self.racine / "Sous" / f"Film B.{self.extension}").write_bytes(b"B")
 
     def lancer(self, *argv, mux=None, tools=("mkvmerge", "ffprobe"), duree=100.0):
+        """Le journal est demandé sous son ancien nom, à la racine, sauf quand le test passe son propre --log."""
+        if "--log" not in argv:
+            argv = ("--log", str(self.racine / self.journal), *argv)
         return self.lancer_main(self.module, *argv, sur=remux,
                                 shutil=types.SimpleNamespace(which=outils(*tools)),
                                 run_tool=mux or MkvmergeSimule(),
@@ -154,7 +157,7 @@ class MainConvertisseur:
 
     def test_un_ecart_de_duree_donne_le_code_1(self):
         durees = iter([100.0, 10.0, 100.0, 100.0])      # source A, résultat A (trop court), source B, résultat B
-        code, texte = self.lancer_main(self.module, "--apply", sur=remux,
+        code, texte = self.lancer_main(self.module, "--apply", "--log", str(self.racine / self.journal), sur=remux,
                                        shutil=types.SimpleNamespace(which=outils("mkvmerge", "ffprobe")),
                                        run_tool=MkvmergeSimule(),
                                        identify=lambda chemin: (INFO, ""),
@@ -188,6 +191,16 @@ class MainConvertisseur:
         code, texte = self.lancer("--log", str(self.racine / "absent" / "journal.txt"))
         self.assertEqual(code, 0)
         self.assertIn("impossible d'écrire", texte)
+
+    def test_sans_log_aucun_journal(self):
+        code, texte = self.lancer_main(self.module, sur=remux,
+                                       shutil=types.SimpleNamespace(which=outils("mkvmerge", "ffprobe")),
+                                       run_tool=MkvmergeSimule(),
+                                       identify=lambda chemin: (INFO, ""),
+                                       probe=lambda chemin: types.SimpleNamespace(duration_min=100.0))
+        self.assertEqual(code, 0)
+        self.assertEqual(self.noms(), sorted(["Film A." + self.extension, "Sous"]))
+        self.assertNotIn("[log]", texte)
 
     def test_un_mkv_deja_present_est_ignore_sans_erreur(self):
         (self.racine / "Film A.mkv").write_bytes(b"DEJA")
@@ -240,10 +253,6 @@ class TestMainMp4(MainConvertisseur, ProgrammeTestCase):
         _, texte = self.lancer("--force-lang")
         self.assertIn("sauf ici, où --force-lang l'impose", texte)
 
-    def test_les_journaux_des_deux_passes_ne_se_melangent_pas(self):
-        # Les deux passes peuvent viser le même dossier : le journal des .mp4 ne doit pas écraser celui des .avi.
-        self.lancer()
-        self.assertFalse((self.racine / "conversion.log").exists())
 
 
 class TestArgumentsAvi(ArgumentsConvertisseur, unittest.TestCase):
@@ -292,6 +301,8 @@ class TestMainVerify(ProgrammeTestCase):
             nom = Path(chemin).name
             return "" if nom.endswith(".part") else defauts.get(nom, "")
 
+        if "--log" not in argv:
+            argv = ("--log", str(self.racine / "verification.log"), *argv)
         return self.lancer_main(Verify_Mkv, *argv,
                                 shutil=types.SimpleNamespace(which=outils(*tools)),
                                 check=check, run_tool=mux or MkvmergeSimule(writes=b"REMUX SAIN"))
@@ -391,6 +402,13 @@ class TestMainVerify(ProgrammeTestCase):
         self.lancer("--log", str(ailleurs))
         self.assertTrue(ailleurs.is_file())
         self.assertFalse((self.racine / "verification.log").exists())
+
+    def test_sans_log_aucun_journal(self):
+        code, texte = self.lancer_main(Verify_Mkv, shutil=types.SimpleNamespace(which=outils("mkvmerge")),
+                                       check=lambda chemin, complet: "", run_tool=MkvmergeSimule())
+        self.assertEqual(code, 0)
+        self.assertFalse((self.racine / "verification.log").exists())
+        self.assertNotIn("[log]", texte)
 
     def test_journal_impossible_a_ecrire_n_arrete_pas_le_script(self):
         code, texte = self.lancer("--log", str(self.racine / "absent" / "controle.txt"))

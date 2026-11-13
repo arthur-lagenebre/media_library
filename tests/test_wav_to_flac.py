@@ -266,7 +266,9 @@ class TestMain(ProgrammeTestCase):
         (self.racine / "Sous" / "B.wav").write_bytes(b"B" * 100)
 
     def lancer(self, *argv, ffmpeg=None, tools=("ffmpeg", "ffprobe")):
-        """(code, affichage). Un sys.exit("message") rend le message comme code, comme le fait Python."""
+        """(code, affichage). Un sys.exit("message") rend le message comme code, comme le fait Python. Le journal est demandé à la racine, sauf --log donné par le test."""
+        if "--log" not in argv and not getattr(self, "sans_journal", False):
+            argv = ("--log", str(self.racine / "conversion_flac.log"), *argv)
         ligne = [str(Path(conversion.__file__)), "--dir", str(self.racine), *argv]
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(sys, "argv", ligne))
@@ -281,6 +283,13 @@ class TestMain(ProgrammeTestCase):
 
     def journal(self):
         return (self.racine / "conversion_flac.log").read_text(encoding="utf-8")
+
+    def test_sans_log_aucun_journal(self):
+        self.sans_journal = True
+        code, texte = self.lancer()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.noms(), ["A.wav", "Sous"])
+        self.assertNotIn("[log]", texte)
 
     def test_ffmpeg_absent(self):
         code, _ = self.lancer(tools=("ffprobe",))
@@ -390,7 +399,7 @@ class TestAvecLeVraiFfmpeg(ProgrammeTestCase):
                 for i in range(4410) for canal in range(canaux)))
 
     def lancer(self, *argv):
-        ligne = [str(Path(conversion.__file__)), "--dir", str(self.racine), "--apply", *argv]
+        ligne = [str(Path(conversion.__file__)), "--dir", str(self.racine), "--apply", "--log", str(self.racine / "conversion_flac.log"), *argv]
         with mock.patch.object(sys, "argv", ligne), redirect_stdout(io.StringIO()):
             return conversion.main()
 

@@ -17,7 +17,7 @@ Usage :
   python Verify_Mp3.py --dir "D:\Musique\Radiohead" --full      # + décodage ffmpeg
   python Verify_Mp3.py --dir "D:\Musique" --no-recursive        # cet étage seul
 
-Options : --full --no-recursive --log (défaut : verification_mp3.log à la racine de --dir)
+Options : --full --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Dépendance EXTERNE : ffmpeg (FFmpeg), pour --full seulement. Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -46,7 +46,7 @@ def parse_args():
     p.add_argument("--dir", required=True, help="dossier à contrôler")
     p.add_argument("--full", action="store_true", help="décode aussi tout avec ffmpeg et signale toute erreur de décodage : lit chaque fichier en entier")
     p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les pistes posées directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : verification_mp3.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     return p.parse_args()
 
 
@@ -72,8 +72,9 @@ def main():
     rapport = Report(total=len(fichiers), diffs=len(defauts))
 
     verify.summarize(rapport, time.time() - debut, args, "piste", REMEDE, NOTE, NOTE_COMPLET)
-    verify.write_log(Path(args.log) if args.log else racine / "verification_mp3.log", racine, len(fichiers), defauts, "piste",
-                     "rapide (chaîne de trames)", "complet (décodage)", not args.no_recursive, args.full)
+    if args.log:
+        verify.write_log(Path(args.log), racine, len(fichiers), defauts, "piste",
+                         "rapide (chaîne de trames)", "complet (décodage)", not args.no_recursive, args.full)
     return rapport.exit_code
 
 

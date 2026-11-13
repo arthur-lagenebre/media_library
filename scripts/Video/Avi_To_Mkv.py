@@ -16,7 +16,7 @@ Usage :
   python Avi_To_Mkv.py --dir "D:\Films" --apply --lang eng --sub-lang fre
   python Avi_To_Mkv.py --dir "D:\Films" --apply --delete-source  # + efface l'.avi verifie
 
-Options : --apply --lang --sub-lang --subs --sub-charset --default-audio --default-sub --title --output-dir --overwrite --tolerance --delete-source --no-recursive --log (défaut : conversion.log à la racine de --dir)
+Options : --apply --lang --sub-lang --subs --sub-charset --default-audio --default-sub --title --output-dir --overwrite --tolerance --delete-source --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Dépendances EXTERNES : mkvmerge (MKVToolNix), et ffprobe (FFmpeg) pour le contrôle des durées. Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -46,7 +46,7 @@ def parse_args():
     p.add_argument("--tolerance", type=float, default=2.0, help="écart de durée toléré entre la source et le résultat, en secondes (défaut : 2.0)")
     p.add_argument("--delete-source", action="store_true", help="efface l'.avi une fois la durée du .mkv vérifiée (demande ffprobe)")
     p.add_argument("--no-recursive", action="store_true", help="ne convertit que les .avi posés directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : conversion.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     args = p.parse_args()
     if args.sub_lang is None:
         args.sub_lang = args.lang
@@ -85,7 +85,6 @@ def plan(video, output, info, subs, args):
 
 CONTAINER = remux.Container(
     extension=".avi",
-    log_name="conversion.log",
     no_subtitles="aucun sous-titre à côté (--subs require)",
     plan=plan,
 )

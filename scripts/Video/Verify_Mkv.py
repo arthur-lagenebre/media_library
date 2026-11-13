@@ -26,7 +26,7 @@ Usage :
 
 --no-recursive s'en tient aux .mkv posés directement dans --dir, sans descendre dans les sous-dossiers : de quoi contrôler l'étage d'une médiathèque - les films posés à plat - sans relire les dossiers qu'elle range.
 
-Options : --full --repair --no-recursive --log (défaut : vérification.log à la racine de --dir)
+Options : --full --repair --no-recursive --log FICHIER (journal du passage ; défaut : aucun)
 
 Dépendance EXTERNE : mkvmerge (MKVToolNix). Aucune dépendance pip, aucun accès réseau : ce script ne parle qu'aux fichiers.
 """
@@ -54,7 +54,7 @@ def parse_args():
     p.add_argument("--full", action="store_true", help="suit toute la chaîne, clusters compris (lit chaque fichier en entier : ~10 s par Go)")
     p.add_argument("--repair", action="store_true", help="remultiplexe les fichiers en défaut et remplace l'original si le résultat est sain (l'original est gardé à côté : Film.mkv.orig)")
     p.add_argument("--no-recursive", action="store_true", help="ne contrôle que les .mkv posés directement dans --dir, sans descendre dans les sous-dossiers")
-    p.add_argument("--log", default=None, help="fichier journal (défaut : verification.log à la racine de --dir)")
+    p.add_argument("--log", metavar="FICHIER", help="fichier journal (défaut : pas de journal)")
     return p.parse_args()
 
 
@@ -231,7 +231,8 @@ def main():
     repares, echecs, gardes = repair_all(defauts, racine, args.full) if args.repair and defauts else ([], [], {})
 
     summarize(len(fichiers), time.time() - debut, defauts, repares, echecs, gardes, args)
-    write_log(Path(args.log) if args.log else racine / "verification.log", racine, len(fichiers), defauts, repares, echecs, args.full, not args.no_recursive, gardes)
+    if args.log:
+        write_log(Path(args.log), racine, len(fichiers), defauts, repares, echecs, args.full, not args.no_recursive, gardes)
     return 1 if echecs or (defauts and not args.repair) else 0
 
 

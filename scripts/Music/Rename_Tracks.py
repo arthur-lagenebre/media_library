@@ -18,7 +18,7 @@ Usage :
   python Rename_Tracks.py --dir "D:\Musique" --apply         # renomme
   python Rename_Tracks.py --dir "D:\Musique\Kavinsky\2013 - Outrun" --mbid 4e5d9f0c-09b6-42bf-b495-e2d7cc288bf6 --apply
 
-Options : --apply --no-cache --no-ask --mbid --country (défaut FR)
+Options : --apply --no-cache --no-ask --mbid --country (défaut FR) --log FICHIER
 
 Seuls les .flac et les .mp3 sont renommés, comme seuls ils sont étiquetés : ce sont leurs tags qui reconnaissent l'album et placent chaque fichier. Un dossier de .m4a, .ogg... est signalé et laissé tel quel.
 """
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer libraries
-from libraries.common import cache, cli, filenames, rename  # noqa: E402
+from libraries.common import cache, cli, filenames, journal, rename  # noqa: E402
 from libraries.music import album as albums  # noqa: E402
 from libraries.music import lookup  # noqa: E402
 from libraries.music.musicbrainz import MusicBrainz, MusicBrainzError, release_url  # noqa: E402
@@ -127,6 +127,7 @@ def parse_args():
     ap.add_argument("--no-cache", action="store_true", help="Ignore le cache des réponses MusicBrainz et le rafraîchit")
     ap.add_argument("--no-ask", action="store_true", help="Ne pose aucune question : garde le 1er album qui tient")
     ap.add_argument("--apply", action="store_true", help="Renomme réellement (défaut : simulation)")
+    journal.add_option(ap)
     args = ap.parse_args()
     args.country = args.country.upper()
     if args.mbid:
@@ -184,6 +185,12 @@ def print_total(tally, args):
 def main():
     args = parse_args()
     cli.setup_console()
+    with journal.record(args.log):
+        return run(args)
+
+
+def run(args):
+    """Le passage entier, une fois les options lues. Rend le code de sortie."""
     cli.check_dir(args.dir)
     mb = MusicBrainz(cache=cache.Cache(read=not args.no_cache, source="musicbrainz"))
     mode = cli.mode_label(args, "rien ne sera renommé ; ajoute --apply")

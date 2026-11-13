@@ -651,7 +651,7 @@ class TestVerifyEpub(ScriptTestCase):
         self.book(name="a.epub")
         (self.dir / "Sous").mkdir()
         self.book(name="Sous/b.epub")
-        code, texte = self.run_script(Verify_Epub)
+        code, texte = self.run_script(Verify_Epub, "--log", str(self.dir / "verification_epub.log"))
         self.assertEqual(code, 0)
         self.assertIn("TOTAL : 2 livre(s) contrôlée(s)", texte)
         self.assertIn("0 en défaut", texte)
@@ -660,7 +660,7 @@ class TestVerifyEpub(ScriptTestCase):
     def test_un_livre_en_defaut_fait_sortir_en_code_1_et_est_nomme(self):
         self.book(name="bon.epub")
         self.book(replacing(standard(), "OEBPS/ch1.xhtml"), name="casse.epub")
-        code, texte = self.run_script(Verify_Epub)
+        code, texte = self.run_script(Verify_Epub, "--log", str(self.dir / "verification_epub.log"))
         self.assertEqual(code, 1)
         self.assertIn("[DÉFAUT] casse.epub", texte)
         self.assertIn("fichier du manifeste absent de l'archive : ch1.xhtml", texte)
@@ -671,10 +671,9 @@ class TestVerifyEpub(ScriptTestCase):
     def test_ne_modifie_aucun_livre(self):
         self.book(standard(dirty()) + [(".DS_Store", b"x", DEFLATED)], name="sale.epub")
         avant = snapshot(self.dir)
-        self.run_script(Verify_Epub)
-        apres = snapshot(self.dir)
-        apres.pop("verification_epub.log")
-        self.assertEqual(apres, avant)
+        _, texte = self.run_script(Verify_Epub)
+        self.assertEqual(snapshot(self.dir), avant)          # sans --log, pas même un journal
+        self.assertNotIn("[log]", texte)
 
     def test_un_defaut_par_ligne(self):
         self.book(standard(dirty()) + [(".DS_Store", b"x", DEFLATED)], name="sale.epub")
@@ -700,7 +699,6 @@ class TestVerifyEpub(ScriptTestCase):
         self.book()
         self.run_script(Verify_Epub, "--log", str(self.dir / "mon.log"))
         self.assertTrue((self.dir / "mon.log").is_file())
-        self.assertFalse((self.dir / "verification_epub.log").exists())
 
 
 class TestCleanEpub(ScriptTestCase):
@@ -719,6 +717,14 @@ class TestCleanEpub(ScriptTestCase):
         self.assertNotIn("propre.epub", texte)
         self.assertIn("retirer 1 résidu(s) : .DS_Store", texte)
         self.assertIn("TOTAL : 2 livre(s) vus, 1 à nettoyer, 1 déjà propre(s).", texte)
+
+    def test_log_recopie_ce_qui_s_affiche(self):
+        self.sale()
+        journal = self.dir / "nettoyage.log"
+        code, texte = self.run_script(Clean_Epub, "--log", str(journal))
+        self.assertEqual(code, 0)
+        self.assertIn("sale.epub", journal.read_text(encoding="utf-8"))
+        self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
 
     def test_apply_nettoie_et_garde_l_original(self):
         sale = self.sale()

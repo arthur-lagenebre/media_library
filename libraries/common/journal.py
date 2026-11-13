@@ -29,6 +29,10 @@ class _Recopie:
             self._copie.append(texte)
         return self._console.write(texte)
 
+    def write_copy(self, texte):
+        """Ajoute au journal seul, sans rien afficher."""
+        self._copie.append(texte)
+
     def text(self):
         return "".join(self._copie)
 
@@ -51,6 +55,10 @@ def record(destination):
     sys.stdout = recopie
     try:
         yield
+    except SystemExit as exc:
+        if isinstance(exc.code, str):           # sys.exit("message") : le message va sur stderr, il doit aussi finir au journal
+            recopie.write_copy(exc.code + "\n")
+        raise
     finally:
         sys.stdout = console
         try:

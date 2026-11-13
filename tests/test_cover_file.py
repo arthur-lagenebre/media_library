@@ -336,6 +336,15 @@ class TestCover(CoverTestCase):
         self.assertIn("pochette ajoutée (simulation)", texte)
         self.assertEqual(self.octets(), avant)
 
+    def test_log_recopie_ce_qui_s_affiche(self):
+        self.poser()
+        (self.dossier / "cover.jpg").write_bytes(FICHIER)
+        journal = self.dossier.parent.parent / "pochettes.log"
+        code, texte = self.lancer("--log", str(journal))
+        self.assertEqual(code, 0)
+        self.assertIn("pochette ajoutée (simulation)", journal.read_text(encoding="utf-8"))
+        self.assertEqual(texte, journal.read_text(encoding="utf-8") + f"[log] {journal} écrit\n")
+
     def test_apply_embarque_dans_chaque_piste(self):
         self.poser()
         (self.dossier / "cover.jpg").write_bytes(FICHIER)

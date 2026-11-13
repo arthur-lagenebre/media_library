@@ -33,7 +33,6 @@ LANG_HINTS = {
 class Container:
     """Ce qui distingue un conteneur à remultiplexer d'un autre."""
     extension: str                  # ".avi"
-    log_name: str                   # journal par défaut, à la racine de --dir
     no_subtitles: str               # message de --subs require quand rien n'est à embarquer
     # (vidéo, sortie, info mkvmerge, sous-titres posés à côté, args) -> (commande, [(nom, langue, encodage)], remarque ajoutée au détail)
     plan: Callable
@@ -267,5 +266,6 @@ def run(args, container):
         print(f"Les {container.extension} sont toujours à côté de leurs .mkv : étiquette-les avec "
               "Movies/Metadata.py, puis efface-les quand le résultat te convient.")
 
-    write_log(Path(args.log) if args.log else root / container.log_name, root, entries, args, summary, container)
+    if args.log:
+        write_log(Path(args.log), root, entries, args, summary, container)
     return 1 if counts.get("erreur") or counts.get("écart") else 0

@@ -60,6 +60,21 @@ class TestCleTmdbRefusee(unittest.TestCase):
                 self.assertTrue(message.startswith("TMDB : clé TMDB refusée"), message)
 
 
+class TestOptionLog(unittest.TestCase):
+    """Chaque script accepte --log FICHIER : sans lui, aucun journal n'est écrit."""
+
+    def test_chaque_script_annonce_log(self):
+        scripts = sorted((RACINE / "scripts").rglob("*.py"))
+        self.assertEqual(len(scripts), 16)
+        for script in scripts:
+            with self.subTest(script.name):
+                with mock.patch.object(sys, "argv", [str(script), "--help"]), redirect_stdout(io.StringIO()) as aide:
+                    with self.assertRaises(SystemExit) as sortie:
+                        runpy.run_path(str(script), run_name="__main__")
+                self.assertEqual(sortie.exception.code, 0)
+                self.assertIn("--log FICHIER", aide.getvalue())
+
+
 class TestRechercheDUnFilm(unittest.TestCase):
     class Tmdb:
         def __init__(self, film=None, search=None, par_id=None):
