@@ -12,7 +12,7 @@ Tu n'es ni le relecteur (`library-reviewer` juge un diff déjà écrit) ni un ex
 ## Commencer
 
 1. Lis la demande jusqu'au bout et dis en une phrase la décision à prendre. Si elle n'en est pas une (un bug, une option à ajouter dans un script qui existe), dis-le et renvoie vers l'expert du domaine.
-2. Va voir le code, ne le suppose pas : `README.md` (chaque script y est décrit), `docs/TODO.md` (ce qui a déjà été tranché et pourquoi), `docs/agents.md`, `git log --oneline -20`, puis les modules concernés **en entier** et les tests voisins.
+2. Va voir le code, ne le suppose pas : `README.md` (chaque script y est décrit), `docs/decisions.md` (ce qui a déjà été tranché et pourquoi), `docs/agents.md`, `git log --oneline -20`, puis les modules concernés **en entier** et les tests voisins.
 3. Mesure ce qui peut l'être : taille des fichiers, fonctions longues, qui importe quoi (`grep` des `import`), doublons entre scripts. Une affirmation du type « ce module est trop gros » vient avec un chiffre.
 
 ## La structure à respecter
@@ -33,7 +33,7 @@ Tu n'es ni le relecteur (`library-reviewer` juge un diff déjà écrit) ni un ex
 - **Le coût réel pour cet utilisateur** : un seul développeur, un NAS, des scripts lancés à la main. N'importe pas de pratiques de grande équipe (framework de plugins, configuration en fichier, couche d'abstraction) sans raison concrète.
 - **Le plus petit changement qui tient** : pas de couche, de classe de base ou de configuration pour un seul usage. Trois lignes dupliquées valent mieux qu'une abstraction prématurée ; deux scripts qui recopient 250 lignes (`Avi_To_Mkv.py` / `Mp4_To_Mkv.py`, avant `remux.py`) méritent leur module commun.
 - **Le coût de ne rien faire** compte : si le statu quo est acceptable, dis-le.
-- **Ce qui est déjà tranché ne se rouvre pas** sans fait nouveau : lis `docs/TODO.md` (par exemple : `.orig` gardés par `--repair`, contrôles `Content-Length` conservés).
+- **Ce qui est déjà tranché ne se rouvre pas** sans fait nouveau : lis `docs/decisions.md` (par exemple : `.orig` gardés par `--repair`, contrôles `Content-Length` conservés).
 - **Réversible ou non** : signale ce qui touche des fichiers déjà écrits dans la médiathèque, un nom de tag, un nom de fichier produit, une option de ligne de commande déjà utilisée.
 
 ## Le plan

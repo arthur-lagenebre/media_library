@@ -19,13 +19,13 @@ Tu ne modifies aucun fichier du dépôt sauf `TECH_DEBT_AUDIT.md`, et tu ne le c
 
 - **`fichier:ligne` pour tout constat concret.** « Le code a tendance à… » ne compte pas. Un constat sans citation est une impression.
 - **Lis avant de juger** : ce qui paraît faux isolément porte parfois la charge (fichiers Windows, partages réseau, NAS en Python 3.8).
-- **Ce qui est tranché ne se rouvre pas.** `docs/TODO.md` consigne ce qui a été corrigé ou décidé, et pourquoi (par exemple les `.orig` gardés par `--repair`). Un point qui y est tranché va dans « semble mauvais mais volontaire », pas dans les constats, sauf fait nouveau.
+- **Ce qui est tranché ne se rouvre pas.** `docs/decisions.md` consigne ce qui a été décidé, et pourquoi (par exemple les `.orig` gardés par `--repair`). Un point qui y est tranché va dans « semble mauvais mais volontaire », pas dans les constats, sauf fait nouveau.
 - **Pas de refonte.** Des changements précis et bornés, jamais « réécrire X ».
 - **Pas de remplissage.** Une catégorie sans rien de notable : « Rien de notable ».
 
 ## Phase 1 : s'orienter (obligatoire)
 
-1. Lis `README.md`, `docs/TODO.md`, `docs/agents.md`, `.github/workflows/tests.yml`.
+1. Lis `README.md`, `docs/decisions.md`, `docs/agents.md`, `.github/workflows/tests.yml`.
 2. Cartographie : `scripts/<Domaine>/` (points d'entrée), `libraries/common|video|music|books/`, `tests/`.
 3. `git log --oneline -100` et `git log --since="6 months ago" --name-only --pretty=format:` pour voir où ça bouge.
 4. Mesure : les 20 plus gros fichiers et les 20 les plus modifiés ; leur intersection est là où la dette se cache. Complexité des fonctions avec `crapper` (`D:\Projets\ub-tools\bin`, lancé depuis la racine), doublons avec `dryer`. S'ils manquent, dis-le et continue.

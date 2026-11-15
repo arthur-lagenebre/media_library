@@ -18,7 +18,7 @@ L'utilisateur fusionne lui-même ses PR (voir `/ship`). Ce skill fait le rangeme
 3. **Synchroniser** : `git switch main`, puis `git pull --ff-only origin main`. Un échec du `--ff-only` se rapporte tel quel, il ne se contourne pas.
 4. **Supprimer la branche locale** avec `git branch -d <branche>` — jamais `-D`. S'il refuse (« not fully merged »), la fusion n'est pas dans `main` comme on le croyait : montre-le et ne force rien.
 5. **Nettoyer le distant** : `git fetch --prune`, puis `git branch -a`. La branche distante doit avoir disparu (GitHub la supprime à la fusion). Si elle est encore là, dis-le sans la supprimer.
-6. **Rendre compte** en peu de lignes : le commit de fusion (`git log --oneline -3`), les branches qui restent (`git branch`), l'état propre de l'arbre. Signale ce qui dépendait de cette PR : une autre branche empilée dessus qu'il faut maintenant rebaser, un point des « Limites » de la PR resté à faire, une ligne de `docs/TODO.md` à cocher. Ne le fais pas toi-même : propose-le.
+6. **Rendre compte** en peu de lignes : le commit de fusion (`git log --oneline -3`), les branches qui restent (`git branch`), l'état propre de l'arbre. Signale ce qui dépendait de cette PR : une autre branche empilée dessus qu'il faut maintenant rebaser, un point des « Limites » de la PR resté à faire, une carte de la liste des travaux (dans Notion, voir `docs/TODO.md`) à fermer. Ne le fais pas toi-même : propose-le.
 
 ## Garde-fous
 
