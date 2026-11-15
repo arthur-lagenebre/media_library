@@ -185,6 +185,17 @@ class TestConflitsEtEchecs(DossierTestCase):
         self.assertIn(f"resté sous le nom provisoire {provisoire}", self.sortie)
         self.assertNotIn("[REMIS]", self.sortie)
 
+    def test_cycle_interrompu_et_retour_refuse_dit_ou_est_le_fichier(self):
+        # 01 est mis de côté, 02 ne peut pas prendre sa place, et 01 ne peut pas non plus reprendre son nom pourtant libre : on dit où il est resté.
+        self.creer(**{"01": "A", "02": "B"})
+        done = self.appliquer_en_refusant([(self.dir / "01", self.dir / "02"), (self.dir / "02", self.dir / "01")],
+                                          lambda src, dst: src.name == "02" or "tmp" in src.name)
+        self.assertEqual(done, set())
+        (provisoire,) = [n for n in self.contenu() if "tmp" in n]
+        self.assertEqual(self.contenu(), {"02": "B", provisoire: "A"})
+        self.assertIn(f"01 est resté sous le nom provisoire {provisoire}", self.sortie)
+        self.assertNotIn("[REMIS]", self.sortie)
+
 
 class TestCasseSeule(DossierTestCase):
     """Changer seulement la casse passe par un nom intermédiaire : si la seconde étape échoue, le fichier ne doit pas y rester."""
