@@ -42,7 +42,7 @@ libraries/video/        tout ce qui touche aux films et aux séries
 libraries/music/        tout ce qui touche à la musique
 libraries/books/        tout ce qui touche aux livres : lecture des `.cbz` et `.epub`, étagère, contrôle et nettoyage des `.epub`
 tests/                  les tests
-docs/                   le suivi (TODO) et l'usage des agents et des skills Claude Code
+docs/                   les décisions prises, le renvoi vers la liste des travaux (Notion) et l'usage des agents et des skills Claude Code
 .claude/                les agents et les skills du dépôt (ce dossier doit rester à la racine)
 ```
 
@@ -384,7 +384,7 @@ Ils couvrent la partie qui casse en silence — analyse des noms, tags produits,
 
 ## Agents Claude Code
 
-Quatre agents spécialisés (films et séries, musique, tests, relecture) et cinq skills (`/check`, `/new-script`, `/ship`, `/merged`, `/ub-mode`) sont dans `.claude/` : voir [docs/agents.md](docs/agents.md). Ce qu'il reste à faire ou à décider : [docs/TODO.md](docs/TODO.md).
+Quatre agents spécialisés (films et séries, musique, tests, relecture) et cinq skills (`/check`, `/new-script`, `/ship`, `/merged`, `/ub-mode`) sont dans `.claude/` : voir [docs/agents.md](docs/agents.md). Ce qui a été tranché : [docs/decisions.md](docs/decisions.md). Ce qu'il reste à faire est dans Notion ([docs/TODO.md](docs/TODO.md) y renvoie).
 
 ## Licence et données
 

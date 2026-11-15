@@ -1,0 +1,9 @@
+# Décisions
+
+Ce qui a été tranché, pour ne pas le refaire ni le reproposer sans fait nouveau. Chaque entrée dit ce qui a été décidé, pourquoi, et ce qui pourrait le rouvrir. Ce qui reste à faire est dans la liste des travaux de Notion (voir [TODO.md](TODO.md), qui y renvoie) ; ce qui a été fait, dans `git log` et dans les pull requests.
+
+- **`Verify_Mkv.py --repair` garde l'original** à côté (`Film.mkv.orig`, puis `.orig2`… sans jamais en écraser un). Sur un fichier abîmé, `mkvmerge` peut ne récupérer qu'une partie du film. Le traitement se fait sur le PC avant transfert au NAS, la place n'est pas en jeu ; les `.orig` se suppriment à la main. *À rouvrir si* le script tourne un jour sur le NAS : une option pour ne pas les garder.
+- **Les contrôles `Content-Length`** de `Tmdb.image` et `MusicBrainz._image` sont gardés comme ceinture, avec un commentaire qui le dit, bien que `http.client` lève `IncompleteRead` avant eux en pratique.
+- **Seul `Discography.py` est strict sur un dossier illisible** : `discography.inventory` lève `OSError` plutôt que de prendre un album illisible pour un album manquant, parce que ce script écrit à partir de ce qu'il ne trouve pas. Le reste de l'application, `find_albums` en tête, garde sa tolérance.
+- **Aucun journal sans `--log FICHIER`**, pour tous les scripts (#105, #106) ; `--log-dir` a disparu. Les fichiers de décision de `Movies/Metadata.py` (`metadata.ok`, `.collections`, `.titles`) restent à la racine de `--dir` sans `--log`, à côté du journal avec.
+- **La troisième passe d'analyse s'est arrêtée** (novembre 2026) après avoir donné 24 000 fichiers abîmés au hasard aux lecteurs (`flac`, `mp3`, `epub`, `cbz`, pochettes), sans plantage hors erreur métier ni blocage : le rendement attendu de la suite était plus faible que pour les deux premières passes (#46 à #52, #56 à #78). Ce qu'il en reste est dans Notion.
