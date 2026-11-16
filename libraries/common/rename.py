@@ -100,6 +100,8 @@ def apply_renames(planned):
             src.rename(tmp)
         except OSError as e:
             print(f"  [ÉCHEC] {src.name} -> {dst.name} : {e}")
+            for origin, s, _ in blocked:      # un autre attend peut-être encore sous un nom provisoire
+                put_back(origin, s)
             break
         pending = [(o, tmp if s == src else s, d) for o, s, d in blocked]
     return done
