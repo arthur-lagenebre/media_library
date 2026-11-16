@@ -177,6 +177,8 @@ class Inventory:
     owned: set = field(default_factory=set)              # ceux de ces titres qui sont de vrais albums rangés (de l'audio) : pas de pochette à chercher pour eux
     empty: dict = field(default_factory=dict)            # title_key -> fichiers vides posés pour ce titre : ceux qu'une pochette peut remplacer
     shelves: Counter = field(default_factory=Counter)    # dossier -> albums qu'il range : où poser les fichiers
+    held_years: dict = field(default_factory=dict)       # title_key -> années lues pour ce titre parmi `held` ("" : un dossier sans année)
+    owned_years: dict = field(default_factory=dict)      # title_key -> années lues pour ce titre parmi `owned`
 
 
 def unreadable_folders(artist_dir):
@@ -201,9 +203,12 @@ def inventory(artist_dir):
     for album in albums.find_albums(artist_dir):
         if album.folder == artist_dir:                   # de l'audio vrac dans le dossier de l'artiste : aucun titre à en tirer
             continue
-        key = title_key(albums.folder_hints(album.folder).title)
+        hints = albums.folder_hints(album.folder)
+        key = title_key(hints.title)
         found.held.add(key)
         found.owned.add(key)
+        found.held_years.setdefault(key, set()).add(hints.year)
+        found.owned_years.setdefault(key, set()).add(hints.year)
         found.shelves[album.folder.parent] += 1
     for folder in {artist_dir, *found.shelves}:
         for path in folder.iterdir() if folder.is_dir() else ():
@@ -213,6 +218,7 @@ def inventory(artist_dir):
             key = title_key(declared.title)
             if path.suffix.lower() in coverfile.EXTS or path.stat().st_size:
                 found.held.add(key)
+                found.held_years.setdefault(key, set()).add(declared.year)
             else:
                 found.empty.setdefault(key, []).append(path)
     found.have = found.held | set(found.empty)
@@ -254,28 +260,42 @@ def missing(planned, inventory_, artist_dir, upgrade=False):
     """[Todo, ...] : ce que `planned` compte de plus que l'inventaire, dans l'ordre des catégories puis des années.
 
     Avec `upgrade`, un album déjà déclaré par un fichier vide en fait partie aussi : c'est le moment de lui chercher sa pochette."""
-    todo = []
+    todo, shared = [], shared_titles(planned)
     for category in CATEGORIES:
         folder = target_folder(category, artist_dir, inventory_.shelves)
         for release in planned.get(category, []):
             if not file_name(release.year, release.title):
                 continue
             key = title_key(release.title)
-            if key in inventory_.held:
+            if _found(inventory_.held_years, key, release.year, shared):
                 continue
-            if key not in inventory_.empty:
+            empty = tuple(p for p in inventory_.empty.get(key, ()) if key not in shared or wanted.parse(p.name).year == release.year)
+            if not empty:
                 todo.append(Todo(folder, release))
             elif upgrade:
-                empty = tuple(inventory_.empty[key])
                 todo.append(Todo(empty[0].parent, release, empty))
     return todo
 
 
+def shared_titles(planned):
+    """Les title_key que portent plusieurs sorties de `planned` ("Weezer" en 1994, 2001, 2008...) : pour elles seules, l'année départage. Ailleurs, le titre suffit - l'année d'un dossier est parfois celle d'une réédition."""
+    counts = Counter(title_key(r.title) for releases in planned.values() for r in releases)
+    return {key for key, n in counts.items() if n > 1}
+
+
+def _found(years, key, year, shared):
+    """Vrai si l'inventaire a ce titre - et, quand plusieurs sorties le portent, cette année-là, ou un dossier sans année qu'on ne sait pas départager."""
+    if key not in years:
+        return False
+    return key not in shared or bool(years[key] & {year, ""})
+
+
 def unowned(planned, inventory_, artist_dir):
     """[Todo, ...] : tous les albums de `planned` dont le dossier n'a pas l'audio, qu'un fichier (vide, .txt ou image) les déclare déjà ou non - c'est parmi leurs pochettes que l'on choisit. Même ordre que `missing`."""
+    shared = shared_titles(planned)
     return [
         Todo(target_folder(category, artist_dir, inventory_.shelves), release)
         for category in CATEGORIES
         for release in planned.get(category, [])
-        if file_name(release.year, release.title) and title_key(release.title) not in inventory_.owned
+        if file_name(release.year, release.title) and not _found(inventory_.owned_years, title_key(release.title), release.year, shared)
     ]
