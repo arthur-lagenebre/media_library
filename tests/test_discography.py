@@ -236,6 +236,50 @@ class TestInventaire(DisqueTestCase):
         self.assertEqual(discography.inventory(self.racine / "Radiohead").have, set())
 
 
+class TestTitresPartages(DisqueTestCase):
+    """Plusieurs sorties du même titre ("Weezer" en 1994, 2001, 2008) : l'année les départage, et elle seule."""
+
+    def planifier(self, *annees):
+        return discography.plan([groupe("Weezer", f"{a}-05-10") for a in annees], {"album"})[0]
+
+    def annees(self, todo):
+        return [t.release.year for t in todo]
+
+    def test_un_album_range_ne_masque_pas_ceux_du_meme_titre(self):
+        self.album("Weezer", "1994 - Weezer", artiste="Weezer")
+        artiste = self.racine / "Weezer"
+        planned = self.planifier(1994, 2001, 2008)
+        inventaire = discography.inventory(artiste)
+        self.assertEqual(self.annees(discography.missing(planned, inventaire, artiste)), ["2001", "2008"])
+        self.assertEqual(self.annees(discography.unowned(planned, inventaire, artiste)), ["2001", "2008"])
+
+    def test_un_fichier_declare_ne_vaut_que_pour_son_annee(self):
+        self.vide("Weezer", "2001 - Weezer.jpg")
+        self.vide("Weezer", "2008 - Weezer")
+        artiste = self.racine / "Weezer"
+        planned = self.planifier(1994, 2001, 2008)
+        inventaire = discography.inventory(artiste)
+        self.assertEqual(self.annees(discography.missing(planned, inventaire, artiste)), ["1994"])
+        a_chercher = discography.missing(planned, inventaire, artiste, upgrade=True)
+        self.assertEqual(self.annees(a_chercher), ["1994", "2008"])
+        self.assertEqual(a_chercher[1].replaces, (artiste / "2008 - Weezer",))
+
+    def test_un_dossier_sans_annee_vaut_pour_toutes(self):
+        # On ne sait pas lequel c'est : mieux vaut ne rien poser que de déclarer manquant un album qu'on a peut-être.
+        self.album("Weezer", "Weezer", artiste="Weezer")
+        artiste = self.racine / "Weezer"
+        self.assertEqual(discography.missing(self.planifier(1994, 2001), discography.inventory(artiste), artiste), [])
+
+    def test_un_titre_unique_ne_regarde_pas_l_annee(self):
+        # Le dossier porte l'année d'une réédition : c'est toujours le même album.
+        self.album("Radiohead", "2017 - OK Computer")
+        artiste = self.racine / "Radiohead"
+        planned = discography.plan([groupe("OK Computer", "1997-05-21")], {"album"})[0]
+        inventaire = discography.inventory(artiste)
+        self.assertEqual(discography.missing(planned, inventaire, artiste), [])
+        self.assertEqual(discography.unowned(planned, inventaire, artiste), [])
+
+
 class TestAlbumsSansAudio(DisqueTestCase):
     """discography.unowned : les albums à qui il manque l'audio, qu'un fichier les déclare déjà ou non."""
 
