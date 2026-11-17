@@ -26,6 +26,7 @@ Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://
 | [scripts/Video/Avi_To_Mkv.py](scripts/Video/Avi_To_Mkv.py) | Remultiplexe les `.avi` en `.mkv` sans réencodage, sous-titres adjacents compris |
 | [scripts/Video/Mp4_To_Mkv.py](scripts/Video/Mp4_To_Mkv.py) | Idem pour les `.mp4`, en gardant les langues de pistes que le fichier déclare déjà |
 | [scripts/Music/Wav_To_Flac.py](scripts/Music/Wav_To_Flac.py) | Encode les `.wav` en `.flac`, sans perte et vérifié : le son décodé des deux fichiers doit avoir la même empreinte |
+| [scripts/Music/Flac_To_Mp3.py](scripts/Music/Flac_To_Mp3.py) | Copie MP3 des `.flac` (320 kb/s constant, ou V0 avec `--quality v0`), dans un autre dossier qui reprend la même arborescence : tags et pochette suivent, chaque `.mp3` est contrôlé, les `.flac` ne sont jamais touchés |
 
 Tous les scripts acceptent **`--log FICHIER`** pour garder une trace du passage, et n'écrivent aucun journal sans lui. Les contrôles, les conversions et l'étiquetage (`Metadata.py`) y écrivent leur bilan structuré ; les autres y recopient ce qu'ils affichent, écrit en fin de passage (même après une erreur), sans les lignes de progression.
 
@@ -52,7 +53,7 @@ docs/                   les décisions prises, le renvoi vers la liste des trava
 
 - Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
-- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son ; nécessaire à `Cover.py --apply` pour réduire ou convertir une pochette
+- [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son ; **requis** pour `Flac_To_Mp3.py` (avec l'encodeur `libmp3lame`, présent dans la version de `winget`) ; nécessaire à `Cover.py --apply` pour réduire ou convertir une pochette
 
 ```powershell
 winget install MoritzBunkus.MKVToolNix
@@ -309,6 +310,22 @@ python scripts\Music\Wav_To_Flac.py --dir "D:\Musique" --apply --delete-source  
 « Sans perte » est **vérifié, pas supposé** : le son décodé du `.wav` et celui du `.flac` produit sont comparés par empreinte (MD5 des échantillons), et le `.flac` n'existe qu'à cette condition. `--delete-source` n'efface l'original qu'ensuite. Seuls les `.wav` en **entiers 16 ou 24 bits** sont pris : `ffmpeg` arrondirait en silence un `.wav` en virgule flottante ou en 32 bits, qui est donc laissé tel quel avec la raison au bilan. Comme pour les films, le `.flac` s'écrit d'abord sous un nom provisoire (`Piste.flac.part`) : un échec, une empreinte différente ou un Ctrl-C ne laissent aucun `.flac` tronqué, que le passage suivant aurait pris pour une conversion déjà faite.
 
 Les tags du `.wav` (titre, artiste, album, année, numéro de piste…) suivent quand il en a ; `Metadata.py` les remplace ensuite depuis MusicBrainz, et ajoute la pochette. `--compression` (de 0 à 12, 8 par défaut) ne change que la taille et le temps de calcul, jamais le son. `--output-dir`, `--overwrite`, `--no-recursive` et `--log` fonctionnent comme pour les films. Avec `--log FICHIER`, un journal du passage est écrit, et le script sort en **code 1** s'il reste un fichier non converti.
+
+### Faire une copie MP3 de la bibliothèque FLAC
+
+Le FLAC reste la copie de référence ; [Flac_To_Mp3.py](scripts/Music/Flac_To_Mp3.py) en tire une copie de poche, pour un téléphone, un autoradio ou une clé USB. Les `.mp3` sont écrits **sous `--output-dir`, dans la même arborescence** (`Artiste\Album\01 - Titre.mp3`), et rien n'est jamais écrit, renommé ni effacé sous `--dir`. Un `--output-dir` placé dans `--dir` est refusé : les `.mp3` se mêleraient aux `.flac`.
+
+```powershell
+python scripts\Music\Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3"            # simulation
+python scripts\Music\Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3" --apply    # convertit
+python scripts\Music\Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3" --apply --quality v0
+```
+
+**320 kb/s à débit constant** par défaut (LAME, par `ffmpeg`) : le plus haut débit du MP3, que tous les appareils lisent. **`--quality v0`** choisit le meilleur réglage à débit variable de LAME, autour de 245 kb/s : le même son à l'oreille, pour environ un quart de place en moins, mais quelques vieux appareils affichent mal la durée d'un fichier à débit variable. Changer de réglage ne refait pas les `.mp3` déjà écrits : il faut `--overwrite` pour cela. Un `.flac` en haute résolution est ramené à 48 kHz (44,1 kHz pour 88,2 et 176,4 kHz), le plus haut que le MP3 connaisse.
+
+`ffmpeg` n'encode que le son ; **tous les tags** du `.flac`, identifiants MusicBrainz compris, et ses images sont ensuite écrits en ID3v2.4 par `libraries/music/mp3.py`, comme `Metadata.py` et Picard les écrivent. Seul `ENCODER`, qui nomme le logiciel qui a encodé le `.flac`, ne suit pas.
+
+Le `.mp3` s'écrit d'abord sous un nom provisoire (`Piste.mp3.part`) et ne prend son nom qu'une fois **contrôlé** : chaîne de trames saine de bout en bout (le contrôle de `Verify_Mp3.py`) et durée égale à celle du `.flac`, à une demi-seconde près. Un `.mp3` déjà présent est laissé tel quel : relancé après l'ajout d'albums, le script ne convertit que les nouveautés. `--overwrite` réencode tout, par exemple après avoir corrigé les tags des `.flac`. `--no-recursive` et `--log` fonctionnent comme ailleurs, et le script sort en **code 1** s'il reste un fichier non converti.
 
 ### Vérifier les fichiers
 

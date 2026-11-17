@@ -65,7 +65,7 @@ class TestOptionLog(unittest.TestCase):
 
     def test_chaque_script_annonce_log(self):
         scripts = sorted((RACINE / "scripts").rglob("*.py"))
-        self.assertEqual(len(scripts), 16)
+        self.assertEqual(len(scripts), 17)
         for script in scripts:
             with self.subTest(script.name):
                 with mock.patch.object(sys, "argv", [str(script), "--help"]), redirect_stdout(io.StringIO()) as aide:

@@ -69,7 +69,7 @@ class TestDependances(unittest.TestCase):
         attendus = {"Video/Movies/Metadata.py", "Video/Movies/Rename_Movies.py",
                     "Video/TV_Shows/Metadata.py", "Video/TV_Shows/Rename_Episodes.py",
                     "Video/Avi_To_Mkv.py", "Video/Mp4_To_Mkv.py", "Video/Verify_Mkv.py"}
-        attendus |= {"Music/" + nom + ".py" for nom in ("Cover", "Discography", "Metadata", "Rename_Tracks", "Verify_Flac", "Verify_Mp3", "Wav_To_Flac")}
+        attendus |= {"Music/" + nom + ".py" for nom in ("Cover", "Discography", "Flac_To_Mp3", "Metadata", "Rename_Tracks", "Verify_Flac", "Verify_Mp3", "Wav_To_Flac")}
         attendus |= {"Books/" + nom + ".py" for nom in ("Clean_Epub", "Verify_Epub")}
         self.assertTrue(attendus <= vus, attendus - vus)
 
