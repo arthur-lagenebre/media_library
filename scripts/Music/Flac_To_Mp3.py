@@ -10,6 +10,8 @@ Tags et images suivent : ffmpeg n'encode que le son, puis tous les tags du .flac
 
 Le .mp3 s'écrit d'abord sous un nom provisoire (Piste.mp3.part) et ne prend son nom qu'une fois contrôlé : chaîne de trames saine de bout en bout (le contrôle de Verify_Mp3.py) et durée égale à celle du .flac. Une coupure, un échec ou un fichier suspect ne laissent aucun .mp3 tronqué, que le passage suivant aurait pris pour une conversion déjà faite. Un .mp3 déjà présent est laissé tel quel : un second passage ne convertit que les nouveautés.
 
+La pochette posée à côté des pistes (cover.jpg, folder.png... - les noms que reconnaît libraries/music/coverfile.py) est recopiée telle quelle dans le dossier de l'album sous --output-dir, pour les lecteurs qui la cherchent là plutôt que dans les pistes. Pour un album en plusieurs disques (CD1, CD2...) sans pochette propre, c'est celle du dossier de l'album qui est recopiée. Elle est recopiée de nouveau quand elle a changé (taille ou date), sans --overwrite : rien à réencoder pour cela.
+
 Usage :
   python Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3"            # simulation
   python Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3" --apply    # convertit
@@ -32,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # pour importer l
 from libraries.common import cli, filenames, journal  # noqa: E402
 from libraries.common.report import Report  # noqa: E402
 from libraries.common.tools import display_command, partial_path, run_tool  # noqa: E402
-from libraries.music import flac, integrity, mp3  # noqa: E402
+from libraries.music import coverfile, flac, integrity, mp3  # noqa: E402
 from libraries.music.tags import AudioError  # noqa: E402
 
 # --quality -> (réglage de LAME, libellé). V0 est le meilleur réglage à débit variable de LAME : à l'oreille, le même son que 320 constant, pour un quart de place en moins.
@@ -43,6 +45,7 @@ QUALITIES = {
 MAX_RATE = 48000              # le MP3 ne connaît rien au-delà
 DURATION_TOLERANCE = 0.5      # secondes : LAME ajoute moins d'une trame de silence au début et à la fin ; un fichier coupé perd bien plus
 DROPPED_TAGS = {"ENCODER"}    # dit quel logiciel a encodé le .flac : faux une fois recopié dans un .mp3
+MTIME_TOLERANCE = 2           # secondes : une clé USB en FAT32 arrondit les dates à 2 s ; sans cette marge, chaque passage recopierait toutes les pochettes
 
 
 def parse_args():
@@ -179,6 +182,63 @@ def convert(source, root, args):
     return "converti", note
 
 
+def cover_sources(files, root):
+    """Les pochettes à recopier : celle de chaque dossier qui a des .flac, ou à défaut celle du dossier au-dessus (l'album d'un dossier CD1, CD2...), sans jamais remonter au-dessus de --dir."""
+    covers = set()
+    for folder in {f.parent for f in files}:
+        cover = coverfile.find(folder)
+        if cover is None and folder != root:
+            cover = coverfile.find(folder.parent)
+        if cover is not None:
+            covers.add(cover)
+    return sorted(covers, key=lambda p: (p.parent != root, str(p.parent).lower(), p.name.lower()))
+
+
+def _same_file(source, target):
+    """Vrai quand la copie a déjà la taille et la date de la source (shutil.copy2 garde la date) : rien à recopier."""
+    try:
+        a, b = source.stat(), target.stat()
+    except OSError:
+        return False
+    return a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) <= MTIME_TOLERANCE
+
+
+def copy_cover(source, root, args):
+    """(statut, détail) : la pochette recopiée sous le même nom, dans le dossier correspondant de --output-dir.
+
+    Recopiée seulement si elle manque ou diffère, sous un nom provisoire puis renommée : une coupure ne laisse pas une image à moitié écrite qu'on prendrait pour la bonne.
+    """
+    target = args.output_dir / source.relative_to(root)
+    if _same_file(source, target):
+        return "à jour", ""
+    action = "remplacée" if target.exists() else "copiée"
+    if not args.apply:
+        return "simule", f"{target.name} sera {action}"
+    partial = partial_path(target)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, partial)
+        os.replace(partial, target)
+    except OSError as exc:
+        return "erreur", f"{target.name} non recopiée : {exc.strerror or exc}"
+    finally:
+        partial.unlink(missing_ok=True)
+    return action, f"{target.name} {action}"
+
+
+def copy_covers(files, root, args):
+    """Recopie les pochettes des dossiers convertis et affiche ce qui a changé. Retourne le nombre d'échecs."""
+    counts = {}
+    for cover in cover_sources(files, root):
+        status, detail = copy_cover(cover, root, args)
+        counts[status] = counts.get(status, 0) + 1
+        if status != "à jour":
+            print(f"  {filenames.relative_name(cover, root)} : {'[ERREUR] ' if status == 'erreur' else ''}{detail}")
+    if counts:
+        print(f"Pochettes : {', '.join(f'{count} {status}' for status, count in sorted(counts.items()))}.")
+    return counts.get("erreur", 0)
+
+
 def main():
     cli.setup_console()
     args = parse_args()
@@ -208,7 +268,9 @@ def run(args):
         print(f"          {'[ERREUR] ' if status == 'erreur' else ''}{detail}")
         counts[status] = counts.get(status, 0) + 1
 
-    report = Report(total=len(files), failures=counts.get("erreur", 0))
+    print()
+    cover_failures = copy_covers(files, root, args)
+    report = Report(total=len(files), failures=counts.get("erreur", 0) + cover_failures)
     summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
     print(f"\nTOTAL : {len(files)} fichier(s) en {cli.readable_time(time.time() - start)} - {summary}.")
     if not args.apply:
