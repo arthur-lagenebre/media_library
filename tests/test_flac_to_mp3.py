@@ -79,6 +79,21 @@ class TestFichiers(Flac2Mp3TestCase):
             (self.racine / nom).write_bytes(b"")
         self.assertEqual([p.name for p in conversion.flac_files(self.racine, recursive=False)], ["b.flac"])
 
+    def test_mp3_a_recopier_sauf_celui_qu_un_flac_remplace(self):
+        (self.racine / "Album").mkdir()
+        for nom in ("Album/01.flac", "Album/01.MP3", "Album/02.mp3", "c.mp3", "Album/03.wav"):
+            (self.racine / nom).write_bytes(b"")
+        flacs = conversion.flac_files(self.racine)
+        copies, ecartes = conversion.mp3_files(self.racine, flacs)
+        self.assertEqual([p.name for p in copies], ["c.mp3", "02.mp3"])
+        self.assertEqual([p.name for p in ecartes], ["01.MP3"])
+
+    def test_mp3_no_recursive_ne_descend_pas(self):
+        (self.racine / "Album").mkdir()
+        for nom in ("a.mp3", "Album/01.mp3"):
+            (self.racine / nom).write_bytes(b"")
+        self.assertEqual([p.name for p in conversion.mp3_files(self.racine, [], recursive=False)[0]], ["a.mp3"])
+
     def test_le_mp3_reprend_l_arborescence(self):
         source = self.racine / "Artiste" / "Album" / "01 - Titre.FLAC"
         self.assertEqual(conversion.target_path(source, self.racine, self.sortie), self.sortie / "Artiste" / "Album" / "01 - Titre.mp3")
@@ -311,7 +326,7 @@ class TestMain(Flac2Mp3TestCase):
         vide.mkdir()
         self.racine = vide
         code, _ = self.lancer()
-        self.assertIn("Aucun .flac sous", code)
+        self.assertIn("Aucun .flac ni .mp3 sous", code)
 
     def test_dossier_introuvable(self):
         self.racine = self.racine / "n_existe_pas"
@@ -430,6 +445,102 @@ class TestMainPochettes(Flac2Mp3TestCase):
             code, texte = self.lancer("--apply")
         self.assertEqual(code, 1)
         self.assertIn("[ERREUR] cover.jpg non recopiée", texte)
+
+
+class TestMp3Recopies(Flac2Mp3TestCase):
+    """Un .mp3 déjà rangé sous --dir : recopié octet pour octet, jamais réencodé."""
+
+    def setUp(self):
+        super().setUp()
+        self.source = self.racine / "Artiste/Album/01 - A.mp3"
+        self.source.parent.mkdir(parents=True)
+        self.source.write_bytes(SON_10_S)
+
+    def copier(self, **overrides):
+        return conversion.copy_mp3(self.source, self.racine, options(self.sortie, **overrides))
+
+    def test_copie_a_l_identique_puis_a_jour(self):
+        self.assertEqual(self.copier(), ("copié", "01 - A.mp3 copié"))
+        self.assertEqual((self.sortie / "Artiste/Album/01 - A.mp3").read_bytes(), SON_10_S)
+        self.assertEqual(self.fichiers(self.sortie), ["Artiste/Album/01 - A.mp3"])     # aucun .part qui traîne
+        self.assertEqual(self.copier()[0], "à jour")
+
+    def test_mp3_change_est_remplace(self):
+        self.copier()
+        self.source.write_bytes(SON_10_S + TRAME_AUDIO)
+        self.assertEqual(self.copier()[0], "remplacé")
+        self.assertEqual((self.sortie / "Artiste/Album/01 - A.mp3").read_bytes(), SON_10_S + TRAME_AUDIO)
+
+    def test_simulation_n_ecrit_rien(self):
+        status, detail = self.copier(apply=False)
+        self.assertEqual((status, detail), ("simule", "01 - A.mp3 sera copié"))
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+    def test_echec_de_copie_est_une_erreur_sans_reste(self):
+        with mock.patch.object(conversion.shutil, "copy2", side_effect=OSError(28, "Disque plein")):
+            status, detail = self.copier()
+        self.assertEqual((status, detail), ("erreur", "01 - A.mp3 non recopié : Disque plein"))
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+
+class TestMainMp3(Flac2Mp3TestCase):
+    """Une bibliothèque où des albums n'existent qu'en MP3 : la copie les contient aussi, avec leur pochette."""
+
+    def setUp(self):
+        super().setUp()
+        self.poser_flac("Artiste/Album FLAC/01 - A.flac")
+        mp3_seul = self.racine / "Artiste/Album MP3"
+        mp3_seul.mkdir(parents=True)
+        (mp3_seul / "01 - B.mp3").write_bytes(SON_10_S)
+        (mp3_seul / "cover.jpg").write_bytes(POCHETTE)
+
+    def lancer(self, *argv, ffmpeg=None, tools=("ffmpeg",)):
+        return self.lancer_main(conversion, "--output-dir", str(self.sortie), *argv,
+                                run_tool=ffmpeg or FfmpegSimule(), shutil=types.SimpleNamespace(which=outils(*tools), copy2=shutil.copy2))
+
+    def test_passage_complet_puis_second_passage_qui_ne_change_rien(self):
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("1 converti", texte)
+        self.assertIn(".mp3 recopiés tels quels : 1 copié", texte)
+        self.assertIn("Pochettes : 1 copiée", texte)
+        self.assertEqual(self.fichiers(self.sortie), ["Artiste/Album FLAC/01 - A.mp3", "Artiste/Album MP3/01 - B.mp3", "Artiste/Album MP3/cover.jpg"])
+        self.assertEqual((self.sortie / "Artiste/Album MP3/01 - B.mp3").read_bytes(), SON_10_S)
+
+        ffmpeg = FfmpegSimule()
+        code, texte = self.lancer("--apply", ffmpeg=ffmpeg)
+        self.assertEqual(code, 0)
+        self.assertIn(".mp3 recopiés tels quels : 1 à jour", texte)
+        self.assertNotIn("01 - B.mp3 copié", texte)
+        self.assertEqual(ffmpeg.commands, [])
+        self.assertEqual(self.fichiers(self.racine), ["Artiste/Album FLAC/01 - A.flac", "Artiste/Album MP3/01 - B.mp3", "Artiste/Album MP3/cover.jpg"])
+
+    def test_simulation_annonce_la_copie_sans_l_ecrire(self):
+        code, texte = self.lancer()
+        self.assertEqual(code, 0)
+        self.assertIn("1 fichier(s) .flac et 1 .mp3 à recopier", texte)
+        self.assertIn("01 - B.mp3 sera copié", texte)
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+    def test_le_flac_l_emporte_sur_un_mp3_du_meme_nom(self):
+        (self.racine / "Artiste/Album FLAC/01 - A.mp3").write_bytes(b"ANCIEN MP3")
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("01 - A.mp3 : ignoré, 01 - A.flac est converti à sa place", texte)
+        self.assertEqual((self.sortie / "Artiste/Album FLAC/01 - A.mp3").read_bytes()[:len(b"ID3")], b"ID3")
+
+    def test_que_des_mp3_sans_ffmpeg(self):
+        (self.racine / "Artiste/Album FLAC/01 - A.flac").unlink()
+        code, texte = self.lancer("--apply", tools=())
+        self.assertEqual(code, 0)
+        self.assertIn("0 .flac", texte)
+        self.assertEqual(self.fichiers(self.sortie), ["Artiste/Album MP3/01 - B.mp3", "Artiste/Album MP3/cover.jpg"])
+
+    def test_echec_de_recopie_sort_en_code_1(self):
+        with mock.patch.object(conversion, "copy_mp3", return_value=("erreur", "01 - B.mp3 non recopié : Disque plein")):
+            code, texte = self.lancer("--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ERREUR] 01 - B.mp3 non recopié", texte)
 
 
 class TestArguments(unittest.TestCase):

@@ -10,7 +10,9 @@ Tags et images suivent : ffmpeg n'encode que le son, puis tous les tags du .flac
 
 Le .mp3 s'écrit d'abord sous un nom provisoire (Piste.mp3.part) et ne prend son nom qu'une fois contrôlé : chaîne de trames saine de bout en bout (le contrôle de Verify_Mp3.py) et durée égale à celle du .flac. Une coupure, un échec ou un fichier suspect ne laissent aucun .mp3 tronqué, que le passage suivant aurait pris pour une conversion déjà faite. Un .mp3 déjà présent est laissé tel quel : un second passage ne convertit que les nouveautés.
 
-La pochette posée à côté des pistes (cover.jpg, folder.png... - les noms que reconnaît libraries/music/coverfile.py) est recopiée telle quelle dans le dossier de l'album sous --output-dir, pour les lecteurs qui la cherchent là plutôt que dans les pistes. Pour un album en plusieurs disques (CD1, CD2...) sans pochette propre, c'est celle du dossier de l'album qui est recopiée. Elle est recopiée de nouveau quand elle a changé (taille ou date), sans --overwrite : rien à réencoder pour cela.
+Les .mp3 déjà rangés sous --dir (un album qu'on n'a qu'en MP3) sont recopiés tels quels au même endroit sous --output-dir, sans réencodage : la copie MP3 contient ainsi toute la bibliothèque, pas seulement sa part en FLAC. Un .mp3 qui porte le nom d'un .flac du même dossier n'est pas recopié : c'est la conversion du .flac qui prend sa place.
+
+La pochette posée à côté des pistes (cover.jpg, folder.png... - les noms que reconnaît libraries/music/coverfile.py) est recopiée telle quelle dans le dossier de l'album sous --output-dir, pour les lecteurs qui la cherchent là plutôt que dans les pistes. Pour un album en plusieurs disques (CD1, CD2...) sans pochette propre, c'est celle du dossier de l'album qui est recopiée. Pochettes et .mp3 recopiés le sont de nouveau quand ils ont changé (taille ou date), sans --overwrite : rien à réencoder pour cela.
 
 Usage :
   python Flac_To_Mp3.py --dir "D:\Musique" --output-dir "E:\Musique MP3"            # simulation
@@ -49,7 +51,7 @@ MTIME_TOLERANCE = 2           # secondes : une clé USB en FAT32 arrondit les da
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Convertit les .flac d'un dossier en .mp3 (320 kb/s ou V0), dans un autre dossier qui reprend la même arborescence (récursivement par défaut).")
+    p = argparse.ArgumentParser(description="Convertit les .flac d'un dossier en .mp3 (320 kb/s ou V0), dans un autre dossier qui reprend la même arborescence (récursivement par défaut) ; les .mp3 déjà présents y sont recopiés tels quels.")
     p.add_argument("--dir", required=True, help="dossier des .flac, jamais modifié")
     p.add_argument("--output-dir", required=True, help="dossier où écrire les .mp3, dans la même arborescence que --dir (créé au besoin)")
     p.add_argument("--apply", action="store_true", help="convertit réellement (défaut : simulation)")
@@ -69,11 +71,25 @@ def check_output_dir(root, output_dir):
         sys.exit(f"--output-dir doit être hors de --dir : {output_dir} est dans {root}")
 
 
-def flac_files(root, recursive=True):
-    """Les .flac sous root : ceux posés à la racine d'abord, puis dossier par dossier - le même ordre que Wav_To_Flac.py."""
+def _files(root, suffix, recursive):
+    """Les fichiers `suffix` sous root : ceux posés à la racine d'abord, puis dossier par dossier - le même ordre que Wav_To_Flac.py."""
     found = root.rglob("*") if recursive else root.glob("*")
-    files = (f for f in found if f.is_file() and f.suffix.lower() == ".flac")
+    files = (f for f in found if f.is_file() and f.suffix.lower() == suffix)
     return sorted(files, key=lambda p: (p.parent != root, str(p.parent).lower(), p.name.lower()))
+
+
+def flac_files(root, recursive=True):
+    """Les .flac à convertir."""
+    return _files(root, ".flac", recursive)
+
+
+def mp3_files(root, flacs, recursive=True):
+    """(à recopier, écartés) : les .mp3 sous root ; sont écartés ceux qui portent le nom d'un .flac du même dossier, dont la conversion prendra la place."""
+    taken = {str(f.with_suffix("")).lower() for f in flacs}
+    copies, dropped = [], []
+    for f in _files(root, ".mp3", recursive):
+        (dropped if str(f.with_suffix("")).lower() in taken else copies).append(f)
+    return copies, dropped
 
 
 def target_path(source, root, output_dir):
@@ -203,15 +219,15 @@ def _same_file(source, target):
     return a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) <= MTIME_TOLERANCE
 
 
-def copy_cover(source, root, args):
-    """(statut, détail) : la pochette recopiée sous le même nom, dans le dossier correspondant de --output-dir.
+def copy_file(source, root, args, feminine=False):
+    """(statut, détail) : le fichier recopié tel quel sous le même nom, dans le dossier correspondant de --output-dir.
 
-    Recopiée seulement si elle manque ou diffère, sous un nom provisoire puis renommée : une coupure ne laisse pas une image à moitié écrite qu'on prendrait pour la bonne.
+    Recopié seulement s'il manque ou diffère, sous un nom provisoire puis renommé : une coupure ne laisse pas un fichier à moitié écrit qu'on prendrait pour le bon. `feminine` accorde le statut (« pochette copiée », « .mp3 copié »).
     """
     target = args.output_dir / source.relative_to(root)
     if _same_file(source, target):
         return "à jour", ""
-    action = "remplacée" if target.exists() else "copiée"
+    action = ("remplacée" if feminine else "remplacé") if target.exists() else ("copiée" if feminine else "copié")
     if not args.apply:
         return "simule", f"{target.name} sera {action}"
     partial = partial_path(target)
@@ -220,23 +236,45 @@ def copy_cover(source, root, args):
         shutil.copy2(source, partial)
         os.replace(partial, target)
     except OSError as exc:
-        return "erreur", f"{target.name} non recopiée : {exc.strerror or exc}"
+        return "erreur", f"{target.name} non {'recopiée' if feminine else 'recopié'} : {exc.strerror or exc}"
     finally:
         partial.unlink(missing_ok=True)
     return action, f"{target.name} {action}"
 
 
-def copy_covers(files, root, args):
-    """Recopie les pochettes des dossiers convertis et affiche ce qui a changé. Retourne le nombre d'échecs."""
+def copy_cover(source, root, args):
+    """La pochette recopiée : voir copy_file."""
+    return copy_file(source, root, args, feminine=True)
+
+
+def copy_mp3(source, root, args):
+    """Un .mp3 de --dir recopié tel quel, sans réencodage : voir copy_file."""
+    return copy_file(source, root, args)
+
+
+def _copy_all(sources, root, args, copy, label):
+    """Recopie les fichiers, affiche ceux qui ont changé et un bilan sous `label`. Retourne le nombre d'échecs."""
     counts = {}
-    for cover in cover_sources(files, root):
-        status, detail = copy_cover(cover, root, args)
+    for source in sources:
+        status, detail = copy(source, root, args)
         counts[status] = counts.get(status, 0) + 1
         if status != "à jour":
-            print(f"  {filenames.relative_name(cover, root)} : {'[ERREUR] ' if status == 'erreur' else ''}{detail}")
+            print(f"  {filenames.relative_name(source, root)} : {'[ERREUR] ' if status == 'erreur' else ''}{detail}")
     if counts:
-        print(f"Pochettes : {', '.join(f'{count} {status}' for status, count in sorted(counts.items()))}.")
+        print(f"{label} : {', '.join(f'{count} {status}' for status, count in sorted(counts.items()))}.")
     return counts.get("erreur", 0)
+
+
+def copy_mp3s(mp3s, dropped, root, args):
+    """Recopie les .mp3 trouvés sous --dir ; signale ceux qu'un .flac du même nom remplace. Retourne le nombre d'échecs."""
+    for source in dropped:
+        print(f"  {filenames.relative_name(source, root)} : ignoré, {source.stem}.flac est converti à sa place")
+    return _copy_all(mp3s, root, args, copy_mp3, ".mp3 recopiés tels quels")
+
+
+def copy_covers(files, root, args):
+    """Recopie les pochettes des dossiers convertis ou recopiés. Retourne le nombre d'échecs."""
+    return _copy_all(cover_sources(files, root), root, args, copy_cover, "Pochettes")
 
 
 def main():
@@ -249,17 +287,18 @@ def main():
 def run(args):
     root = cli.check_dir(args.dir)
     check_output_dir(root, args.output_dir)
-    if shutil.which("ffmpeg") is None:
-        sys.exit("ffmpeg est introuvable dans le PATH.\n"
-                 "  Installe FFmpeg : winget install Gyan.FFmpeg")
 
     files = flac_files(root, recursive=not args.no_recursive)
+    mp3s, dropped = mp3_files(root, files, recursive=not args.no_recursive)
     scope = "dans" if args.no_recursive else "sous"
-    if not files:
-        sys.exit(f"Aucun .flac {scope} {root}")
+    if not files and not mp3s:
+        sys.exit(f"Aucun .flac ni .mp3 {scope} {root}")
+    if files and shutil.which("ffmpeg") is None:
+        sys.exit("ffmpeg est introuvable dans le PATH.\n"
+                 "  Installe FFmpeg : winget install Gyan.FFmpeg")
     print(f"=== {cli.mode_label(args, 'rien ne sera converti ; ajoute --apply')} ===")
-    print(f"{len(files)} fichier(s) .flac {scope} {root}" + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
-    print(f"{QUALITIES[args.quality][1]}, écrits sous {args.output_dir} ; les .flac ne sont pas touchés.\n")
+    print(f"{len(files)} fichier(s) .flac et {len(mp3s)} .mp3 à recopier tels quels {scope} {root}" + (" (sous-dossiers ignorés)" if args.no_recursive else ""))
+    print(f"{QUALITIES[args.quality][1]}, écrits sous {args.output_dir} ; rien n'est touché sous {root}.\n")
 
     counts, start = {}, time.time()
     for n, path in enumerate(files, 1):
@@ -269,10 +308,11 @@ def run(args):
         counts[status] = counts.get(status, 0) + 1
 
     print()
-    cover_failures = copy_covers(files, root, args)
-    report = Report(total=len(files), failures=counts.get("erreur", 0) + cover_failures)
-    summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
-    print(f"\nTOTAL : {len(files)} fichier(s) en {cli.readable_time(time.time() - start)} - {summary}.")
+    copy_failures = copy_mp3s(mp3s, dropped, root, args) if (mp3s or dropped) else 0
+    copy_failures += copy_covers(files + mp3s, root, args)
+    report = Report(total=len(files) + len(mp3s), failures=counts.get("erreur", 0) + copy_failures)
+    summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items())) or "aucun .flac"
+    print(f"\nTOTAL : {len(files)} .flac en {cli.readable_time(time.time() - start)} - {summary}.")
     if not args.apply:
         print("Simulation : rien n'a été écrit. Ajoute --apply pour convertir.")
     if report.exit_code:
