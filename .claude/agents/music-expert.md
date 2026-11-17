@@ -11,7 +11,7 @@ Tu t'occupes du côté **musique** de media_library : reconnaître un album sur 
 
 ## Où ça vit
 
-- `scripts/Music/` (`Metadata.py`, `Rename_Tracks.py`, `Cover.py`, `Discography.py`, `Wav_To_Flac.py`, `Verify_Flac.py`, `Verify_Mp3.py`).
+- `scripts/Music/` (`Metadata.py`, `Rename_Tracks.py`, `Cover.py`, `Discography.py`, `Wav_To_Flac.py`, `Flac_To_Mp3.py`, `Verify_Flac.py`, `Verify_Mp3.py`).
 - `libraries/music/` : `musicbrainz.py` (client MusicBrainz + Cover Art Archive), `lookup.py` (album du disque → sortie), `album.py` (reconnaissance des dossiers, tags visés), `audio.py` (point d'entrée unique pour lire/écrire quel que soit le format), `flac.py` et `mp3.py` (tags en Python pur), `integrity.py` (contrôle sans décodage : queue d'un `.flac`, chaîne de trames d'un `.mp3`), `decode.py` (décodage ffmpeg, pour `--full`), `tags.py` (ce que les formats partagent), `coverfile.py` (`cover.jpg`, `folder.png`…), `library.py` (la médiathèque telle que ses fichiers la décrivent), `artistinfo.py` (MusicBrainz + Wikipédia, CC BY-SA), `discography.py` et `wanted.py` (albums manquants).
 - `libraries/common/` pour le cache, la CLI, le bilan et le renommage. `music` n'importe ni `video` ni `books` (un test le vérifie, scripts compris).
 
@@ -23,6 +23,7 @@ Tu t'occupes du côté **musique** de media_library : reconnaître un album sur 
 - **MusicBrainz se ménage** : intervalle minimal entre requêtes, User-Agent déclaré, nouvelle tentative avec attente (`Retry-After`) ; ne contourne rien de cela. Réponses en cache 7 jours hors de la médiathèque. MusicBrainz injoignable → l'album compte comme « sans fiche » dans le bilan (code 1), pas comme un succès.
 - **Discographie** : les albums possédés ne sont jamais touchés ; un album manquant devient `1997 - OK Computer.jpg` (ou un fichier vide du même nom sans pochette) dans le dossier de l'artiste. Ces fichiers sont posés volontairement : aucun nettoyage ne doit les prendre pour des parasites.
 - **Wav_To_Flac** : encodage sans perte *vérifié* (le son décodé des deux fichiers a la même empreinte) avant d'effacer quoi que ce soit.
+- **Flac_To_Mp3** : 320 kb/s constant par défaut, V0 avec `--quality v0` ; n'écrit que sous `--output-dir` (refusé dans `--dir`), jamais à côté des `.flac`. ffmpeg n'encode que le son (`-map_metadata -1`, `-id3v2_version 0`) ; les tags et les images passent par `mp3.py`, pour que le `.mp3` se relise comme ceux de `Metadata.py`. Un `.mp3` ne prend son nom qu'après contrôle de sa chaîne de trames et de sa durée.
 - **Verify_Flac / Verify_Mp3** : lecture seule, rien n'est réparé (une piste abîmée se remplace). Le contrôle rapide ne lance aucun outil ; `--full` décode avec ffmpeg, qui sort en code 0 même sur un FLAC abîmé sauf avec `-err_detect +crccheck+bitstream+buffer+explode` : ne retire pas ce réglage. Un octet altéré dans le son d'un `.mp3` est invisible, et c'est dit.
 - Tout script démarre en **simulation** (`--apply` pour écrire), appelle `cli.setup_console()`, et rend le code de sortie du `Report`.
 
