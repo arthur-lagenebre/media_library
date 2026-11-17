@@ -3,6 +3,7 @@
 ffmpeg est simulé : il écrit une chaîne de trames MP3 fabriquée octet par octet, que le script étiquette puis contrôle comme un vrai .mp3. Le .flac n'est jamais touché, aucun .mp3 partiel ne traîne. Une dernière classe passe par le vrai ffmpeg quand il est installé avec libmp3lame.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -316,6 +317,119 @@ class TestMain(Flac2Mp3TestCase):
         self.racine = self.racine / "n_existe_pas"
         code, _ = self.lancer()
         self.assertIn("introuvable", code)
+
+
+class TestPochettes(Flac2Mp3TestCase):
+    """cover.jpg posé à côté des pistes : recopié tel quel dans le dossier correspondant de --output-dir."""
+
+    def poser(self, relatif, contenu=b"IMAGE"):
+        chemin = self.racine / relatif
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_bytes(contenu)
+        return chemin
+
+    def sources(self, *flacs):
+        return [p.relative_to(self.racine).as_posix() for p in conversion.cover_sources([self.racine / f for f in flacs], self.racine)]
+
+    def copier(self, source, **overrides):
+        return conversion.copy_cover(source, self.racine, options(self.sortie, **overrides))
+
+    def test_pochette_du_dossier_des_pistes_nom_sans_casse(self):
+        self.poser("Artiste/Album/Cover.JPG")
+        self.poser("Artiste/Album/notes.jpg")
+        self.assertEqual(self.sources("Artiste/Album/01.flac", "Artiste/Album/02.flac"), ["Artiste/Album/Cover.JPG"])
+
+    def test_cover_l_emporte_sur_folder(self):
+        self.poser("Album/folder.jpg")
+        self.poser("Album/cover.png")
+        self.assertEqual(self.sources("Album/01.flac"), ["Album/cover.png"])
+
+    def test_album_en_plusieurs_disques_prend_la_pochette_de_l_album(self):
+        self.poser("Artiste/Album/cover.jpg")
+        self.poser("Artiste/Album/CD2/cover.jpg", b"PROPRE AU CD2")
+        self.assertEqual(self.sources("Artiste/Album/CD1/01.flac", "Artiste/Album/CD2/01.flac"),
+                         ["Artiste/Album/cover.jpg", "Artiste/Album/CD2/cover.jpg"])
+
+    def test_ne_remonte_pas_au_dessus_de_dir(self):
+        # --dir est le dossier d'un album ; la pochette posée au-dessus (celle de l'artiste) n'est pas à lui.
+        self.poser("cover.jpg", b"HORS DE DIR")
+        album = self.racine / "Album"
+        self.assertEqual(conversion.cover_sources([album / "01.flac"], album), [])
+
+    def test_sans_pochette_rien(self):
+        self.assertEqual(self.sources("Album/01.flac"), [])
+
+    def test_copie_a_l_identique_puis_a_jour(self):
+        source = self.poser("Artiste/Album/cover.jpg", POCHETTE)
+        self.assertEqual(self.copier(source), ("copiée", "cover.jpg copiée"))
+        self.assertEqual((self.sortie / "Artiste/Album/cover.jpg").read_bytes(), POCHETTE)
+        self.assertEqual(self.fichiers(self.sortie), ["Artiste/Album/cover.jpg"])       # aucun .part qui traîne
+        self.assertEqual(self.copier(source)[0], "à jour")
+
+    def test_simulation_n_ecrit_rien(self):
+        source = self.poser("Album/cover.jpg")
+        status, detail = self.copier(source, apply=False)
+        self.assertEqual(status, "simule")
+        self.assertIn("sera copiée", detail)
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+    def test_pochette_changee_est_remplacee_sans_overwrite(self):
+        source = self.poser("Album/cover.jpg", b"ANCIENNE")
+        self.copier(source)
+        source.write_bytes(b"NOUVELLE POCHETTE")
+        self.assertEqual(self.copier(source)[0], "remplacée")
+        self.assertEqual((self.sortie / "Album/cover.jpg").read_bytes(), b"NOUVELLE POCHETTE")
+
+    def test_date_arrondie_par_une_cle_fat32_ne_fait_pas_recopier(self):
+        source = self.poser("Album/cover.jpg")
+        self.copier(source)
+        copie = self.sortie / "Album/cover.jpg"
+        date = source.stat().st_mtime
+        os.utime(copie, (date + 1, date + 1))
+        self.assertEqual(self.copier(source)[0], "à jour")
+        os.utime(copie, (date + 60, date + 60))
+        self.assertEqual(self.copier(source)[0], "remplacée")
+
+    def test_echec_de_copie_est_une_erreur_sans_reste(self):
+        source = self.poser("Album/cover.jpg")
+        with mock.patch.object(conversion.shutil, "copy2", side_effect=OSError(28, "Disque plein")):
+            status, detail = self.copier(source)
+        self.assertEqual(status, "erreur")
+        self.assertIn("Disque plein", detail)
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+
+class TestMainPochettes(Flac2Mp3TestCase):
+    def setUp(self):
+        super().setUp()
+        self.poser_flac("Artiste/Album/01 - A.flac")
+        (self.racine / "Artiste/Album/cover.jpg").write_bytes(POCHETTE)
+
+    def lancer(self, *argv):
+        return self.lancer_main(conversion, "--output-dir", str(self.sortie), *argv,
+                                run_tool=FfmpegSimule(), shutil=types.SimpleNamespace(which=outils("ffmpeg"), copy2=shutil.copy2))
+
+    def test_passage_complet_puis_pochette_a_jour(self):
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("Pochettes : 1 copiée", texte)
+        self.assertEqual(self.fichiers(self.sortie), ["Artiste/Album/01 - A.mp3", "Artiste/Album/cover.jpg"])
+        code, texte = self.lancer("--apply")
+        self.assertEqual(code, 0)
+        self.assertIn("Pochettes : 1 à jour", texte)
+        self.assertNotIn("cover.jpg copiée", texte)
+
+    def test_simulation_annonce_la_pochette_sans_l_ecrire(self):
+        code, texte = self.lancer()
+        self.assertEqual(code, 0)
+        self.assertIn("cover.jpg sera copiée", texte)
+        self.assertEqual(self.fichiers(self.sortie), [])
+
+    def test_pochette_en_echec_sort_en_code_1(self):
+        with mock.patch.object(conversion, "copy_cover", return_value=("erreur", "cover.jpg non recopiée : Disque plein")):
+            code, texte = self.lancer("--apply")
+        self.assertEqual(code, 1)
+        self.assertIn("[ERREUR] cover.jpg non recopiée", texte)
 
 
 class TestArguments(unittest.TestCase):
