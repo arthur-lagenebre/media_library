@@ -454,7 +454,9 @@ def without_guests(credits, artist, hidden):
     if not start:
         return credits
     kept = credits[:start] + [c for c in credits[start:] if (c.get("artist") or {}).get("id") not in hidden]
-    return kept[:-1] + [dict(kept[-1], joinphrase="")]
+    if kept[-1] is credits[-1]:          # le dernier crédit reste : sa liaison aussi ("Disiz feat. 1995 (A / B)" garde sa parenthèse)
+        return kept
+    return kept[:-1] + [dict(kept[-1], joinphrase="")]   # sa liaison menait à un invité retiré
 
 
 def _credited(credit, sort, artist):
