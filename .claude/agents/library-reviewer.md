@@ -1,6 +1,6 @@
 ---
 name: library-reviewer
-description: Relecteur en lecture seule des changements de media_library. À utiliser avant un commit ou une PR, ou après une modification de scripts/ ou de libraries/, pour vérifier les invariants du dépôt (simulation par défaut, aucune perte de fichier, bibliothèque standard seule, Python 3.8, découpage des dossiers) et les régressions.
+description: Relecteur en lecture seule des changements de media_library. À utiliser avant un commit ou une PR, ou après une modification de scripts/ ou de libraries/, pour vérifier les invariants du dépôt (simulation par défaut, aucune perte de fichier, bibliothèque standard seule, Python 3.14, découpage des dossiers) et les régressions.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -22,7 +22,7 @@ Tu relis les changements de **media_library**, l'atelier qui nettoie, renomme, c
 
 **Aucune dépendance pip.** Bibliothèque standard uniquement ; MKVToolNix et FFmpeg sont des programmes séparés lancés par `libraries/common/tools.py` (`run_tool`), avec une liste d'arguments, jamais `shell=True`. Un `import` tiers est un défaut.
 
-**Python 3.8 minimum** (le Python du NAS ; la CI teste 3.8 et 3.13). Signaler : `match`, opérateur `X | Y` sur des types ou des dict à l'exécution, `list[str]` / `dict[str, int]` évalués à l'exécution (sans `from __future__ import annotations`), `str.removeprefix` / `removesuffix`, `zip(strict=)`, `math.lcm`, parenthèses dans un `with`, `functools.cache`, `Path.is_relative_to`, `Path.readlink`, walrus mal placé, `dataclass(slots=)`.
+**Python 3.14 minimum** (la CI teste 3.14 et 3.15). Signaler une API retirée ou dépréciée en 3.15.
 
 **Découpage de `libraries/`** (vérifié par `tests/test_architecture.py`) : `common` ne connaît personne, `video`, `music` et `books` ne se connaissent pas. Les scripts de `scripts/<Domaine>/` (`Video`, `Music`, `Books`, sous-dossiers compris) n'importent que `common` et leur propre domaine. `scripts/` ne contient que des dossiers de domaine : pas de dossier par type d'action (`Converters/`, `Maintenance/`). Ce qui sert à deux domaines descend dans `common`.
 

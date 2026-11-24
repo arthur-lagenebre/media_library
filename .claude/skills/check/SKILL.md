@@ -2,13 +2,13 @@
 name: check
 description: >
   Vérifie le dépôt avant un commit ou une PR : toute la suite de tests, le
-  découpage de libraries/, la compatibilité Python 3.8 et l'absence de secret.
+  découpage de libraries/, la compatibilité Python 3.14 et l'absence de secret.
   Use when the user runs /check or asks to verify the repo before pushing.
 ---
 
 # check
 
-Ce que la CI fera à la poussée (Windows + Linux, Python 3.8 + 3.13), fait avant, en local.
+Ce que la CI fera à la poussée (Windows + Linux, Python 3.14 + 3.15), fait avant, en local.
 
 ## 1. Les tests
 
@@ -20,14 +20,9 @@ Rapporte le résultat **exact** (nombre de tests, échecs, erreurs, sautés). Un
 
 `tests/test_architecture.py` est dans la suite : il échoue dès qu'un import remonte entre `common`, `video`, `music` et `books`.
 
-## 2. Python 3.8
+## 2. Python 3.14
 
-Seul Python 3.13+ est installé en local, donc la CI est le seul vrai juge de 3.8. Cherche à la main, dans les fichiers changés (`git diff --name-only main...HEAD` et `git diff --name-only`), ce que 3.8 refuse :
-
-- `match` / `case`, `X | Y` à l'exécution (types, dict), `list[str]` / `dict[...]` évalués à l'exécution sans `from __future__ import annotations` ;
-- `removeprefix`, `removesuffix`, `zip(strict=…)`, `functools.cache`, `Path.is_relative_to`, `math.lcm`, `dataclass(slots=…)`, parenthèses dans un `with`.
-
-Utilise Grep sur ces motifs ; signale `fichier:ligne`.
+Le minimum est Python 3.14 : la syntaxe et les API récentes sont permises. La CI teste aussi la 3.15 ; une API retirée ou dépréciée en 3.15 (avertissement `DeprecationWarning` dans la sortie des tests) se signale `fichier:ligne`.
 
 ## 3. Aucun secret, aucune dépendance
 

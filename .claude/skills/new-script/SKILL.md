@@ -25,7 +25,7 @@ Argument : ce que le script doit faire et le domaine (`Video/Movies`, `Video/TV_
 - `cli.setup_console()` au démarrage de `main()`.
 - Le bilan est un `Report` (`libraries/common/report.py`) : `sys.exit(report.exit_code)` et la ligne `report.epilogue()` quand quelque chose reste à corriger. Une erreur réseau ou un élément sans fiche **ne passe jamais pour un succès**.
 - Rien n'est perdu en route : renommages via `libraries/common/rename.py`, écritures sous un nom provisoire (`partial_path`) puis contrôle avant de remplacer, outils externes via `run_tool` (liste d'arguments, jamais `shell=True`).
-- Python 3.8 minimum, bibliothèque standard seule.
+- Python 3.14 minimum, bibliothèque standard seule.
 
 ## Finir
 

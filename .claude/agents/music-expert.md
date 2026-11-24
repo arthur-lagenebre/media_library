@@ -31,7 +31,7 @@ Tu t'occupes du côté **musique** de media_library : reconnaître un album sur 
 
 1. Reproduis par un test (`test_album.py`, `test_flac.py`, `test_lookup.py`, `test_discography.py`, `test_cover_file.py`, `test_library.py`…) avant de corriger ; MusicBrainz y est simulé et les fichiers audio fabriqués dans un dossier temporaire.
 2. Corrige la cause : une bizarrerie de nommage d'album (éditions deluxe, `CD1`/`CD2`, artistes multiples, majuscules) se règle dans `album.py` ou `lookup.py` pour tous les scripts.
-3. Python 3.8 minimum, bibliothèque standard seule, commentaires et textes en français.
+3. Python 3.14 minimum, bibliothèque standard seule, commentaires et textes en français.
 4. Lance `python -m unittest discover -s tests -t .` et mets à jour la section « Musique » du `README.md` si un comportement visible change.
 
 ## Compte rendu

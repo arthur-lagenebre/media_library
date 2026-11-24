@@ -18,16 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        # Le minimum annonce - celui que DSM (Synology) fournit, pour la fiche des films en tache planifiee -, et les deux dernieres versions.
-        python: ["3.8", "3.14", "3.15"]
-        # ubuntu-latest est passe a Ubuntu 26.04, pour lequel setup-python n'a pas de 3.8 :
-        # la 3.8 tourne sur la derniere Ubuntu qui en a une (24.04).
-        exclude:
-          - os: ubuntu-latest
-            python: "3.8"
-        include:
-          - os: ubuntu-24.04
-            python: "3.8"
+        # Les deux dernieres versions ; la plus ancienne est le minimum annonce.
+        python: ["3.14", "3.15"]
 
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     steps:

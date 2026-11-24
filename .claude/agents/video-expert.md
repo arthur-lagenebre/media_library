@@ -30,7 +30,7 @@ Tu t'occupes du côté **vidéo** de media_library : étiqueter et renommer film
 
 1. Reproduis par un test (`tests/test_films_traitement.py`, `test_metadata.py`, `test_lookup.py`, `test_ebml.py`… selon le cas) avant de corriger ; TMDB et les outils MKVToolNix/FFmpeg y sont simulés.
 2. Corrige la cause, pas le symptôme. Un cas de nommage tordu se règle dans `naming.py` ou `lookup.py` pour tous les scripts, pas dans un script.
-3. Python 3.8 minimum, bibliothèque standard seule, commentaires et textes en français.
+3. Python 3.14 minimum, bibliothèque standard seule, commentaires et textes en français.
 4. Lance `python -m unittest discover -s tests -t .` et mets à jour la section correspondante du `README.md` si un comportement visible change.
 
 ## Compte rendu
