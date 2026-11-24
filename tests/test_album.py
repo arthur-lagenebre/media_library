@@ -399,6 +399,18 @@ class TestTagsVises(unittest.TestCase):
         sans = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0])
         self.assertEqual(self.valeurs(sans, "ARTIST"), ["Ultra Vomit feat. Andréas, Rico"])
 
+    def test_artiste_impose_garde_la_liaison_finale_de_ses_invites(self):
+        # "Disiz feat. 1995 (Alpha Wann / Areno Jaz)" : la parenthèse est la liaison du dernier crédit ; aucun invité n'est retiré, elle reste
+        def credit(ident, nom, liaison):
+            return {"name": nom, "joinphrase": liaison, "artist": {"id": ident, "name": nom, "sort-name": nom}}
+        disiz = credit("d", "Disiz", "")
+        invites = [dict(disiz, joinphrase=" feat. 1995 ("), credit("a", "Alpha Wann", " / "), credit("j", "Areno Jaz", ")")]
+        sortie = dict(OUTRUN, **{"artist-credit": [disiz]})
+        sortie["media"] = [{"position": 1, "format": "CD", "track-count": 1, "tracks": [piste(1, "1995", **{"artist-credit": invites})]}]
+        tags = album.target_tags(sortie, None, sortie["media"][0], sortie["media"][0]["tracks"][0], artist="Disiz")
+        self.assertEqual(self.valeurs(tags, "ARTIST"), ["Disiz feat. 1995 (Alpha Wann / Areno Jaz)"])
+        self.assertEqual(self.valeurs(tags, "ARTISTSORT"), ["Disiz feat. 1995 (Alpha Wann / Areno Jaz)"])
+
     def test_artiste_impose_sans_ressemblance_ne_change_rien(self):
         self.assertEqual(self.tags(3, artist="Daft Punk"), self.tags(3))
 
