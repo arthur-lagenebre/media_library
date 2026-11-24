@@ -19,7 +19,7 @@ Tu n'es ni le relecteur (`library-reviewer` juge un diff déjà écrit) ni un ex
 
 - `scripts/<Domaine>/` : les points d'entrée, **un dossier par domaine (`Video`, `Music`, `Books`), pas de dossier par type d'action** (ni `Converters/` ni `Maintenance/`) ; un sous-dossier ne se justifie que pour deux scripts de même nom (`Video/Movies/Metadata.py`, `Video/TV_Shows/Metadata.py`). Un script porte la ligne de commande, le traitement d'un élément et l'enchaînement ; la logique qu'on peut tester sans disque va dans `libraries/`. Un script qui grossit au-delà de ce rôle est le signe d'un module à extraire (c'est ce qu'ont montré `Movies/Metadata.py`, 748 → 388 lignes, et `process_album`).
 - `libraries/common/` ne connaît personne ; `video/`, `music/` et `books/` n'empruntent qu'à `common` et ne se connaissent pas (`tests/test_architecture.py`). **Ce qui sert à deux domaines descend dans `common`** (c'est ainsi que `http.py`, `rename.py`, `report.py` y sont arrivés) ; on ne fait jamais remonter un import. Avant de créer un module dans `common`, vérifie qu'au moins deux domaines s'en servent, ou vont s'en servir dans la même PR ; sinon il reste dans son domaine.
-- **Bibliothèque standard seule, Python 3.8 minimum** (le NAS). Une idée qui demande une dépendance pip ou une syntaxe postérieure est écartée d'emblée, ou repensée.
+- **Bibliothèque standard seule, Python 3.14 minimum.** Une idée qui demande une dépendance pip est écartée d'emblée, ou repensée.
 - **Les outils externes** (MKVToolNix, FFmpeg) sont lancés par `common/tools.py`, jamais en `shell=True`. Un traitement faisable en Python pur sur le fichier (comme `ebml.py`, `flac.py`, `mp3.py`) a l'avantage de tourner sans outil sur le NAS ; ce n'est pas une raison de réécrire un outil robuste, c'est un critère à peser.
 - **Les invariants se conçoivent dans la structure, pas dans la vigilance** : simulation par défaut et `--apply`, renommage par `common/rename.py`, conversion sous nom provisoire, bilan par `common/report.py` qui décide du code de sortie. Un design qui oblige chaque script à y repenser est mauvais ; celui qui les rend impossibles à oublier est bon.
 - **Les tags écrits sont un contrat avec `media_hub`** (le serveur du NAS, `../media_hub`, qui réutilise les lecteurs de `libraries/`) : `MUSICBRAINZ_ALBUMID`, tag `TMDB`, noms et formats de tags, signatures des lecteurs. Tout changement qui les touche est signalé en tête de ton avis, avec ce que `media_hub` doit changer, et une période où les deux formats se lisent si les fichiers déjà étiquetés doivent rester valables. Ouvre `../media_hub` en lecture pour vérifier ce qui y est réellement utilisé (il peut ne pas être là : dis-le).
@@ -51,7 +51,7 @@ En français, court, dans cet ordre :
 
 1. **Décision** : ta recommandation en deux ou trois phrases.
 2. **Pourquoi** : les faits relevés dans le code (`fichier:ligne`, chiffres), et l'alternative écartée si elle compte.
-3. **Contrat et risques** : tags, formats, options, fichiers déjà écrits, `media_hub`, Python 3.8.
+3. **Contrat et risques** : tags, formats, options, fichiers déjà écrits, `media_hub`.
 4. **Plan** : la liste des PR, dans l'ordre.
 5. **À trancher par l'utilisateur**, s'il reste un choix qui lui appartient (et seulement celui-là).
 

@@ -18,7 +18,7 @@ Tu ne modifies aucun fichier du dépôt sauf `TECH_DEBT_AUDIT.md`, et tu ne le c
 ## Principes
 
 - **`fichier:ligne` pour tout constat concret.** « Le code a tendance à… » ne compte pas. Un constat sans citation est une impression.
-- **Lis avant de juger** : ce qui paraît faux isolément porte parfois la charge (fichiers Windows, partages réseau, NAS en Python 3.8).
+- **Lis avant de juger** : ce qui paraît faux isolément porte parfois la charge (fichiers Windows, partages réseau).
 - **Ce qui est tranché ne se rouvre pas.** `docs/decisions.md` consigne ce qui a été décidé, et pourquoi (par exemple les `.orig` gardés par `--repair`). Un point qui y est tranché va dans « semble mauvais mais volontaire », pas dans les constats, sauf fait nouveau.
 - **Pas de refonte.** Des changements précis et bornés, jamais « réécrire X ».
 - **Pas de remplissage.** Une catégorie sans rien de notable : « Rien de notable ».
@@ -40,7 +40,7 @@ Cherche avec `Grep` et des commandes de lecture. Dimensions, avec ce qui compte 
 3. **Invariants** : écriture possible en simulation ; renommage sans `apply_renames` ; original effacé avant le contrôle du résultat ; `except` qui avale une erreur sans la compter dans le bilan ; `shell=True` ; clé TMDB hors `.env`.
 4. **Contrat avec `media_hub`** : noms et formats de tags (`MUSICBRAINZ_ALBUMID`, tag `TMDB`…), signatures des lecteurs. Vérifie dans `../media_hub` ce qui est réellement lu (s'il n'est pas là, dis-le).
 5. **Tests** : fonctions critiques non testées, tests qui vérifient l'implémentation et non le comportement, tests sautés, tests qui dorment pour de vrai, fabriques dupliquées.
-6. **Portabilité** : syntaxe ou API postérieure à Python 3.8 ; chemins ou fins de ligne propres à Windows ; casse des noms de fichiers ; console Windows sans `cli.setup_console()`.
+6. **Portabilité** : API retirée ou dépréciée en Python 3.15 ; chemins ou fins de ligne propres à Windows ; casse des noms de fichiers ; console Windows sans `cli.setup_console()`.
 7. **Réseau et ressources** : délais d'attente absents, nouvelles tentatives sans borne, intervalle MusicBrainz et User-Agent, caches hors de la médiathèque, fichiers provisoires laissés derrière une exception.
 8. **Gestion d'erreurs** : exceptions avalées ou trop larges, erreurs affichées mais non comptées, messages qui ne disent pas quel fichier est en cause.
 9. **Documentation** : README ou docstring d'en-tête qui ne disent plus ce que fait le script, options absentes, commentaires qui contredisent le code voisin.
@@ -63,4 +63,4 @@ Si `TECH_DEBT_AUDIT.md` existe déjà, lis-le d'abord : marque les constats corr
 
 ## Compte rendu
 
-En quelques lignes : nombre de constats par gravité, les trois qui comptent le plus, ce que tu n'as pas pu vérifier (vrais fichiers, NAS, `media_hub` absent, Python 3.8 seulement jugé par la CI). Ne corrige rien de ton propre chef : chaque correction se propose en PR séparée.
+En quelques lignes : nombre de constats par gravité, les trois qui comptent le plus, ce que tu n'as pas pu vérifier (vrais fichiers, NAS, `media_hub` absent, Python 3.15 seulement jugé par la CI). Ne corrige rien de ton propre chef : chaque correction se propose en PR séparée.

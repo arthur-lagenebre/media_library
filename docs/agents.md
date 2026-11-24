@@ -69,7 +69,7 @@ Plusieurs agents peuvent travailler en parallèle s'ils touchent des fichiers di
 
 | Skill | Pour… | Déclenchement |
 | --- | --- | --- |
-| `/check` | vérifier le dépôt avant un commit : toute la suite de tests, le découpage de `libraries/`, la compatibilité Python 3.8, l'absence de secret, le README | par toi, ou quand Claude le juge utile |
+| `/check` | vérifier le dépôt avant un commit : toute la suite de tests, le découpage de `libraries/`, la compatibilité Python 3.14, l'absence de secret, le README | par toi, ou quand Claude le juge utile |
 | `/new-script` | créer un script dans les conventions (simulation par défaut, `--apply`, bilan et code de sortie, journal, console Windows, tests, README) | par toi, ou quand tu demandes d'ajouter un script |
 | `/ship` | livrer : vérifications, branche, commits, push et PR au format du dépôt | **par toi seulement** (`disable-model-invocation`) |
 | `/merged` | ranger après une fusion : vérifier que GitHub a fusionné la PR, synchroniser `main`, supprimer la branche fusionnée (`git branch -d`, jamais `-D`), vérifier que sa copie distante a disparu | par toi (`/merged`), ou quand tu dis que la PR est fusionnée |

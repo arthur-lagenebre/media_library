@@ -16,7 +16,7 @@ Tu t'occupes des tests de **media_library**. Tu écris du code de test ; tu ne t
 - **Aucun réseau, aucun outil externe.** TMDB et MusicBrainz sont simulés (faux client, réponses en dur), `mkvmerge`, `mkvpropedit`, `mkvextract`, `ffprobe` aussi : la CI ne les installe pas. Les fichiers `.mkv`, `.flac`, `.mp3` dont un test a besoin sont fabriqués octet par octet dans un dossier temporaire (voir `test_ebml.py`, `test_flac.py`, `test_cover_file.py` pour les fabriques existantes) : réutilise-les, n'invente un helper que s'il manque.
 - Chaque test travaille dans `tempfile.TemporaryDirectory()` : jamais de chemin en dur, jamais d'écriture hors de ce dossier, jamais dans le cache réel de l'utilisateur ni dans son `.env`.
 - Les noms de tests et les docstrings sont en **français**, courts, et disent le comportement attendu (`test_dossier_illisible_rend_une_liste_vide`).
-- **Python 3.8 et 3.13**, Windows et Linux (la CI fait les quatre). Pas de syntaxe ou d'API postérieure à 3.8 ; pas de chemin ni de fin de ligne qui ne vaille que sous Windows ; comparer des noms de fichiers sans supposer la casse du système.
+- **Python 3.14 et 3.15**, Windows et Linux (la CI fait les quatre). Pas d'API retirée en 3.15 ; pas de chemin ni de fin de ligne qui ne vaille que sous Windows ; comparer des noms de fichiers sans supposer la casse du système.
 
 ## Méthode
 

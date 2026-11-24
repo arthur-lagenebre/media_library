@@ -1,7 +1,7 @@
 # media_library
 
 [![Tests](https://github.com/arthur-lagenebre/media_library/actions/workflows/tests.yml/badge.svg)](https://github.com/arthur-lagenebre/media_library/actions/workflows/tests.yml)
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![Python 3.14+](https://img.shields.io/badge/Python-3.14%2B-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Généré par Claude Code](https://img.shields.io/badge/G%C3%A9n%C3%A9r%C3%A9%20par-Claude%20Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
 Outils personnels pour étiqueter une médiathèque à partir de [TMDB](https://www.themoviedb.org) pour les films et les séries, en français, et de [MusicBrainz](https://musicbrainz.org) pour la musique : les métadonnées sont écrites **directement dans les fichiers** — `.mkv`, `.flac`, `.mp3` — (sans ré-encodage ni remux, c'est quasi instantané), pour que chaque fichier reste autonome. Les livres, BD, comics et mangas portent déjà leur fiche (`ComicInfo.xml`, `.opf`) : ils ne sont pas modifiés.
@@ -51,7 +51,7 @@ docs/                   les décisions prises, le renvoi vers la liste des trava
 
 ## Prérequis
 
-- Python 3.8 ou plus récent — de quoi tourner aussi sur un NAS, avec le Python qu'il fournit
+- Python 3.14 ou plus récent
 - [MKVToolNix](https://mkvtoolnix.download) (`mkvpropedit`, `mkvmerge`, `mkvextract`) — obligatoire pour écrire
 - [FFmpeg](https://ffmpeg.org) (`ffprobe`) — facultatif : débit audio dans le nom des pistes, détection des fichiers dont la durée ne correspond pas à l'épisode, et contrôle de la durée après conversion d'un `.avi` ou d'un `.mp4` ; **requis** (avec `ffprobe`) pour `Wav_To_Flac.py`, qui encode et compare le son ; **requis** pour `Flac_To_Mp3.py` (avec l'encodeur `libmp3lame`, présent dans la version de `winget`) ; nécessaire à `Cover.py --apply` pour réduire ou convertir une pochette
 
@@ -397,7 +397,7 @@ media_library ne génère plus de pages. La lecture (web, TV, lecteur audio et v
 python -m unittest discover -s tests -t .
 ```
 
-Ils tournent aussi sur chaque push et chaque PR (Windows et Linux, Python 3.8 et 3.13) via [GitHub Actions](.github/workflows/tests.yml).
+Ils tournent aussi sur chaque push et chaque PR (Windows et Linux, Python 3.14 et 3.15) via [GitHub Actions](.github/workflows/tests.yml).
 
 Ils couvrent la partie qui casse en silence — analyse des noms, tags produits, comparaison à l'état visé, erreurs TMDB, cas tordus du renommage — sans réseau ni outil externe.
 
